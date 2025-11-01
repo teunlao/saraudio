@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SARAUDIO · Vanilla Recorder</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji'; margin: 24px; }
+      header { margin-bottom: 16px; }
+      .row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+      .status { padding: 2px 8px; border-radius: 6px; background: #efefef; font-size: 12px; }
+      .players { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+      label { display: flex; gap: 8px; align-items: center; }
+      code { background: #f7f7f7; padding: 2px 4px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>SARAUDIO · Vanilla Recorder</h1>
+      <p>Start microphone, speak with pauses. We’ll render two tracks: <em>Cleaned</em> (speech only) and <em>Full</em> (entire session). Also a <em>Masked</em> version with silence zeroed.</p>
+    </header>
+    <section class="row">
+      <button id="start">Start microphone</button>
+      <button id="stop">Stop</button>
+      <span id="status" class="status">idle</span>
+    </section>
+    <section class="players">
+      <div class="card">
+        <h3>Cleaned (speech only)</h3>
+        <audio id="cleaned" controls></audio>
+        <div id="cleaned-meta"></div>
+      </div>
+      <div class="card">
+        <h3>Full (entire session)</h3>
+        <audio id="full" controls></audio>
+      </div>
+      <div class="card">
+        <h3>Masked (full length, silence zeroed)</h3>
+        <audio id="masked" controls></audio>
+      </div>
+    </section>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+  </html>
+

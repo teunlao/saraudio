@@ -91,6 +91,22 @@ importers:
         specifier: ^7.0.0
         version: 7.1.12(@types/node@24.9.1)(jiti@1.21.7)(terser@5.44.0)(tsx@4.20.6)
 
+  examples/runtime-browser-vanilla:
+    dependencies:
+      '@saraudio/runtime-browser':
+        specifier: workspace:*
+        version: link:../../packages/runtime-browser
+      '@saraudio/vad-energy':
+        specifier: workspace:*
+        version: link:../../packages/vad-energy
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.12
+        version: 7.1.12(@types/node@24.9.1)(jiti@1.21.7)(terser@5.44.0)(tsx@4.20.6)
+
   examples/runtime-node-mic:
     dependencies:
       '@saraudio/core':

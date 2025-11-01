@@ -1,0 +1,19 @@
+{
+  "name": "@saraudio/example-runtime-browser-vanilla",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/vad-energy": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vite": "^7.1.12"
+  }
+}

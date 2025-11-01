@@ -1,4 +1,5 @@
-export { createBrowserRuntime, buildStages } from './runtime';
+export { createRecorder, type Recorder, type RecorderOptions, type RecorderStatus } from './recorder';
+export { buildStages, createBrowserRuntime } from './runtime';
 export type {
   BrowserFrameSource,
   BrowserPipelineOptions,
