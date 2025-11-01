@@ -131,6 +131,7 @@ export const App = () => {
 
   const [cleanedUrl, setCleanedUrl] = useState<string | null>(null);
   const [fullUrl, setFullUrl] = useState<string | null>(null);
+  const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
   const [metaLabel, setMetaLabel] = useState<string>('');
 
   const lastVad = vadState ? { speech: vadState.isSpeech, score: vadState.score } : null;
@@ -171,8 +172,10 @@ export const App = () => {
         await stop();
         const cleaned = await recordings.cleaned.getBlob();
         const full = await recordings.full.getBlob();
+        const masked = await recordings.masked.getBlob();
         setCleanedUrl(cleaned ? URL.createObjectURL(cleaned) : null);
         setFullUrl(full ? URL.createObjectURL(full) : null);
+        setMaskedUrl(masked ? URL.createObjectURL(masked) : null);
         const meta = recordings.meta();
         setMetaLabel(
           `Speech ${Math.round(meta.cleanedDurationMs)} ms / Session ${Math.round(meta.sessionDurationMs)} ms`,
@@ -181,7 +184,7 @@ export const App = () => {
       return;
     }
     void start();
-  }, [isRunning, start, stop]);
+  }, [isRunning, start, stop, recordings]);
 
   return (
     <div className='app'>
@@ -309,6 +312,11 @@ export const App = () => {
             <span className='segment-list__title'>Full (entire session)</span>
             {/* biome-ignore lint/a11y/useMediaCaption: demo player without captions */}
             {fullUrl ? <audio controls src={fullUrl} /> : <span className='placeholder'>No full yet</span>}
+          </div>
+          <div className='segment-list__item'>
+            <span className='segment-list__title'>Masked (silence as zeros)</span>
+            {/* biome-ignore lint/a11y/useMediaCaption: demo player without captions */}
+            {maskedUrl ? <audio controls src={maskedUrl} /> : <span className='placeholder'>No masked yet</span>}
           </div>
         </div>
       </section>
