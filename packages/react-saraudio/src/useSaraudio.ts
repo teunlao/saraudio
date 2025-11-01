@@ -1,10 +1,11 @@
 import type { Pipeline, Segment } from '@saraudio/core';
 import type { BrowserRuntime, MicrophoneSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
 import { useMeter } from './useMeter';
 import { useSaraudioMicrophone } from './useSaraudioMicrophone';
 import { useSaraudioPipeline } from './useSaraudioPipeline';
+import { useStageLoader } from './useStageLoader';
 
 function shallowEqual(a: VadOptions, b: VadOptions): boolean {
   const keysA = Object.keys(a) as (keyof VadOptions)[];
@@ -67,7 +68,7 @@ export interface UseSaraudioResult {
 export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult {
   const {
     vad: vadOptions,
-    meter: meterEnabled,
+    meter: meterOption,
     segmenter,
     constraints,
     mode,
@@ -77,88 +78,9 @@ export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult
 
   const contextRuntime = useSaraudioRuntime(runtimeOverride);
   const fallbackReason = useSaraudioFallbackReason();
-  const hookIdRef = useRef(`hs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`);
   const [loadError, setLoadError] = useState<Error | null>(null);
-  const [vadStage, setVadStage] = useState<ReturnType<
-    typeof import('@saraudio/vad-energy').createEnergyVadStage
-  > | null>(null);
-  const [meterStage, setMeterStage] = useState<ReturnType<
-    typeof import('@saraudio/meter').createAudioMeterStage
-  > | null>(null);
-
   const vadEnabled = !!vadOptions;
-  const vadTriedRef = useRef(false);
-  const meterTriedRef = useRef(false);
-  const vadImportSeqRef = useRef(0);
-  const meterImportSeqRef = useRef(0);
-
-  // Create/destroy VAD stage when enabled/disabled (NOT on config changes)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: vadOptions intentionally omitted, config updates via separate hot-update effect
-  useEffect(() => {
-    console.log('[vad] EFFECT', { hookId: hookIdRef.current, vadEnabled, tried: vadTriedRef.current });
-    if (typeof window === 'undefined') return;
-
-    if (vadEnabled) {
-      if (!vadTriedRef.current) {
-        vadTriedRef.current = true;
-        vadImportSeqRef.current += 1;
-        const seq = vadImportSeqRef.current;
-        console.log('[vad] CREATING', { hookId: hookIdRef.current, seq });
-
-        import('@saraudio/vad-energy')
-          .then((module) => {
-            const late = seq !== vadImportSeqRef.current;
-            console.log('[vad] IMPORT_RESOLVED', { hookId: hookIdRef.current, seq, late });
-            const { createEnergyVadStage } = module;
-            const vadConfig = vadOptions === true ? {} : vadOptions;
-            console.log('[vad] CREATED', { hookId: hookIdRef.current, seq, late });
-            setVadStage(createEnergyVadStage(vadConfig));
-          })
-          .catch(() => {
-            console.log('[vad] IMPORT_FAILED', { hookId: hookIdRef.current, seq: vadImportSeqRef.current });
-            setLoadError(
-              (prev) => prev ?? new Error('VAD plugin not found. Install it: pnpm add @saraudio/vad-energy'),
-            );
-            setVadStage(null);
-          });
-      }
-    } else {
-      setVadStage(null);
-      vadTriedRef.current = false;
-    }
-  }, [vadEnabled]);
-
-  // Create/destroy Meter stage when enabled/disabled
-  useEffect(() => {
-    console.log('[meter] EFFECT', { hookId: hookIdRef.current, meterEnabled, tried: meterTriedRef.current });
-    if (typeof window === 'undefined') return;
-
-    if (meterEnabled) {
-      if (!meterTriedRef.current) {
-        meterTriedRef.current = true;
-        meterImportSeqRef.current += 1;
-        const seq = meterImportSeqRef.current;
-        console.log('[meter] CREATING', { hookId: hookIdRef.current, seq });
-
-        import('@saraudio/meter')
-          .then((module) => {
-            const late = seq !== meterImportSeqRef.current;
-            console.log('[meter] IMPORT_RESOLVED', { hookId: hookIdRef.current, seq, late });
-            const { createAudioMeterStage } = module;
-            console.log('[meter] CREATED', { hookId: hookIdRef.current, seq, late });
-            setMeterStage(createAudioMeterStage());
-          })
-          .catch(() => {
-            console.log('[meter] IMPORT_FAILED', { hookId: hookIdRef.current, seq });
-            setLoadError((prev) => prev ?? new Error('Meter plugin not found. Install it: pnpm add @saraudio/meter'));
-            setMeterStage(null);
-          });
-      }
-    } else {
-      setMeterStage(null);
-      meterTriedRef.current = false;
-    }
-  }, [meterEnabled]);
+  const meterEnabled = Boolean(meterOption);
 
   const vadConfig = useMemo(() => {
     if (!vadOptions || vadOptions === true) return {};
@@ -166,6 +88,42 @@ export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult
   }, [vadOptions]);
 
   const prevVadConfigRef = useRef<VadOptions>(vadConfig);
+  const vadInitialConfigRef = useRef(vadConfig);
+  vadInitialConfigRef.current = vadConfig;
+
+  const loadVadStage = useCallback(async () => {
+    const module = await import('@saraudio/vad-energy');
+    return module.createEnergyVadStage(vadInitialConfigRef.current);
+  }, []);
+
+  const vadMissingError = useCallback(
+    () => new Error('VAD plugin not found. Install it: pnpm add @saraudio/vad-energy'),
+    [],
+  );
+
+  const vadStage = useStageLoader({
+    enabled: vadEnabled,
+    loadStage: loadVadStage,
+    onMissing: vadMissingError,
+    setLoadError,
+  });
+
+  const loadMeterStage = useCallback(async () => {
+    const module = await import('@saraudio/meter');
+    return module.createAudioMeterStage();
+  }, []);
+
+  const meterMissingError = useCallback(
+    () => new Error('Meter plugin not found. Install it: pnpm add @saraudio/meter'),
+    [],
+  );
+
+  const meterStage = useStageLoader({
+    enabled: meterEnabled,
+    loadStage: loadMeterStage,
+    onMissing: meterMissingError,
+    setLoadError,
+  });
 
   // Hot-update VAD config when options change (without recreating stage)
   useEffect(() => {
