@@ -1,5 +1,7 @@
 import type { Segment } from '@saraudio/core';
+import { createAudioMeterStage } from '@saraudio/meter';
 import { useSaraudio } from '@saraudio/react';
+import { createEnergyVadStage } from '@saraudio/vad-energy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const formatDuration = (ms: number): string => `${(ms / 1000).toFixed(2)} s`;
@@ -101,6 +103,15 @@ export const App = () => {
     return constraints;
   }, [selectedDeviceId]);
 
+  // Build lazy loaders for stages (energy VAD + meter)
+  const stageLoaders = useMemo(() => {
+    const energyVad = () => createEnergyVadStage({ thresholdDb, smoothMs });
+    const meter = () => createAudioMeterStage();
+    return [energyVad, meter];
+  }, [thresholdDb, smoothMs]);
+
+  const segmenterOptions = useMemo(() => ({ preRollMs: 250, hangoverMs: 400 }), []);
+
   const {
     status,
     error,
@@ -111,11 +122,16 @@ export const App = () => {
     segments,
     clearSegments,
     fallbackReason,
+    recordings,
   } = useSaraudio({
-    vad: { thresholdDb, smoothMs },
-    meter: true,
+    stages: stageLoaders,
+    segmenter: segmenterOptions,
     constraints: audioConstraints,
   });
+
+  const [cleanedUrl, setCleanedUrl] = useState<string | null>(null);
+  const [fullUrl, setFullUrl] = useState<string | null>(null);
+  const [metaLabel, setMetaLabel] = useState<string>('');
 
   const lastVad = vadState ? { speech: vadState.isSpeech, score: vadState.score } : null;
   const isSpeech = vadState?.isSpeech ?? false;
@@ -151,7 +167,17 @@ export const App = () => {
 
   const handleStartStop = useCallback(() => {
     if (isRunning) {
-      void stop();
+      void (async () => {
+        await stop();
+        const cleaned = await recordings.cleaned.getBlob();
+        const full = await recordings.full.getBlob();
+        setCleanedUrl(cleaned ? URL.createObjectURL(cleaned) : null);
+        setFullUrl(full ? URL.createObjectURL(full) : null);
+        const meta = recordings.meta();
+        setMetaLabel(
+          `Speech ${Math.round(meta.cleanedDurationMs)} ms / Session ${Math.round(meta.sessionDurationMs)} ms`,
+        );
+      })();
       return;
     }
     void start();
@@ -268,6 +294,23 @@ export const App = () => {
       <section className='segments'>
         <h2>Captured Segments (last {segments.length})</h2>
         <SegmentList segments={segments} />
+      </section>
+
+      <section className='segments'>
+        <h2>Recordings</h2>
+        <div className='segment-list'>
+          <div className='segment-list__item'>
+            <span className='segment-list__title'>Cleaned (speech only)</span>
+            <span>{metaLabel}</span>
+            {/* biome-ignore lint/a11y/useMediaCaption: demo player without captions */}
+            {cleanedUrl ? <audio controls src={cleanedUrl} /> : <span className='placeholder'>No cleaned yet</span>}
+          </div>
+          <div className='segment-list__item'>
+            <span className='segment-list__title'>Full (entire session)</span>
+            {/* biome-ignore lint/a11y/useMediaCaption: demo player without captions */}
+            {fullUrl ? <audio controls src={fullUrl} /> : <span className='placeholder'>No full yet</span>}
+          </div>
+        </div>
       </section>
 
       <footer>

@@ -13,6 +13,7 @@
   "dependencies": {
     "@saraudio/core": "workspace:*",
     "@saraudio/react": "workspace:*",
+    "@saraudio/meter": "workspace:*",
     "@saraudio/vad-energy": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"

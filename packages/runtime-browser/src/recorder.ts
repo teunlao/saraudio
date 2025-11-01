@@ -7,6 +7,7 @@ import type {
   MicrophoneSourceOptions,
   RuntimeMode,
   SegmenterFactoryOptions,
+  StageLoader,
 } from './types';
 
 export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
@@ -19,8 +20,9 @@ export interface RecorderProduceOptions {
 
 export interface RecorderOptions {
   // Pipeline config
-  stages?: Stage[]; // external stages (e.g., VAD, meter)
+  stages?: Array<Stage | StageLoader | string>; // external or lazy stages or ids
   segmenter?: SegmenterFactoryOptions | Stage | false;
+  resolveStage?: (id: string) => Promise<Stage> | Stage; // resolves string ids to stages
   // Capture options
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
@@ -44,6 +46,7 @@ export interface RecordingExports {
 export interface Recorder {
   readonly status: RecorderStatus;
   readonly error: Error | null;
+  readonly pipeline: Pipeline;
   start(): Promise<void>;
   stop(): Promise<void>;
   reset(): void;
@@ -67,12 +70,8 @@ export interface Recorder {
 
 export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   const runtime = options.runtime ?? createBrowserRuntime(options.runtimeOptions);
-  // Important: do NOT pre-build stages with buildStages here, or the runtime will
-  // append segmenter twice (once by us and once internally). Pass raw stages + segmenter.
-  const pipeline: Pipeline = runtime.createPipeline({
-    stages: options.stages ?? [],
-    segmenter: options.segmenter ?? {},
-  });
+  // Build empty pipeline now; configure with plugins on start()
+  const pipeline: Pipeline = runtime.createPipeline();
 
   // Subscriptions
   const vadSubs = new Set<(payload: VADScore) => void>();
@@ -115,12 +114,43 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     status = next;
   };
 
+  const resolveAllStages = async (): Promise<Stage[]> => {
+    const out: Stage[] = [];
+    const list = options.stages ?? [];
+    for (const item of list) {
+      if (typeof item === 'string') {
+        if (!options.resolveStage) throw new Error(`No resolveStage provided for id: ${item}`);
+        const stage = await options.resolveStage(item);
+        out.push(stage);
+      } else if (typeof item === 'function') {
+        const maybe = (item as StageLoader)();
+        const stage = maybe instanceof Promise ? await maybe : (maybe as Stage);
+        out.push(stage);
+      } else {
+        out.push(item);
+      }
+    }
+    if (options.segmenter !== false) {
+      const seg = runtime.createSegmenter(
+        typeof options.segmenter === 'object' && 'preRollMs' in options.segmenter
+          ? (options.segmenter as SegmenterFactoryOptions)
+          : {},
+      );
+      out.push(seg);
+    }
+    return out;
+  };
+
   const start = async (): Promise<void> => {
     if (status === 'acquiring' || status === 'running') return;
     lastError = null;
     setStatus('acquiring');
 
     try {
+      // Configure pipeline with stages lazily at first start
+      const stagesToUse = await resolveAllStages();
+      pipeline.configure({ stages: stagesToUse });
+
       source = runtime.createMicrophoneSource({
         constraints: options.constraints,
         mode: options.mode,
@@ -217,6 +247,9 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     },
     get error() {
       return lastError;
+    },
+    get pipeline() {
+      return pipeline;
     },
     start,
     stop,

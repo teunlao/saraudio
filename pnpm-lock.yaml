@@ -62,6 +62,9 @@ importers:
       '@saraudio/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@saraudio/meter':
+        specifier: workspace:*
+        version: link:../../packages/meter
       '@saraudio/react':
         specifier: workspace:*
         version: link:../../packages/react-saraudio

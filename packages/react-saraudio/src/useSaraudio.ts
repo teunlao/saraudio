@@ -1,33 +1,18 @@
 import type { Pipeline, Segment } from '@saraudio/core';
 import type { BrowserRuntime, MicrophoneSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
+import { toError } from './internal/errorUtils';
+import { useShallowStable } from './internal/useShallowStable';
+import { type StageInput, useStableLoaders } from './internal/useStableLoaders';
 import { useMeter } from './useMeter';
-import { useSaraudioMicrophone } from './useSaraudioMicrophone';
-import { useSaraudioPipeline } from './useSaraudioPipeline';
-import { useStageLoader } from './useStageLoader';
+import { useRecorder } from './useRecorder';
 
-function shallowEqual(a: VadOptions, b: VadOptions): boolean {
-  const keysA = Object.keys(a) as (keyof VadOptions)[];
-  const keysB = Object.keys(b) as (keyof VadOptions)[];
-  if (keysA.length !== keysB.length) return false;
-  for (const key of keysA) {
-    if (a[key] !== b[key]) return false;
-  }
-  return true;
-}
-
-export interface VadOptions {
-  thresholdDb?: number;
-  smoothMs?: number;
-  floorDb?: number;
-  ceilingDb?: number;
-}
+const SEGMENTER_DISABLED: false = false;
 
 export interface UseSaraudioOptions {
-  vad?: boolean | VadOptions;
-  meter?: boolean;
-  segmenter?: { preRollMs?: number; hangoverMs?: number };
+  stages?: StageInput[];
+  segmenter?: { preRollMs?: number; hangoverMs?: number } | false;
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
   runtime?: BrowserRuntime;
@@ -45,153 +30,140 @@ export interface UseSaraudioResult {
   clearSegments: () => void;
   fallbackReason: string | null;
   pipeline: Pipeline;
+  recordings: {
+    cleaned: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    full: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    masked: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    meta: () => { sessionDurationMs: number; cleanedDurationMs: number };
+    clear: () => void;
+  };
 }
 
-/**
- * Simple DX: All-in-one hook for SARAUDIO.
- * Manages runtime, pipeline, stages, and microphone automatically.
- *
- * **Plugin dependencies**: VAD and Meter stages are loaded dynamically from optional peer dependencies.
- * If a plugin is not installed, an error will be returned with installation instructions:
- * - VAD: `pnpm add @saraudio/vad-energy`
- * - Meter: `pnpm add @saraudio/meter`
- *
- * @example
- * ```tsx
- * const { status, start, stop, vad, levels } = useSaraudio({
- *   vad: { thresholdDb: -50, smoothMs: 30 },
- *   meter: true,
- *   constraints: { channelCount: 1, sampleRate: 16000 }
- * });
- * ```
- */
 export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult {
-  const {
-    vad: vadOptions,
-    meter: meterOption,
-    segmenter,
-    constraints,
-    mode,
-    runtime: runtimeOverride,
-    autoStart,
-  } = options;
+  const { stages, segmenter, constraints, mode, runtime: runtimeOverride, autoStart } = options;
 
   const contextRuntime = useSaraudioRuntime(runtimeOverride);
   const fallbackReason = useSaraudioFallbackReason();
+
   const [loadError, setLoadError] = useState<Error | null>(null);
-  const vadEnabled = !!vadOptions;
-  const meterEnabled = Boolean(meterOption);
 
-  const vadConfig = useMemo(() => {
-    if (!vadOptions || vadOptions === true) return {};
-    return vadOptions;
-  }, [vadOptions]);
+  const stableStages = useStableLoaders(stages);
+  const stableConstraints = useShallowStable(constraints);
 
-  const prevVadConfigRef = useRef<VadOptions>(vadConfig);
-  const vadInitialConfigRef = useRef(vadConfig);
-  vadInitialConfigRef.current = vadConfig;
+  const segmenterObject = segmenter === false ? undefined : (segmenter ?? {});
+  const stableSegmenterObject = useShallowStable(segmenterObject);
+  const finalSegmenter = segmenter === false ? SEGMENTER_DISABLED : stableSegmenterObject;
 
-  const loadVadStage = useCallback(async () => {
-    const module = await import('@saraudio/vad-energy');
-    return module.createEnergyVadStage(vadInitialConfigRef.current);
-  }, []);
-
-  const vadMissingError = useCallback(
-    () => new Error('VAD plugin not found. Install it: pnpm add @saraudio/vad-energy'),
-    [],
+  const recorderOptions = useMemo(
+    () => ({
+      runtime: contextRuntime,
+      stages: stableStages ?? [],
+      segmenter: finalSegmenter,
+      constraints: stableConstraints,
+      mode,
+    }),
+    [contextRuntime, stableStages, finalSegmenter, stableConstraints, mode],
   );
 
-  const vadStage = useStageLoader({
-    enabled: vadEnabled,
-    loadStage: loadVadStage,
-    onMissing: vadMissingError,
-    setLoadError,
-  });
+  const recorder = useRecorder(recorderOptions);
+  const pipeline = recorder.pipeline;
 
-  const loadMeterStage = useCallback(async () => {
-    const module = await import('@saraudio/meter');
-    return module.createAudioMeterStage();
-  }, []);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [isSpeech, setIsSpeech] = useState(false);
+  const [lastVad, setLastVad] = useState<{ score: number; speech: boolean } | null>(null);
 
-  const meterMissingError = useCallback(
-    () => new Error('Meter plugin not found. Install it: pnpm add @saraudio/meter'),
-    [],
-  );
+  const clearSegments = useCallback(() => setSegments([]), []);
 
-  const meterStage = useStageLoader({
-    enabled: meterEnabled,
-    loadStage: loadMeterStage,
-    onMissing: meterMissingError,
-    setLoadError,
-  });
-
-  // Hot-update VAD config when options change (without recreating stage)
   useEffect(() => {
-    if (!vadStage) return;
-    if ('updateConfig' in vadStage && typeof vadStage.updateConfig === 'function') {
-      // Only call updateConfig if values actually changed (shallow-equal check)
-      // Skip first call since stage is already created with initial config
-      if (!shallowEqual(prevVadConfigRef.current, vadConfig)) {
-        vadStage.updateConfig(vadConfig);
-        prevVadConfigRef.current = vadConfig;
-      }
-    }
-  }, [vadStage, vadConfig]);
+    setSegments([]);
 
-  const stages = useMemo(() => {
-    const result = [];
-    if (vadStage) result.push(vadStage);
-    if (meterStage) result.push(meterStage);
-    console.log('[stages] MEMO', { count: result.length, hasVad: !!vadStage, hasMeter: !!meterStage });
-    return result;
-  }, [vadStage, meterStage]);
+    const unsubscribeVad = recorder.onVad((v) => {
+      setLastVad({ score: v.score, speech: v.speech });
+      setIsSpeech(v.speech);
+    });
 
-  // Create pipeline
-  const { pipeline, isSpeech, lastVad, segments, clearSegments } = useSaraudioPipeline({
-    stages,
-    segmenter,
-    retainSegments: 10,
-    runtime: contextRuntime,
-  });
+    const unsubscribeSegment = recorder.onSegment((s) => {
+      setSegments((prev) => (prev.length >= 10 ? [...prev.slice(1), s] : [...prev, s]));
+    });
 
-  // Get meter levels
+    const unsubscribeError = recorder.onError((e) => {
+      setLoadError(new Error(e.message));
+    });
+
+    return () => {
+      unsubscribeVad.unsubscribe();
+      unsubscribeSegment.unsubscribe();
+      unsubscribeError.unsubscribe();
+    };
+  }, [recorder]);
+
   const meterLevels = useMeter({ pipeline });
 
-  // Microphone control
-  const {
-    status,
-    error: micError,
-    start: micStart,
-    stop: micStop,
-  } = useSaraudioMicrophone({
-    pipeline,
-    runtime: contextRuntime,
-    constraints,
-    mode,
-    // Start is safe anytime; pipeline buffers until configured
-    autoStart: Boolean(autoStart),
-  });
+  const [status, setStatus] = useState(recorder.status);
+  const [micError, setMicError] = useState<Error | null>(null);
 
-  // Wrap start to wait until stages are ready if needed
-  // Combine errors
+  const start = useCallback(async () => {
+    setMicError(null);
+    setStatus('acquiring');
+    try {
+      await recorder.start();
+      setStatus(recorder.status);
+    } catch (e) {
+      const error = toError(e);
+      setMicError(error);
+      setStatus('error');
+      throw error;
+    }
+  }, [recorder]);
+
+  const stop = useCallback(async () => {
+    setStatus('stopping');
+    try {
+      await recorder.stop();
+      setStatus(recorder.status);
+    } catch (e) {
+      const error = toError(e);
+      setMicError(error);
+      setStatus('error');
+      throw error;
+    }
+  }, [recorder]);
+
+  useEffect(() => {
+    if (!autoStart) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await start();
+      } catch {
+        // Ignore - error already handled in start()
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (!cancelled) {
+        void stop();
+      }
+    };
+  }, [autoStart, start, stop]);
+
   const error = loadError || micError;
-
-  // VAD state
   const vad = lastVad ? { isSpeech, score: lastVad.score } : null;
-
-  // Meter state
-  const levels = meterEnabled ? meterLevels : null;
 
   return {
     status,
     error,
-    start: micStart,
-    stop: micStop,
+    start,
+    stop,
     vad,
-    levels,
+    levels: meterLevels,
     segments,
     clearSegments,
     fallbackReason,
     pipeline,
+    recordings: recorder.recordings,
   };
 }

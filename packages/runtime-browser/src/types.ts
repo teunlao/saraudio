@@ -30,6 +30,8 @@ export interface SegmenterFactoryOptions {
   hangoverMs?: number;
 }
 
+export type StageLoader = () => Promise<Stage> | Stage;
+
 export interface BrowserPipelineOptions {
   stages?: Stage[];
   segmenter?: SegmenterFactoryOptions | Stage | false;
