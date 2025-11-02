@@ -149,6 +149,9 @@ importers:
       '@saraudio/runtime-browser':
         specifier: workspace:*
         version: link:../../packages/runtime-browser
+      '@saraudio/svelte':
+        specifier: workspace:*
+        version: link:../../packages/svelte
       '@saraudio/vad-energy':
         specifier: workspace:*
         version: link:../../packages/vad-energy
@@ -323,6 +326,49 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.9.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.0(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.3(@types/node@24.9.1)(@vitest/ui@4.0.3)(happy-dom@20.0.8)(jiti@2.6.1)(jsdom@16.7.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)
+
+  packages/svelte:
+    dependencies:
+      '@saraudio/core':
+        specifier: workspace:*
+        version: link:../core
+      '@saraudio/meter':
+        specifier: workspace:*
+        version: link:../meter
+      '@saraudio/runtime-browser':
+        specifier: workspace:*
+        version: link:../runtime-browser
+      '@saraudio/utils':
+        specifier: workspace:*
+        version: link:../utils
+      '@saraudio/vad-energy':
+        specifier: workspace:*
+        version: link:../vad-energy
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.9.1
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 4.0.3(vitest@4.0.3)
+      '@vitest/ui':
+        specifier: 'catalog:'
+        version: 4.0.3(vitest@4.0.3)
+      happy-dom:
+        specifier: 'catalog:'
+        version: 20.0.8
+      svelte:
+        specifier: ^5.16.0
+        version: 5.43.2
       tsup:
         specifier: 'catalog:'
         version: 8.5.0(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.3)

@@ -26,6 +26,7 @@
     "@saraudio/core": "workspace:*",
     "@saraudio/meter": "workspace:*",
     "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/svelte": "workspace:*",
     "@saraudio/vad-energy": "workspace:*"
   }
 }

@@ -1,0 +1,89 @@
+{
+  "name": "@saraudio/svelte",
+  "version": "0.0.0",
+  "description": "Svelte 5 bindings for SARAUDIO pipeline",
+  "license": "ISC",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "pnpm clean && tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./src/index.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "svelte": "./src/index.ts",
+  "dependencies": {
+    "@saraudio/core": "workspace:*",
+    "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/utils": "workspace:*"
+  },
+  "peerDependencies": {
+    "@saraudio/meter": "workspace:*",
+    "@saraudio/vad-energy": "workspace:*",
+    "svelte": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@saraudio/meter": {
+      "optional": true
+    },
+    "@saraudio/vad-energy": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
+    "happy-dom": "catalog:",
+    "svelte": "^5.16.0",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teunlao/silence-aware-recorder.git",
+    "directory": "packages/svelte"
+  },
+  "homepage": "https://github.com/teunlao/silence-aware-recorder#readme",
+  "bugs": {
+    "url": "https://github.com/teunlao/silence-aware-recorder/issues"
+  },
+  "keywords": [
+    "svelte",
+    "svelte5",
+    "runes",
+    "audio",
+    "vad",
+    "pipeline",
+    "saraudio",
+    "real-time"
+  ]
+}
