@@ -155,22 +155,9 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     };
   }, [contextRuntime, config, recorder]);
 
-  const disposalTimers = useRef(new Map<typeof recorder, ReturnType<typeof setTimeout>>());
-
   useEffect(() => {
-    const current = recorder;
-    const pending = disposalTimers.current.get(current);
-    if (pending !== undefined) {
-      clearTimeout(pending);
-      disposalTimers.current.delete(current);
-    }
-
     return () => {
-      const handle = setTimeout(() => {
-        disposalTimers.current.delete(current);
-        current.dispose();
-      }, 0);
-      disposalTimers.current.set(current, handle);
+      recorder.dispose();
     };
   }, [recorder]);
 
@@ -185,13 +172,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   useEffect(() => {
     setSegments([]);
 
-    let vadLogCount = 0;
-
     const unsubscribeVad = recorder.onVad((v) => {
-      if (vadLogCount < 5) {
-        console.log('[react useRecorder] vad event', v);
-        vadLogCount += 1;
-      }
       setLastVad({ score: v.score, speech: v.speech });
       setIsSpeech(v.speech);
     });

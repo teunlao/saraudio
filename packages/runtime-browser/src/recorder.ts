@@ -101,25 +101,47 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   let assembler = createAssembler();
   let segmentActive = false;
 
-  // Attach pipeline listeners
-  const offVad = pipeline.events.on('vad', (payload) => {
-    for (const h of vadSubs) h(payload);
-  });
-  const offSegStart = pipeline.events.on('speechStart', () => {
-    segmentActive = true;
-    assembler.onSpeechStart();
-  });
-  const offSegEnd = pipeline.events.on('speechEnd', () => {
-    segmentActive = false;
-    assembler.onSpeechEnd();
-  });
-  const offSegment = pipeline.events.on('segment', (segment) => {
-    assembler.onSegment(segment);
-    for (const h of segSubs) h(segment);
-  });
-  const offError = pipeline.events.on('error', (error) => {
-    for (const h of errSubs) h(error);
-  });
+  let listenersAttached = false;
+  let detachPipelineListeners: Array<() => void> = [];
+
+  const attachPipelineListeners = (): void => {
+    if (listenersAttached) return;
+    listenersAttached = true;
+    const detachVad = pipeline.events.on('vad', (payload) => {
+      for (const h of vadSubs) h(payload);
+    });
+    const detachSegStart = pipeline.events.on('speechStart', () => {
+      segmentActive = true;
+      assembler.onSpeechStart();
+    });
+    const detachSegEnd = pipeline.events.on('speechEnd', () => {
+      segmentActive = false;
+      assembler.onSpeechEnd();
+    });
+    const detachSegment = pipeline.events.on('segment', (segment) => {
+      assembler.onSegment(segment);
+      for (const h of segSubs) h(segment);
+    });
+    const detachError = pipeline.events.on('error', (error) => {
+      for (const h of errSubs) h(error);
+    });
+    detachPipelineListeners = [detachVad, detachSegStart, detachSegEnd, detachSegment, detachError];
+  };
+
+  const detachPipelineListenersIfNeeded = (): void => {
+    if (!listenersAttached) return;
+    listenersAttached = false;
+    while (detachPipelineListeners.length > 0) {
+      const detach = detachPipelineListeners.pop();
+      try {
+        detach?.();
+      } catch (error) {
+        runtime.services.logger.warn('Pipeline detach failed', { error });
+      }
+    }
+  };
+
+  attachPipelineListeners();
 
   const setStatus = (next: RecorderStatus) => {
     status = next;
@@ -156,6 +178,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const refreshStages = (): void => {
+    attachPipelineListeners();
     const resolved: StageController[] = [...stageSources];
     const segmenter = resolveSegmenterInput(segmenterSource);
     if (segmenter) {
@@ -225,6 +248,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
 
   const update = async (next: RecorderUpdateOptions = {}): Promise<void> => {
     console.log('[recorder] update called');
+    attachPipelineListeners();
     const entries = Object.entries(next) as Array<[UpdateKey, RecorderUpdateOptions[UpdateKey]]>;
     let pipelineNeedsRefresh = entries.length === 0;
 
@@ -348,11 +372,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const dispose = (): void => {
-    offVad();
-    offSegStart();
-    offSegEnd();
-    offSegment();
-    offError();
+    detachPipelineListenersIfNeeded();
     pipeline.dispose();
   };
 
