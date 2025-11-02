@@ -169,4 +169,37 @@ describe('createMeter', () => {
     render(() => <TestComponent />);
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
+
+  it('accepts pipeline as Accessor (signal)', async () => {
+    const TestComponent = () => {
+      const pipeline = new Pipeline({
+        now: () => 0,
+        createId: () => 'test-id',
+      });
+
+      const pipelineSignal = () => pipeline;
+
+      const meter = createMeter({ pipeline: pipelineSignal });
+
+      setTimeout(() => {
+        pipeline.events.emit('meter', {
+          rms: 0.7,
+          peak: 0.9,
+          db: -5,
+          tsMs: 200,
+        });
+
+        setTimeout(() => {
+          expect(meter.rms()).toBe(0.7);
+          expect(meter.peak()).toBe(0.9);
+          expect(meter.db()).toBe(-5);
+        }, 10);
+      }, 10);
+
+      return null;
+    };
+
+    render(() => <TestComponent />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
 });

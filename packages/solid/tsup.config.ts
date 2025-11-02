@@ -3,9 +3,14 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['cjs', 'esm'],
-  dts: true,
-  clean: true,
+  dts: {
+    compilerOptions: {
+      composite: false,
+      declarationMap: true,
+    },
+  },
   sourcemap: true,
-  treeshake: true,
+  clean: true,
+  target: 'es2018',
   external: ['solid-js'],
 });

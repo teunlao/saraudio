@@ -13,7 +13,13 @@
       "!**/*.svelte",
       "!**/.svelte-kit",
       "!**/*.vue",
-      "!**/.nuxt"
+      "!**/.nuxt",
+      "!**/*.js",
+      "!**/*.mjs",
+      "!**/*.cjs",
+      "!**/*.d.ts",
+      "!**/.vinxi",
+      "!**/assets"
     ]
   },
   "formatter": {

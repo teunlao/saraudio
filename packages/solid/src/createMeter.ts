@@ -1,8 +1,8 @@
 import type { MeterPayload, Pipeline } from '@saraudio/core';
-import { type Accessor, createSignal, onCleanup, onMount } from 'solid-js';
+import { type Accessor, createEffect, createSignal, onCleanup } from 'solid-js';
 
 export interface CreateMeterOptions {
-  pipeline: Pipeline | null;
+  pipeline: Pipeline | null | Accessor<Pipeline | null>;
   onMeter?: (payload: MeterPayload) => void;
 }
 
@@ -20,12 +20,13 @@ const INITIAL_VALUES = {
 };
 
 export function createMeter(options: CreateMeterOptions): MeterResult {
-  const { pipeline, onMeter } = options;
+  const { pipeline: pipelineInput, onMeter } = options;
   const [rms, setRms] = createSignal(INITIAL_VALUES.rms);
   const [peak, setPeak] = createSignal(INITIAL_VALUES.peak);
   const [db, setDb] = createSignal(INITIAL_VALUES.db);
 
-  onMount(() => {
+  createEffect(() => {
+    const pipeline = typeof pipelineInput === 'function' ? pipelineInput() : pipelineInput;
     if (!pipeline) return;
 
     const unsubscribe = pipeline.events.on('meter', (payload: MeterPayload) => {
