@@ -17,6 +17,7 @@ export interface UseSaraudioOptions {
   mode?: RuntimeMode;
   runtime?: BrowserRuntime;
   autoStart?: boolean;
+  allowFallback?: boolean;
 }
 
 export interface UseSaraudioResult {
@@ -40,7 +41,7 @@ export interface UseSaraudioResult {
 }
 
 export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult {
-  const { stages, segmenter, constraints, mode, runtime: runtimeOverride, autoStart } = options;
+  const { stages, segmenter, constraints, mode, runtime: runtimeOverride, autoStart, allowFallback } = options;
 
   const contextRuntime = useSaraudioRuntime(runtimeOverride);
   const fallbackReason = useSaraudioFallbackReason();
@@ -61,8 +62,9 @@ export function useSaraudio(options: UseSaraudioOptions = {}): UseSaraudioResult
       segmenter: finalSegmenter,
       constraints: stableConstraints,
       mode,
+      allowFallback,
     }),
-    [contextRuntime, stableStages, finalSegmenter, stableConstraints, mode],
+    [contextRuntime, stableStages, finalSegmenter, stableConstraints, mode, allowFallback],
   );
 
   const recorder = useRecorder(recorderOptions);

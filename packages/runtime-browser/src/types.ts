@@ -46,6 +46,7 @@ export interface MicrophoneSourceOptions {
   constraints?: MediaTrackConstraints | MediaStreamConstraints['audio'];
   mode?: RuntimeMode;
   onStream?: (stream: MediaStream | null) => void;
+  allowFallback?: boolean;
 }
 
 export interface RunOptions {

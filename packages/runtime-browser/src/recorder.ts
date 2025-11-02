@@ -26,6 +26,7 @@ export interface RecorderOptions {
   // Capture options
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
+  allowFallback?: boolean;
   // Output builders
   produce?: RecorderProduceOptions;
   // Runtime options and hooks
@@ -155,6 +156,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
         constraints: options.constraints,
         mode: options.mode,
         onStream: options.onStream,
+        allowFallback: options.allowFallback,
       });
 
       const localSource = source;

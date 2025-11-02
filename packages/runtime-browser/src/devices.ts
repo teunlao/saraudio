@@ -59,7 +59,11 @@ export function watchAudioDeviceChanges(handler: () => void): { unsubscribe(): v
   }
   const prev = md.ondevicechange ?? null;
   md.ondevicechange = cb;
-  return { unsubscribe: () => { md.ondevicechange = prev; } };
+  return {
+    unsubscribe: () => {
+      md.ondevicechange = prev;
+    },
+  };
 }
 
 export function buildAudioConstraints(input: {
@@ -73,4 +77,3 @@ export function buildAudioConstraints(input: {
   if (typeof input.channelCount === 'number') c.channelCount = input.channelCount;
   return c;
 }
-

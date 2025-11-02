@@ -67,6 +67,12 @@ header p {
   gap: 8px;
 }
 
+.mode-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .controls__device {
   display: flex;
   flex-direction: column;
@@ -419,6 +425,11 @@ footer {
   }
 
   .device-select {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mode-row {
     flex-direction: column;
     align-items: stretch;
   }

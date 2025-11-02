@@ -1,6 +1,7 @@
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
 import { useAudioInputs, useSaraudio } from '@saraudio/react';
+import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { buildAudioConstraints, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 
@@ -71,9 +72,81 @@ export const App = () => {
     refresh: enumerateAudioInputs,
   } = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
 
-  const [thresholdDb, setThresholdDb] = useState(-55);
-  const [smoothMs, setSmoothMs] = useState(30);
+  // Persisted UI state (localStorage): energy threshold, smoothing, capture mode
+  const THRESHOLD_KEY = 'saraudio:demo:thresholdDb';
+  const SMOOTH_KEY = 'saraudio:demo:smoothMs';
+  const MODE_KEY = 'saraudio:demo:captureMode';
+  const FALLBACK_KEY = 'saraudio:demo:allowFallback';
+
+  const [thresholdDb, setThresholdDb] = useState(() => {
+    if (typeof window === 'undefined') return -55;
+    try {
+      const raw = window.localStorage.getItem(THRESHOLD_KEY);
+      const n = raw !== null ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : -55;
+    } catch {
+      return -55;
+    }
+  });
+  const [smoothMs, setSmoothMs] = useState(() => {
+    if (typeof window === 'undefined') return 30;
+    try {
+      const raw = window.localStorage.getItem(SMOOTH_KEY);
+      const n = raw !== null ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : 30;
+    } catch {
+      return 30;
+    }
+  });
   const [hasVadEvent, setHasVadEvent] = useState(false);
+  const [mode, setMode] = useState<RuntimeMode>(() => {
+    if (typeof window === 'undefined') return 'auto';
+    try {
+      const raw = window.localStorage.getItem(MODE_KEY);
+      if (raw === 'worklet' || raw === 'media-recorder' || raw === 'auto') return raw;
+      return 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  const [allowFallback, setAllowFallback] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const raw = window.localStorage.getItem(FALLBACK_KEY);
+      if (raw === '0') return false;
+      return true;
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(THRESHOLD_KEY, String(thresholdDb));
+    } catch {}
+  }, [thresholdDb]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(SMOOTH_KEY, String(smoothMs));
+    } catch {}
+  }, [smoothMs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(MODE_KEY, mode);
+    } catch {}
+  }, [mode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(FALLBACK_KEY, allowFallback ? '1' : '0');
+    } catch {}
+  }, [allowFallback]);
 
   // device enumeration handled by hook
 
@@ -93,12 +166,13 @@ export const App = () => {
     levels,
     segments,
     clearSegments,
-    fallbackReason,
     recordings,
   } = useSaraudio({
     stages: [vadEnergy({ thresholdDb, smoothMs }), meter()],
     segmenter: segmenterOptions,
     constraints: audioConstraints,
+    mode,
+    allowFallback,
   });
 
   const [cleanedUrl, setCleanedUrl] = useState<string | null>(null);
@@ -271,6 +345,34 @@ export const App = () => {
             </label>
           </div>
         </div>
+        <div className='controls__device-row' style={{ marginTop: 8 }}>
+          <div className='mode-row'>
+            <label className='controls__device'>
+              <span>Capture mode</span>
+              <div className='device-select'>
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as RuntimeMode)}
+                  disabled={status === 'running' || status === 'acquiring'}
+                >
+                  <option value='auto'>auto</option>
+                  <option value='worklet'>worklet</option>
+                  <option value='media-recorder'>media-recorder</option>
+                </select>
+              </div>
+            </label>
+            <label className='controls__device' style={{ minWidth: 140 }}>
+              <span>Allow fallback</span>
+              <input
+                type='checkbox'
+                checked={allowFallback}
+                onChange={(e) => setAllowFallback(e.target.checked)}
+                disabled={status === 'running' || status === 'acquiring'}
+                aria-label='Allow automatic fallback when requested mode is unavailable'
+              />
+            </label>
+          </div>
+        </div>
         <div className='controls__buttons'>
           <button type='button' onClick={handleStartStop} disabled={status === 'stopping'}>
             {isRunning ? 'Stop' : 'Start'} microphone
@@ -285,13 +387,6 @@ export const App = () => {
             <span className='status status--warning'>No audio inputs found</span>
           ) : null}
           <span className={`status status--${status}`}>Status: {status}</span>
-          {fallbackReason ? (
-            <span className='status status--warning'>
-              Runtime fallback: {fallbackReason === 'worklet-unsupported' ? 'MediaRecorder mode' : fallbackReason}
-            </span>
-          ) : (
-            <span className='status status--ok'>Runtime: worklet preferred</span>
-          )}
         </div>
         {enumerationError ? <p className='status status--error'>Device error: {enumerationError}</p> : null}
         {error ? <p className='status status--error'>Error: {error.message}</p> : null}

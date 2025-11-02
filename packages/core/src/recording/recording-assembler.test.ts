@@ -114,7 +114,7 @@ describe('RecordingAssembler', () => {
     expect(ra.meta.sessionDurationMs).toBe(300); // 400 - 100
   });
 
-  it('getCleaned/getFull/getMasked возвращают null, если сборщик отключён', () => {
+  it('returns null when collector is disabled', () => {
     const ra = new RecordingAssembler({ collectCleaned: false, collectFull: false, collectMasked: false });
     ra.onFrame({ pcm: i16(1, 2), tsMs: 0, sampleRate: sr, channels: ch });
     ra.onSegment({ id: 'x', startMs: 0, endMs: 10, durationMs: 10, sampleRate: sr, channels: ch, pcm: i16(2, 2) });

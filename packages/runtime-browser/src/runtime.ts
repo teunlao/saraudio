@@ -46,18 +46,25 @@ export const buildStages = (opts?: BrowserPipelineOptions): Stage[] => {
   return resolved;
 };
 
-const resolveMode = (requested: RuntimeMode, notifyFallback: (reason: FallbackReason) => void): RuntimeMode => {
+const resolveMode = (
+  requested: RuntimeMode,
+  notifyFallback: (reason: FallbackReason) => void,
+  allowFallback: boolean,
+): RuntimeMode => {
   const snapshot = snapshotCapabilities();
 
   if (requested === 'worklet') {
     if (supportsWorkletPipeline(snapshot)) {
       return 'worklet';
     }
+    if (!allowFallback) {
+      throw new Error('AudioWorklet pipeline is not supported in this environment');
+    }
     notifyFallback('worklet-unsupported');
     if (supportsMediaRecorderPipeline(snapshot)) {
       return 'media-recorder';
     }
-    throw new Error('AudioWorklet pipeline is not supported in this environment');
+    throw new Error('MediaRecorder API is not supported in this environment');
   }
 
   if (requested === 'media-recorder') {
@@ -97,10 +104,14 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
   const createSegmenter = (segmenterOptions?: SegmenterFactoryOptions): Stage => toSegmenterStage(segmenterOptions);
 
   const createMicrophoneSource = (sourceOptions?: MicrophoneSourceOptions): BrowserFrameSource => {
-    const mode = resolveMode(sourceOptions?.mode ?? options?.mode ?? 'auto', (reason) => {
-      services.logger.warn('Runtime fallback', { reason });
-      options?.onFallback?.(reason);
-    });
+    const mode = resolveMode(
+      sourceOptions?.mode ?? options?.mode ?? 'auto',
+      (reason) => {
+        services.logger.warn('Runtime fallback', { reason });
+        options?.onFallback?.(reason);
+      },
+      sourceOptions?.allowFallback ?? true,
+    );
 
     if (mode === 'worklet') {
       try {

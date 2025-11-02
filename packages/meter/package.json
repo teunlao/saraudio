@@ -15,8 +15,8 @@
     "build": "pnpm clean && tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:watch": "vitest"
