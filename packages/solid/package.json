@@ -1,0 +1,88 @@
+{
+  "name": "@saraudio/solid",
+  "version": "0.0.0",
+  "description": "SolidJS bindings for SARAUDIO pipeline",
+  "license": "ISC",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "pnpm clean && tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@saraudio/core": "workspace:*",
+    "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/utils": "workspace:*"
+  },
+  "peerDependencies": {
+    "@saraudio/meter": "workspace:*",
+    "@saraudio/vad-energy": "workspace:*",
+    "solid-js": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@saraudio/meter": {
+      "optional": true
+    },
+    "@saraudio/vad-energy": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
+    "happy-dom": "catalog:",
+    "solid-js": "^1.9.3",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vite-plugin-solid": "2.11.10",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teunlao/silence-aware-recorder.git",
+    "directory": "packages/solid"
+  },
+  "homepage": "https://github.com/teunlao/silence-aware-recorder#readme",
+  "bugs": {
+    "url": "https://github.com/teunlao/silence-aware-recorder/issues"
+  },
+  "keywords": [
+    "solid",
+    "solidjs",
+    "audio",
+    "vad",
+    "pipeline",
+    "saraudio",
+    "real-time"
+  ]
+}

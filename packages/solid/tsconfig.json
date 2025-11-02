@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig/ts-library.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js"
+  },
+  "exclude": ["dist", "node_modules", "tsup.config.ts", "vitest.config.ts"],
+  "references": [{ "path": "../core" }]
+}
