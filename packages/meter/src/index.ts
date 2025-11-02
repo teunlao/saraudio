@@ -1,9 +1,7 @@
-import type { Stage } from '@saraudio/core';
-import { createAudioMeterStage } from './meter';
-export { createAudioMeterStage };
+import type { StageController } from '@saraudio/core';
+import { createAudioMeterController, createAudioMeterStage } from './meter';
+export { createAudioMeterStage, createAudioMeterController };
 
-// Short DX alias: returns a StageLoader (no-arg function creating the stage on start).
+// Short DX alias returning a controller.
 // Usage: stages: [meter()]
-export const meter = (): (() => Stage | Promise<Stage>) => {
-  return () => createAudioMeterStage();
-};
+export const meter = (): StageController => createAudioMeterController();

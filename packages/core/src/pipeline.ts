@@ -30,10 +30,41 @@ export interface Stage {
   teardown?(): void;
 }
 
+export interface StageController<TStage extends Stage = Stage> {
+  readonly id: string;
+  create(): TStage;
+  configure?(stage: TStage): void;
+  isEqual?(other: StageController<TStage>): boolean;
+  readonly metadata?: unknown;
+}
+
+export type StageInput = Stage | StageController;
+
+interface StageRecord {
+  stage: Stage;
+  controller?: StageController;
+}
+
+const isStageController = (value: StageInput): value is StageController => {
+  return typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
+};
+
+const controllersMatch = (a: StageController | undefined, b: StageController): boolean => {
+  if (!a) return false;
+  if (a === b) return true;
+  if (a.id !== b.id) return false;
+  if (typeof a.isEqual === 'function') return a.isEqual(b);
+  if (typeof b.isEqual === 'function') return b.isEqual(a);
+  if (a.metadata !== undefined || b.metadata !== undefined) {
+    return a.metadata === b.metadata;
+  }
+  return false;
+};
+
 export class Pipeline {
   readonly events: EventBus<PipelineEvents>;
 
-  private stages: Stage[] = [];
+  private records: StageRecord[] = [];
 
   private ready = false;
 
@@ -52,54 +83,75 @@ export class Pipeline {
   }
 
   use(stage: Stage): this {
-    const context: StageContext = {
-      emit: (event, payload) => {
-        this.events.emit(event, payload);
-      },
-      on: (event, handler) => this.events.on(event, handler),
-      now: () => this.now(),
-      createId: () => this.createId(),
-    };
-    stage.setup(context);
-    this.stages.push(stage);
-    this.ready = this.stages.length > 0;
+    this.setupStage(stage);
+    this.records.push({ stage });
+    this.ready = this.records.length > 0;
     return this;
   }
 
   clear(): void {
-    for (let i = 0; i < this.stages.length; i += 1) {
-      const stage = this.stages[i];
+    for (let i = 0; i < this.records.length; i += 1) {
+      const stage = this.records[i].stage;
       stage.teardown?.();
     }
-    this.stages = [];
+    this.records = [];
     this.ready = false;
   }
 
-  configure({ stages }: { stages: Stage[] }): void {
-    // Replace stages atomically
-    this.clear();
-    for (const stage of stages) this.use(stage);
-    this.reinitialize();
-    // Flush buffered frames if any
+  configure({ stages }: { stages: StageInput[] }): void {
+    const previous = this.records.slice();
+    const next: StageRecord[] = [];
+
+    for (let i = 0; i < stages.length; i += 1) {
+      const stageInput = stages[i];
+      const prevRecord = previous[i];
+
+      if (isStageController(stageInput)) {
+        if (prevRecord && controllersMatch(prevRecord.controller, stageInput)) {
+          stageInput.configure?.(prevRecord.stage as Stage);
+          next.push({ stage: prevRecord.stage, controller: stageInput });
+          previous[i] = undefined as unknown as StageRecord;
+          continue;
+        }
+
+        if (prevRecord) {
+          prevRecord.stage.teardown?.();
+          previous[i] = undefined as unknown as StageRecord;
+        }
+
+        const stage = stageInput.create();
+        this.setupStage(stage);
+        stageInput.configure?.(stage);
+        next.push({ stage, controller: stageInput });
+        continue;
+      }
+
+      if (prevRecord) {
+        prevRecord.stage.teardown?.();
+        previous[i] = undefined as unknown as StageRecord;
+      }
+
+      const stage = stageInput;
+      this.setupStage(stage);
+      next.push({ stage });
+    }
+
+    for (let i = 0; i < previous.length; i += 1) {
+      const leftover = previous[i];
+      if (leftover) {
+        leftover.stage.teardown?.();
+      }
+    }
+
+    this.records = next;
+    this.ready = this.records.length > 0;
+
     if (this.buffer.length > 0 && this.ready) {
       const frames = this.buffer;
       this.buffer = [];
-      for (const f of frames) this.push(f);
-    }
-  }
-
-  reinitialize(): void {
-    for (let i = 0; i < this.stages.length; i += 1) {
-      const stage = this.stages[i];
-      const context: StageContext = {
-        emit: (event, payload) => {
-          this.events.emit(event, payload);
-        },
-        on: (event, handler) => this.events.on(event, handler),
-        now: () => this.now(),
-        createId: () => this.createId(),
-      };
-      stage.setup(context);
+      for (const frame of frames) {
+        this.push(frame);
+      }
     }
   }
 
@@ -108,23 +160,36 @@ export class Pipeline {
       if (this.buffer.length < this.maxBuffer) this.buffer.push(frame);
       return;
     }
-    this.stages.forEach((stage) => {
-      stage.handle(frame);
-    });
+    for (let i = 0; i < this.records.length; i += 1) {
+      this.records[i].stage.handle(frame);
+    }
   }
 
   flush(): void {
-    this.stages.forEach((stage) => {
-      stage.flush?.();
-    });
+    for (let i = 0; i < this.records.length; i += 1) {
+      this.records[i].stage.flush?.();
+    }
   }
 
   dispose(): void {
-    for (let i = 0; i < this.stages.length; i += 1) {
-      const stage = this.stages[i];
-      if (stage.teardown) {
-        stage.teardown();
-      }
+    for (let i = 0; i < this.records.length; i += 1) {
+      const stage = this.records[i].stage;
+      stage.teardown?.();
     }
+    this.records = [];
+    this.ready = false;
+  }
+
+  private setupStage(stage: Stage): void {
+    const context: StageContext = {
+      emit: (event, payload) => {
+        this.events.emit(event, payload);
+      },
+      on: (event, handler) => this.events.on(event, handler),
+      now: () => this.now(),
+      createId: () => this.createId(),
+    };
+
+    stage.setup(context);
   }
 }

@@ -1,11 +1,15 @@
 import { FloatRingBuffer, int16ToFloat32 } from '@saraudio/utils';
-import type { Stage, StageContext } from '../pipeline';
+import type { Stage, StageContext, StageController } from '../pipeline';
 import type { Frame, VADScore } from '../types';
 import { SegmentBuffer } from './support/segment-buffer';
 
 export interface SegmenterOptions {
   preRollMs?: number;
   hangoverMs?: number;
+}
+
+export interface SegmenterStage extends Stage {
+  updateConfig(options: Partial<SegmenterOptions>): void;
 }
 
 interface SegmentState {
@@ -22,9 +26,17 @@ const createInitialState = (): SegmentState => ({
   pendingSilenceSince: null,
 });
 
-export function createSegmenterStage(options: SegmenterOptions = {}): Stage {
-  const preRollMs = options.preRollMs ?? 250;
-  const hangoverMs = options.hangoverMs ?? 400;
+const clampPositive = (value: number): number => Math.max(0, value);
+
+const normalizeOptions = (options: SegmenterOptions = {}): Required<SegmenterOptions> => ({
+  preRollMs: clampPositive(options.preRollMs ?? 250),
+  hangoverMs: clampPositive(options.hangoverMs ?? 400),
+});
+
+const optionsKey = (options: Required<SegmenterOptions>): string => `${options.preRollMs}|${options.hangoverMs}`;
+
+export function createSegmenterStage(options: SegmenterOptions = {}): SegmenterStage {
+  let { preRollMs, hangoverMs } = normalizeOptions(options);
 
   let context: StageContext | null = null;
   let unsubscribeVad: (() => void) | null = null;
@@ -120,5 +132,34 @@ export function createSegmenterStage(options: SegmenterOptions = {}): Stage {
       state = createInitialState();
       context = null;
     },
+    updateConfig(newOptions) {
+      if (typeof newOptions.preRollMs === 'number') {
+        const normalized = clampPositive(newOptions.preRollMs);
+        if (normalized !== preRollMs) {
+          preRollMs = normalized;
+          preRoll = null; // rebuild on next frame to honour new capacity
+        }
+      }
+      if (typeof newOptions.hangoverMs === 'number') {
+        hangoverMs = clampPositive(newOptions.hangoverMs);
+      }
+    },
   };
 }
+
+export const createSegmenterController = (options: SegmenterOptions = {}): StageController<SegmenterStage> => {
+  const normalized = normalizeOptions(options);
+  const key = optionsKey(normalized);
+
+  return {
+    id: 'segmenter',
+    create: () => createSegmenterStage(normalized),
+    configure: (stage) => {
+      stage.updateConfig(normalized);
+    },
+    isEqual(other) {
+      return other.id === 'segmenter' && other.metadata === key;
+    },
+    metadata: key,
+  };
+};

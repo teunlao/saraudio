@@ -1,4 +1,4 @@
-import type { CoreError, Frame, Pipeline, Segment, Stage, VADScore } from '@saraudio/core';
+import type { CoreError, Frame, Pipeline, Segment, Stage, StageController, StageInput, VADScore } from '@saraudio/core';
 import { encodeWavPcm16, RecordingAssembler } from '@saraudio/core';
 import { createBrowserRuntime } from './runtime';
 import type {
@@ -20,9 +20,9 @@ export interface RecorderProduceOptions {
 
 export interface RecorderOptions {
   // Pipeline config
-  stages?: Array<Stage | StageLoader | string>; // external or lazy stages or ids
-  segmenter?: SegmenterFactoryOptions | Stage | false;
-  resolveStage?: (id: string) => Promise<Stage> | Stage; // resolves string ids to stages
+  stages?: Array<Stage | StageController | StageLoader | string>; // external or lazy stages or ids
+  segmenter?: SegmenterFactoryOptions | Stage | StageController | false;
+  resolveStage?: (id: string) => Promise<Stage | StageController> | Stage | StageController; // resolves string ids to stages
   // Capture options
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
@@ -34,6 +34,8 @@ export interface RecorderOptions {
   runtimeOptions?: BrowserRuntimeOptions; // used only if runtime not provided
   onStream?: (stream: MediaStream | null) => void;
 }
+
+export type RecorderConfigureOptions = Partial<Pick<RecorderOptions, 'stages' | 'segmenter'>>;
 
 export interface SubscribeHandle {
   unsubscribe(): void;
@@ -48,6 +50,7 @@ export interface Recorder {
   readonly status: RecorderStatus;
   readonly error: Error | null;
   readonly pipeline: Pipeline;
+  configure(options?: RecorderConfigureOptions): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
   reset(): void;
@@ -115,31 +118,69 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     status = next;
   };
 
-  const resolveAllStages = async (): Promise<Stage[]> => {
-    const out: Stage[] = [];
-    const list = options.stages ?? [];
-    for (const item of list) {
-      if (typeof item === 'string') {
-        if (!options.resolveStage) throw new Error(`No resolveStage provided for id: ${item}`);
-        const stage = await options.resolveStage(item);
-        out.push(stage);
-      } else if (typeof item === 'function') {
-        const maybe = (item as StageLoader)();
-        const stage = maybe instanceof Promise ? await maybe : (maybe as Stage);
-        out.push(stage);
-      } else {
-        out.push(item);
-      }
+  type StageResolvable = Stage | StageController | StageLoader | string;
+
+  const isStageControllerValue = (value: unknown): value is StageController =>
+    typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
+
+  const isStageInstance = (value: unknown): value is Stage =>
+    typeof value === 'object' && value !== null && typeof (value as Stage).handle === 'function';
+
+  let stageSources: StageResolvable[] = options.stages ? [...options.stages] : [];
+  let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
+  let currentStages: StageInput[] = [];
+
+  const resolveStageItem = async (item: StageResolvable): Promise<StageInput> => {
+    if (typeof item === 'string') {
+      if (!options.resolveStage) throw new Error(`No resolveStage provided for id: ${item}`);
+      const resolved = await options.resolveStage(item);
+      return isStageControllerValue(resolved) ? resolved : resolved;
     }
-    if (options.segmenter !== false) {
-      const seg = runtime.createSegmenter(
-        typeof options.segmenter === 'object' && 'preRollMs' in options.segmenter
-          ? (options.segmenter as SegmenterFactoryOptions)
-          : {},
-      );
-      out.push(seg);
+    if (typeof item === 'function') {
+      const maybe = (item as StageLoader)();
+      const resolved = maybe instanceof Promise ? await maybe : maybe;
+      return isStageControllerValue(resolved) ? resolved : resolved;
     }
-    return out;
+    return isStageControllerValue(item) ? item : item;
+  };
+
+  const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageInput | null => {
+    if (input === false) {
+      return null;
+    }
+    if (input === undefined) {
+      return runtime.createSegmenter();
+    }
+    if (isStageControllerValue(input)) {
+      return input;
+    }
+    if (isStageInstance(input)) {
+      return input;
+    }
+    return runtime.createSegmenter(input);
+  };
+
+  const refreshStages = async (): Promise<void> => {
+    const resolved: StageInput[] = [];
+    for (const item of stageSources) {
+      resolved.push(await resolveStageItem(item));
+    }
+    const segmenter = resolveSegmenterInput(segmenterSource);
+    if (segmenter) {
+      resolved.push(segmenter);
+    }
+    currentStages = resolved;
+    pipeline.configure({ stages: currentStages });
+  };
+
+  const configure = async (next: RecorderConfigureOptions = {}): Promise<void> => {
+    if ('stages' in next) {
+      stageSources = next.stages ? [...next.stages] : [];
+    }
+    if ('segmenter' in next) {
+      segmenterSource = next.segmenter;
+    }
+    await refreshStages();
   };
 
   const start = async (): Promise<void> => {
@@ -152,10 +193,9 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     setStatus('acquiring');
 
     try {
-      // Configure pipeline with stages lazily at first start
-      const stagesToUse = await resolveAllStages();
-      console.log('[recorder] configuring pipeline with', stagesToUse.length, 'stages');
-      pipeline.configure({ stages: stagesToUse });
+      // Configure pipeline with stages (controllers allow dynamic reconfig)
+      await refreshStages();
+      console.log('[recorder] pipeline configured with', currentStages.length, 'stages');
 
       console.log('[recorder] creating microphone source', {
         mode: options.mode,
@@ -269,6 +309,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     get pipeline() {
       return pipeline;
     },
+    configure,
     start,
     stop,
     reset,

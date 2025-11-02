@@ -1,4 +1,4 @@
-import type { Frame, Stage, StageContext } from '@saraudio/core';
+import type { Frame, Stage, StageContext, StageController } from '@saraudio/core';
 import { int16ToFloat32, rms } from '@saraudio/utils';
 
 export interface EnergyVadOptions {
@@ -84,3 +84,39 @@ export function createEnergyVadStage(options: EnergyVadOptions = {}): EnergyVadS
     },
   };
 }
+
+interface NormalizedEnergyVadOptions {
+  thresholdDb: number;
+  floorDb: number;
+  ceilingDb: number;
+  smoothMs: number;
+  minRms: number;
+}
+
+const normalizeOptions = (options: EnergyVadOptions = {}): NormalizedEnergyVadOptions => ({
+  thresholdDb: options.thresholdDb ?? -50,
+  floorDb: options.floorDb ?? -100,
+  ceilingDb: options.ceilingDb ?? 0,
+  smoothMs: Math.max(1, options.smoothMs ?? 50),
+  minRms: options.minRms ?? 1e-4,
+});
+
+const optionsKey = (options: NormalizedEnergyVadOptions): string =>
+  `${options.thresholdDb}|${options.floorDb}|${options.ceilingDb}|${options.smoothMs}|${options.minRms}`;
+
+export const createEnergyVadController = (options: EnergyVadOptions = {}): StageController<EnergyVadStage> => {
+  const normalized = normalizeOptions(options);
+  const key = optionsKey(normalized);
+
+  return {
+    id: 'vad-energy',
+    create: () => createEnergyVadStage(normalized),
+    configure: (stage) => {
+      stage.updateConfig(normalized);
+    },
+    isEqual(other) {
+      return other.id === 'vad-energy' && other.metadata === key;
+    },
+    metadata: key,
+  };
+};

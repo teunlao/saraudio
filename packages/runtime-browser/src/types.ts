@@ -1,4 +1,4 @@
-import type { Frame, Pipeline, Stage } from '@saraudio/core';
+import type { Frame, Pipeline, Stage, StageController, StageInput } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 
 export type RuntimeMode = 'worklet' | 'media-recorder' | 'auto';
@@ -30,11 +30,11 @@ export interface SegmenterFactoryOptions {
   hangoverMs?: number;
 }
 
-export type StageLoader = () => Promise<Stage> | Stage;
+export type StageLoader = () => Promise<Stage | StageController> | Stage | StageController;
 
 export interface BrowserPipelineOptions {
-  stages?: Stage[];
-  segmenter?: SegmenterFactoryOptions | Stage | false;
+  stages?: StageInput[];
+  segmenter?: SegmenterFactoryOptions | Stage | StageController | false;
 }
 
 export interface BrowserFrameSource {
@@ -58,7 +58,7 @@ export interface RunOptions {
 export interface BrowserRuntime {
   readonly services: RuntimeServices;
   createPipeline(options?: BrowserPipelineOptions): Pipeline;
-  createSegmenter(options?: SegmenterFactoryOptions): Stage;
+  createSegmenter(options?: SegmenterFactoryOptions): StageController;
   createMicrophoneSource(options?: MicrophoneSourceOptions): BrowserFrameSource;
   run(options: RunOptions): Promise<void>;
 }

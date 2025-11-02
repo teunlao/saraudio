@@ -9,6 +9,13 @@ export interface SvelteRecorderResult {
   readonly segments: Segment[];
   readonly vad: VADScore | null;
   readonly pipeline: Pipeline;
+  readonly recordings: {
+    cleaned: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    full: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    masked: { getBlob: () => Promise<Blob | null>; durationMs: number };
+    meta: () => { sessionDurationMs: number; cleanedDurationMs: number };
+    clear: () => void;
+  };
   start(): Promise<void>;
   stop(): Promise<void>;
   reset(): void;
@@ -65,6 +72,9 @@ export function createRecorder(options: RecorderOptions): SvelteRecorderResult {
     },
     get pipeline() {
       return recorder.pipeline;
+    },
+    get recordings() {
+      return recorder.recordings;
     },
 
     start: async () => {

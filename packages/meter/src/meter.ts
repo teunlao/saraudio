@@ -1,4 +1,4 @@
-import type { Frame, Stage, StageContext } from '@saraudio/core';
+import type { Frame, Stage, StageContext, StageController } from '@saraudio/core';
 import { int16ToFloat32 } from '@saraudio/utils';
 
 const EPS = 1e-12; // Epsilon to avoid -Infinity on very quiet frames
@@ -58,3 +58,11 @@ export function createAudioMeterStage(): Stage {
     },
   };
 }
+
+export const createAudioMeterController = (): StageController => ({
+  id: 'audio-meter',
+  create: () => createAudioMeterStage(),
+  isEqual(other) {
+    return other.id === 'audio-meter';
+  },
+});

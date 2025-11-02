@@ -1,4 +1,4 @@
-import { createSegmenterStage, Pipeline, type SegmenterOptions, type Stage } from '@saraudio/core';
+import { createSegmenterController, Pipeline, type Stage, type StageController, type StageInput } from '@saraudio/core';
 import { createRuntimeServices } from './context/services';
 import {
   snapshotCapabilities,
@@ -19,31 +19,31 @@ import type {
   SegmenterFactoryOptions,
 } from './types';
 
-const isStage = (value: SegmenterFactoryOptions | Stage): value is Stage =>
-  typeof (value as Stage).setup === 'function' && typeof (value as Stage).handle === 'function';
+const isStageInstance = (value: unknown): value is Stage =>
+  typeof value === 'object' && value !== null && typeof (value as Stage).handle === 'function';
 
-export const toSegmenterStage = (value: SegmenterFactoryOptions | Stage | undefined): Stage => {
+const isStageController = (value: unknown): value is StageController =>
+  typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
+
+export const toSegmenterInput = (value: SegmenterFactoryOptions | Stage | StageController | undefined): StageInput => {
   if (!value) {
-    return createSegmenterStage();
+    return createSegmenterController();
   }
-  if (isStage(value)) {
+  if (isStageController(value)) {
     return value;
   }
-  const options: SegmenterOptions = {
-    preRollMs: value.preRollMs,
-    hangoverMs: value.hangoverMs,
-  };
-  return createSegmenterStage(options);
+  if (isStageInstance(value)) {
+    return value;
+  }
+  return createSegmenterController(value);
 };
 
-export const buildStages = (opts?: BrowserPipelineOptions): Stage[] => {
-  const base = opts?.stages ?? [];
-  const resolved: Stage[] = [...base];
+export const buildStages = (opts?: BrowserPipelineOptions): StageInput[] => {
+  const base = opts?.stages ? [...opts.stages] : [];
   if (opts?.segmenter !== false) {
-    const seg = toSegmenterStage(opts?.segmenter);
-    resolved.push(seg);
+    base.push(toSegmenterInput(opts?.segmenter));
   }
-  return resolved;
+  return base;
 };
 
 const resolveMode = (
@@ -101,7 +101,8 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
     return pipeline;
   };
 
-  const createSegmenter = (segmenterOptions?: SegmenterFactoryOptions): Stage => toSegmenterStage(segmenterOptions);
+  const createSegmenter = (segmenterOptions?: SegmenterFactoryOptions): StageController =>
+    createSegmenterController(segmenterOptions);
 
   const createMicrophoneSource = (sourceOptions?: MicrophoneSourceOptions): BrowserFrameSource => {
     console.log('[runtime] createMicrophoneSource called', {
