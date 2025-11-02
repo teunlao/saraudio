@@ -320,9 +320,19 @@ button:disabled {
   background: rgba(18, 25, 44, 0.85);
   border: 1px solid rgba(86, 118, 210, 0.18);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: 140px 1fr 1fr 1fr;
+  align-items: center;
   gap: 6px;
   font-size: 0.85rem;
+}
+
+.play-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 44px;
+  padding: 0; /* size is fixed */
 }
 
 .segment-list__title {
@@ -397,6 +407,15 @@ footer {
   button {
     width: 100%;
     text-align: center;
+  }
+
+  .segment-list__item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .play-button {
+    width: 100%;
   }
 
   .device-select {

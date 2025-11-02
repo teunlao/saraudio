@@ -23,7 +23,15 @@ const VADMeter = ({ score, speech }: { score: number; speech: boolean }) => {
   );
 };
 
-const SegmentList = ({ segments }: { segments: readonly Segment[] }) => {
+const SegmentList = ({
+  segments,
+  onToggle,
+  playingId,
+}: {
+  segments: readonly Segment[];
+  onToggle: (s: Segment) => void;
+  playingId: string | null;
+}) => {
   if (segments.length === 0) {
     return <p className='placeholder'>Talk into the microphone to capture segments.</p>;
   }
@@ -32,6 +40,15 @@ const SegmentList = ({ segments }: { segments: readonly Segment[] }) => {
     <ol className='segment-list'>
       {segments.map((segment) => (
         <li key={segment.id} className='segment-list__item'>
+          <button
+            type='button'
+            className='play-button'
+            title={playingId === segment.id ? 'Stop segment' : 'Play segment'}
+            onClick={() => onToggle(segment)}
+            aria-pressed={playingId === segment.id}
+          >
+            {playingId === segment.id ? '■' : '▶'}
+          </button>
           <span className='segment-list__title'>#{segment.id.slice(0, 6).toUpperCase()}</span>
           <span>start {formatTimestamp(segment.startMs)}</span>
           <span>end {formatTimestamp(segment.endMs)}</span>
@@ -125,7 +142,10 @@ export const App = () => {
   const [cleanedUrl, setCleanedUrl] = useState<string | null>(null);
   const [fullUrl, setFullUrl] = useState<string | null>(null);
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
-  const [metaLabel, setMetaLabel] = useState<string>('');
+  // Web Audio playback state for individual segments
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
   const lastVad = vadState ? { speech: vadState.isSpeech, score: vadState.score } : null;
   const isSpeech = vadState?.isSpeech ?? false;
@@ -169,15 +189,78 @@ export const App = () => {
         setCleanedUrl(cleaned ? URL.createObjectURL(cleaned) : null);
         setFullUrl(full ? URL.createObjectURL(full) : null);
         setMaskedUrl(masked ? URL.createObjectURL(masked) : null);
-        const meta = recordings.meta();
-        setMetaLabel(
-          `Speech ${Math.round(meta.cleanedDurationMs)} ms / Session ${Math.round(meta.sessionDurationMs)} ms`,
-        );
+        // We no longer show the meta label near Cleaned player.
       })();
       return;
     }
     void start();
   }, [isRunning, start, stop, recordings]);
+
+  const stopCurrent = (): void => {
+    const node = sourceRef.current;
+    if (node) {
+      try {
+        node.stop();
+      } catch {}
+      node.disconnect();
+      sourceRef.current = null;
+    }
+    setPlayingId(null);
+  };
+
+  const ensureContext = (sampleRate: number): AudioContext => {
+    const ctx = audioCtxRef.current;
+    if (ctx) return ctx;
+    const created = new AudioContext({ sampleRate });
+    audioCtxRef.current = created;
+    return created;
+  };
+
+  const playSegment = (s: Segment): void => {
+    if (!s.pcm || s.pcm.length === 0) return;
+    const ctx = ensureContext(s.sampleRate);
+    // Build AudioBuffer from interleaved Int16 PCM
+    const channels = Math.max(1, Math.floor(s.channels));
+    const frames = Math.floor(s.pcm.length / channels);
+    const buffer = ctx.createBuffer(channels, frames, s.sampleRate);
+    // Convert int16 → float32 and deinterleave if needed
+    for (let ch = 0; ch < channels; ch += 1) {
+      const out = buffer.getChannelData(ch);
+      let i = 0;
+      for (let f = ch; f < s.pcm.length; f += channels) {
+        out[i++] = (s.pcm[f] ?? 0) / 32768;
+      }
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = () => {
+      if (sourceRef.current === source) sourceRef.current = null;
+      setPlayingId((prev) => (prev === s.id ? null : prev));
+    };
+    stopCurrent();
+    sourceRef.current = source;
+    setPlayingId(s.id);
+    source.start();
+  };
+
+  const handleToggleSegment = (s: Segment): void => {
+    if (playingId === s.id) {
+      stopCurrent();
+    } else {
+      playSegment(s);
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCurrent();
+      const ctx = audioCtxRef.current;
+      audioCtxRef.current = null;
+      void ctx?.close();
+    };
+  }, []);
 
   return (
     <div className='app'>
@@ -289,7 +372,7 @@ export const App = () => {
 
       <section className='segments'>
         <h2>Captured Segments (last {segments.length})</h2>
-        <SegmentList segments={segments} />
+        <SegmentList segments={segments} onToggle={handleToggleSegment} playingId={playingId} />
       </section>
 
       <section className='segments'>
@@ -297,7 +380,6 @@ export const App = () => {
         <div className='segment-list'>
           <div className='segment-list__item'>
             <span className='segment-list__title'>Cleaned (speech only)</span>
-            <span>{metaLabel}</span>
             {/* biome-ignore lint/a11y/useMediaCaption: demo player without captions */}
             {cleanedUrl ? <audio controls src={cleanedUrl} /> : <span className='placeholder'>No cleaned yet</span>}
           </div>
