@@ -6,7 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaraudioProvider } from './context';
 import { useRecorder } from './useRecorder';
 
+interface UpdateArgsSnapshot {
+  stages?: StageController[];
+  segmenter?: unknown;
+  constraints?: Record<string, unknown>;
+  mode?: RuntimeMode;
+  allowFallback?: boolean;
+}
+
 const mocks = vi.hoisted(() => {
+  const updateMock = vi.fn(async () => {});
   const startMock = vi.fn(async () => {});
   const stopMock = vi.fn(async () => {});
   const disposeMock = vi.fn();
@@ -32,6 +41,7 @@ const mocks = vi.hoisted(() => {
     status: 'idle' as const,
     pipeline,
     recordings,
+    update: updateMock,
     start: startMock,
     stop: stopMock,
     reset: vi.fn(),
@@ -66,6 +76,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     createRecorderMock,
+    updateMock,
     startMock,
     stopMock,
     disposeMock,
@@ -93,6 +104,14 @@ const StrictWrapper = ({ children }: { children: ReactNode }) => (
   </StrictMode>
 );
 
+const lastUpdateArgs = (): UpdateArgsSnapshot | null => {
+  const { calls } = mocks.updateMock.mock;
+  if (calls.length === 0) return null;
+  const entry = calls[calls.length - 1] as unknown[] | undefined;
+  if (!entry || entry.length === 0) return null;
+  return entry[0] as UpdateArgsSnapshot;
+};
+
 describe('useRecorder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,10 +125,11 @@ describe('useRecorder', () => {
     expect(created).toBeGreaterThan(0);
 
     unmount();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(created);
   });
 
-  it('recreates recorder when stage metadata changes', async () => {
+  it('updates stage configuration without recreating recorder', async () => {
     const { rerender } = renderHook(
       ({ threshold }) =>
         useRecorder({
@@ -124,13 +144,15 @@ describe('useRecorder', () => {
       { wrapper: BaseWrapper, initialProps: { threshold: -55 } },
     );
 
-    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
-    const baseline = mocks.createRecorderMock.mock.calls.length;
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1));
+    const baselineUpdate = mocks.updateMock.mock.calls.length;
 
     rerender({ threshold: -40 });
 
-    await waitFor(() => expect(mocks.createRecorderMock.mock.calls.length).toBeGreaterThan(baseline));
-    expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => expect(mocks.updateMock.mock.calls.length).toBeGreaterThan(baselineUpdate));
+    const stageArgs = lastUpdateArgs();
+    expect(stageArgs?.stages).toBeDefined();
+    expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1);
   });
 
   it('reuses recorder when stage configuration is referentially stable', async () => {
@@ -144,17 +166,17 @@ describe('useRecorder', () => {
       wrapper: BaseWrapper,
     });
 
-    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
-    
-    const baseline = mocks.createRecorderMock.mock.calls.length;
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1));
+    const baselineUpdate = mocks.updateMock.mock.calls.length;
 
     rerender();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mocks.createRecorderMock.mock.calls.length).toBe(baseline);
+    expect(mocks.updateMock.mock.calls.length).toBe(baselineUpdate);
+    expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1);
   });
 
-  it('handles rapid successive prop changes by recreating once per change', async () => {
+  it('updates capture options without recreating recorder', async () => {
     const { rerender } = renderHook(
       ({ mode }) =>
         useRecorder({
@@ -167,14 +189,14 @@ describe('useRecorder', () => {
       },
     );
 
-    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
-    const baseline = mocks.createRecorderMock.mock.calls.length;
+    expect(mocks.updateMock).not.toHaveBeenCalled();
 
     rerender({ mode: 'media-recorder' });
-    rerender({ mode: 'worklet' });
 
-    await waitFor(() => expect(mocks.createRecorderMock.mock.calls.length).toBeGreaterThan(baseline));
-    expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(baseline);
+    await waitFor(() => expect(mocks.updateMock).toHaveBeenCalledTimes(1));
+    const captureArgs = lastUpdateArgs();
+    expect(captureArgs?.mode).toBe('media-recorder');
+    expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1);
   });
 
   it('recreates recorder when runtime override changes', async () => {
@@ -199,11 +221,9 @@ describe('useRecorder', () => {
     const { result } = renderHook(() => useRecorder(), { wrapper: StrictWrapper });
 
     await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
-
     mocks.emitVad({ score: 0.6, speech: true });
 
-    await waitFor(() => expect(result.current.vad).not.toBeNull());
-    expect(result.current.vad).toEqual({ isSpeech: true, score: 0.6 });
+    await waitFor(() => expect(result.current.vad).toEqual({ isSpeech: true, score: 0.6 }));
   });
 
   it('autoStart triggers start even with StrictMode double render without leaks', async () => {

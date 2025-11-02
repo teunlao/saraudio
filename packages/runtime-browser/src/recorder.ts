@@ -162,6 +162,12 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       resolved.push(segmenter);
     }
     currentStages = resolved;
+    console.log('[recorder] refreshStages', {
+      status,
+      stageCount: currentStages.length,
+      stageIds: currentStages.map((controller) => controller.id),
+      segmenter: segmenter ? segmenter.id : 'disabled',
+    });
     pipeline.configure({ stages: currentStages });
   };
 
@@ -218,8 +224,17 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const update = async (next: RecorderUpdateOptions = {}): Promise<void> => {
+    console.log('[recorder] update called');
     const entries = Object.entries(next) as Array<[UpdateKey, RecorderUpdateOptions[UpdateKey]]>;
     let pipelineNeedsRefresh = entries.length === 0;
+
+    const updateKeys = entries.map(([key]) => key);
+    console.log('[recorder] update: begin', {
+      status,
+      keys: updateKeys,
+      running: status === 'running',
+      stageSources: stageSources.length,
+    });
 
     for (const [key, value] of entries) {
       const pipelineMutator = pipelineMutators[key] as
@@ -238,6 +253,12 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     if (pipelineNeedsRefresh) {
       refreshStages();
     }
+
+    console.log('[recorder] update: complete', {
+      status,
+      reconfigured: pipelineNeedsRefresh ? currentStages.length : 0,
+      segmentActive,
+    });
   };
 
   const configure = async (next: RecorderConfigureOptions = {}): Promise<void> => {
@@ -292,7 +313,12 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const stop = async (): Promise<void> => {
-    console.log('[recorder] stop called', { status, hasSource: !!source });
+    const stack = new Error().stack
+      ?.split('\n')
+      .slice(1, 6)
+      .map((line) => line.trim())
+      .join(' \u2192 ');
+    console.log('[recorder] stop called', { status, hasSource: !!source, stack });
     if (status !== 'running' && status !== 'acquiring') {
       console.log('[recorder] not running/acquiring, returning');
       return;

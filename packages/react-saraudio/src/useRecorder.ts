@@ -6,7 +6,7 @@ import type {
   SegmenterFactoryOptions,
 } from '@saraudio/runtime-browser';
 import { createRecorder } from '@saraudio/runtime-browser';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
 import { toError } from './internal/errorUtils';
 import { useDeepCompareEffect } from './internal/useDeepCompareEffect';
@@ -58,32 +58,119 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   const stableSegmenter = useShallowStable(normalizedSegmenter);
   const finalSegmenter = segmenter === false ? (false as const) : stableSegmenter;
 
-  const recorderOptions = useMemo(
+  interface RecorderConfigSnapshot {
+    stages: StageController[];
+    segmenter: SegmenterFactoryOptions | StageController | false | undefined;
+    constraints?: MicrophoneSourceOptions['constraints'];
+    mode?: RuntimeMode;
+    allowFallback?: boolean;
+  }
+
+  const config = useMemo<RecorderConfigSnapshot>(
     () => ({
-      runtime: contextRuntime,
       stages: stableStages ?? [],
       segmenter: finalSegmenter,
       constraints: stableConstraints,
       mode,
       allowFallback,
     }),
-    [contextRuntime, stableStages, finalSegmenter, stableConstraints, mode, allowFallback],
+    [stableStages, finalSegmenter, stableConstraints, mode, allowFallback],
   );
 
-  const [recorder, setRecorder] = useState(() => createRecorder(recorderOptions));
+  const [recorder, setRecorder] = useState(() =>
+    createRecorder({
+      runtime: contextRuntime,
+      ...config,
+    }),
+  );
+
+  const runtimeRef = useRef(contextRuntime);
+  const prevConfigRef = useRef<RecorderConfigSnapshot | null>(config);
 
   useDeepCompareEffect(() => {
-    const nextRecorder = createRecorder(recorderOptions);
-    setRecorder((prev) => {
-      prev.dispose();
-      return nextRecorder;
-    });
-    return undefined;
-  }, [recorderOptions]);
+    const prev = prevConfigRef.current;
+    prevConfigRef.current = config;
+
+    if (runtimeRef.current !== contextRuntime) {
+      runtimeRef.current = contextRuntime;
+      setRecorder((prevRecorder) => {
+        prevRecorder.dispose();
+        return createRecorder({
+          runtime: contextRuntime,
+          ...config,
+        });
+      });
+      return;
+    }
+
+    if (!prev) return;
+
+    const updatePayload: {
+      stages?: StageController[];
+      segmenter?: SegmenterFactoryOptions | StageController | false | undefined;
+      constraints?: MicrophoneSourceOptions['constraints'];
+      mode?: RuntimeMode;
+      allowFallback?: boolean;
+    } = {};
+    let needsUpdate = false;
+
+    if (prev.stages !== config.stages) {
+      updatePayload.stages = config.stages;
+      needsUpdate = true;
+    }
+    if (prev.segmenter !== config.segmenter) {
+      updatePayload.segmenter = config.segmenter;
+      needsUpdate = true;
+    }
+    if (prev.constraints !== config.constraints) {
+      updatePayload.constraints = config.constraints;
+      needsUpdate = true;
+    }
+    if (prev.mode !== config.mode) {
+      updatePayload.mode = config.mode;
+      needsUpdate = true;
+    }
+    if (prev.allowFallback !== config.allowFallback) {
+      updatePayload.allowFallback = config.allowFallback;
+      needsUpdate = true;
+    }
+
+    if (!needsUpdate) return;
+
+    setLoadError(null);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await recorder.update(updatePayload);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(toError(err));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextRuntime, config, recorder]);
+
+  const disposalTimers = useRef(new Map<typeof recorder, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
+    const current = recorder;
+    const pending = disposalTimers.current.get(current);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      disposalTimers.current.delete(current);
+    }
+
     return () => {
-      recorder.dispose();
+      const handle = setTimeout(() => {
+        disposalTimers.current.delete(current);
+        current.dispose();
+      }, 0);
+      disposalTimers.current.set(current, handle);
     };
   }, [recorder]);
 
@@ -98,7 +185,13 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   useEffect(() => {
     setSegments([]);
 
+    let vadLogCount = 0;
+
     const unsubscribeVad = recorder.onVad((v) => {
+      if (vadLogCount < 5) {
+        console.log('[react useRecorder] vad event', v);
+        vadLogCount += 1;
+      }
       setLastVad({ score: v.score, speech: v.speech });
       setIsSpeech(v.speech);
     });
