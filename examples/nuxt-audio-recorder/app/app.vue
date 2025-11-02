@@ -72,23 +72,19 @@ const audioInputs = useAudioInputs({
 // Build audio constraints
 const audioConstraints = computed(() =>
   buildAudioConstraints({
-    deviceId: audioInputs.selectedDeviceId.value,
-    sampleRate: 16000,
-    channelCount: 1,
-  }),
+  deviceId: audioInputs.selectedDeviceId.value,
+  sampleRate: 16000,
+  channelCount: 1,
+}),
 );
-
-const runtimeStages = computed(() => [
-  vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }),
-  meter(),
-]);
-
-const segmenterOptions = computed(() => ({ preRollMs: 300, hangoverMs: 500 }));
 
 // Recorder with dynamic configuration
 const rec = useRecorder({
-  stages: [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()],
-  segmenter: segmenterOptions,
+  stages: computed(() => [
+  vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }),
+  meter(),
+]),
+  segmenter: computed(() => ({ preRollMs: 300, hangoverMs: 500 })),
   constraints: audioConstraints,
   mode,
   allowFallback,

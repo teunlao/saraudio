@@ -142,7 +142,7 @@ describe('useRecorder', () => {
     expect(rec.vad.value).toBe(null);
   });
 
-  it('reconfigures when stages change', async () => {
+  it('reconfigures when stages change via ref', async () => {
     const stage: Stage = {
       name: 'test',
       setup: () => {},
