@@ -11,7 +11,9 @@
       "!**/.vitepress",
       "!.svelte",
       "!**/*.svelte",
-      "!**/.svelte-kit"
+      "!**/.svelte-kit",
+      "!**/*.vue",
+      "!**/.nuxt"
     ]
   },
   "formatter": {

@@ -1,0 +1,25 @@
+{
+  "name": "nuxt-audio-recorder",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "serve": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@saraudio/core": "workspace:*",
+    "@saraudio/meter": "workspace:*",
+    "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/vad-energy": "workspace:*",
+    "nuxt": "^4.2.0",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.16",
+    "tailwindcss": "4.1.16"
+  }
+}
