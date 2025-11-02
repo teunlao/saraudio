@@ -1,5 +1,6 @@
 import { createRecorder } from '@saraudio/runtime-browser';
-import { createEnergyVadStage } from '@saraudio/vad-energy';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
 const statusEl = document.getElementById('status') as HTMLSpanElement;
 const startBtn = document.getElementById('start') as HTMLButtonElement;
@@ -10,7 +11,7 @@ const maskedEl = document.getElementById('masked') as HTMLAudioElement;
 const cleanedMeta = document.getElementById('cleaned-meta') as HTMLDivElement;
 
 const recorder = createRecorder({
-  stages: [createEnergyVadStage({ thresholdDb: -55, smoothMs: 30 })],
+  stages: [vadEnergy({ thresholdDb: -55, smoothMs: 30 }), meter()],
   segmenter: { preRollMs: 250, hangoverMs: 400 },
   constraints: { channelCount: 1, sampleRate: 16000 },
   produce: { cleaned: true, full: true, masked: true },
@@ -54,4 +55,3 @@ stopBtn.addEventListener('click', async () => {
 });
 
 setStatus(recorder.status);
-

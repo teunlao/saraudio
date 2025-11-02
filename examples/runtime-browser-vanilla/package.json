@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@saraudio/runtime-browser": "workspace:*",
-    "@saraudio/vad-energy": "workspace:*"
+    "@saraudio/vad-energy": "workspace:*",
+    "@saraudio/meter": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

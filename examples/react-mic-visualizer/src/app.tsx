@@ -1,7 +1,7 @@
 import type { Segment } from '@saraudio/core';
-import { createAudioMeterStage } from '@saraudio/meter';
+import { meter } from '@saraudio/meter';
 import { useSaraudio } from '@saraudio/react';
-import { createEnergyVadStage } from '@saraudio/vad-energy';
+import { vadEnergy } from '@saraudio/vad-energy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const formatDuration = (ms: number): string => `${(ms / 1000).toFixed(2)} s`;
@@ -117,7 +117,7 @@ export const App = () => {
     fallbackReason,
     recordings,
   } = useSaraudio({
-    stages: [createEnergyVadStage({ thresholdDb, smoothMs }), createAudioMeterStage()],
+    stages: [vadEnergy({ thresholdDb, smoothMs }), meter()],
     segmenter: segmenterOptions,
     constraints: audioConstraints,
   });

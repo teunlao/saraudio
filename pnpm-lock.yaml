@@ -96,6 +96,9 @@ importers:
 
   examples/runtime-browser-vanilla:
     dependencies:
+      '@saraudio/meter':
+        specifier: workspace:*
+        version: link:../../packages/meter
       '@saraudio/runtime-browser':
         specifier: workspace:*
         version: link:../../packages/runtime-browser
