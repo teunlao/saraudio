@@ -73,10 +73,10 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   const [recorder, setRecorder] = useState(() => createRecorder(recorderOptions));
 
   useDeepCompareEffect(() => {
-    const newRecorder = createRecorder(recorderOptions);
+    const nextRecorder = createRecorder(recorderOptions);
     setRecorder((prev) => {
       prev.dispose();
-      return newRecorder;
+      return nextRecorder;
     });
     return undefined;
   }, [recorderOptions]);
@@ -122,6 +122,11 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
 
   const [status, setStatus] = useState(recorder.status);
   const [micError, setMicError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    setStatus(recorder.status);
+    setMicError(null);
+  }, [recorder]);
 
   const start = useCallback(async () => {
     setMicError(null);

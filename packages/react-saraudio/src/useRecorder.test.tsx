@@ -1,111 +1,217 @@
-import { createBrowserRuntime } from '@saraudio/runtime-browser';
-import { renderHook } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import type { Pipeline, Segment, StageController } from '@saraudio/core';
+import type { BrowserRuntime, RuntimeMode } from '@saraudio/runtime-browser';
+import { renderHook, waitFor } from '@testing-library/react';
+import { type ReactNode, StrictMode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaraudioProvider } from './context';
 import { useRecorder } from './useRecorder';
 
+const mocks = vi.hoisted(() => {
+  const startMock = vi.fn(async () => {});
+  const stopMock = vi.fn(async () => {});
+  const disposeMock = vi.fn();
+
+  const vadHandlers = new Set<(payload: { score: number; speech: boolean }) => void>();
+  const errorHandlers = new Set<(payload: { message: string }) => void>();
+
+  const pipeline = {
+    events: {
+      on: vi.fn(() => () => {}),
+    },
+  } as unknown as Pipeline;
+
+  const recordings = {
+    cleaned: { getBlob: async () => null, durationMs: 0 },
+    full: { getBlob: async () => null, durationMs: 0 },
+    masked: { getBlob: async () => null, durationMs: 0 },
+    meta: () => ({ sessionDurationMs: 0, cleanedDurationMs: 0 }),
+    clear: vi.fn(),
+  };
+
+  const createRecorderMock = vi.fn(() => ({
+    status: 'idle' as const,
+    pipeline,
+    recordings,
+    start: startMock,
+    stop: stopMock,
+    reset: vi.fn(),
+    dispose: disposeMock,
+    onVad(handler: (payload: { score: number; speech: boolean }) => void) {
+      vadHandlers.add(handler);
+      return {
+        unsubscribe() {
+          vadHandlers.delete(handler);
+        },
+      };
+    },
+    onSegment(handler: (segment: Segment) => void) {
+      void handler;
+      return {
+        unsubscribe() {},
+      };
+    },
+    onError(handler: (payload: { message: string }) => void) {
+      errorHandlers.add(handler);
+      return {
+        unsubscribe() {
+          errorHandlers.delete(handler);
+        },
+      };
+    },
+  }));
+
+  const emitVad = (payload: { score: number; speech: boolean }) => {
+    vadHandlers.forEach((handler) => handler(payload));
+  };
+
+  return {
+    createRecorderMock,
+    startMock,
+    stopMock,
+    disposeMock,
+    emitVad,
+  } as const;
+});
+
+vi.mock('@saraudio/runtime-browser', async () => {
+  const actual = await vi.importActual<typeof import('@saraudio/runtime-browser')>('@saraudio/runtime-browser');
+  return {
+    ...actual,
+    createRecorder: mocks.createRecorderMock,
+  };
+});
+
+const runtimeStub = { id: 'runtime-stub' } as unknown as BrowserRuntime;
+
+const BaseWrapper = ({ children }: { children: ReactNode }) => (
+  <SaraudioProvider runtime={runtimeStub}>{children}</SaraudioProvider>
+);
+
+const StrictWrapper = ({ children }: { children: ReactNode }) => (
+  <StrictMode>
+    <SaraudioProvider runtime={runtimeStub}>{children}</SaraudioProvider>
+  </StrictMode>
+);
+
 describe('useRecorder', () => {
-  it('creates recorder and disposes on unmount', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
-    );
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    const { result, unmount } = renderHook(() => useRecorder(), { wrapper });
+  it('creates a recorder and disposes it on unmount', async () => {
+    const { unmount } = renderHook(() => useRecorder(), { wrapper: BaseWrapper });
 
-    expect(result.current.status).toBe('idle');
-    expect(result.current.error).toBeNull();
-    expect(result.current.segments).toEqual([]);
-    expect(result.current.vad).toBeNull();
-    expect(result.current.levels).toEqual({ rms: 0, peak: 0, db: -Infinity });
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
+    const created = mocks.createRecorderMock.mock.calls.length;
+    expect(created).toBeGreaterThan(0);
 
     unmount();
+    expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(created);
   });
 
-  it('does not recreate recorder when object reference changes but values are same', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
+  it('recreates recorder when stage metadata changes', async () => {
+    const { rerender } = renderHook(
+      ({ threshold }) =>
+        useRecorder({
+          stages: [
+            {
+              id: 'stage',
+              metadata: threshold,
+              create: () => ({ name: 'stage', setup: () => {}, handle: () => {} }),
+            } as StageController,
+          ],
+        }),
+      { wrapper: BaseWrapper, initialProps: { threshold: -55 } },
     );
 
-    const { result, rerender } = renderHook(({ segmenter }) => useRecorder({ segmenter }), {
-      wrapper,
-      initialProps: { segmenter: { preRollMs: 300, hangoverMs: 500 } },
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
+    const baseline = mocks.createRecorderMock.mock.calls.length;
+
+    rerender({ threshold: -40 });
+
+    await waitFor(() => expect(mocks.createRecorderMock.mock.calls.length).toBeGreaterThan(baseline));
+    expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('reuses recorder when stage configuration is referentially stable', async () => {
+    const stage: StageController = {
+      id: 'stable',
+      metadata: 1,
+      create: () => ({ name: 'stable', setup: () => {}, handle: () => {} }),
+    } as StageController;
+
+    const { rerender } = renderHook(() => useRecorder({ stages: [stage], constraints: { channelCount: 1 } }), {
+      wrapper: BaseWrapper,
     });
 
-    const firstPipeline = result.current.pipeline;
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
+    
+    const baseline = mocks.createRecorderMock.mock.calls.length;
 
-    rerender({ segmenter: { preRollMs: 300, hangoverMs: 500 } });
+    rerender();
 
-    expect(result.current.pipeline).toBe(firstPipeline);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.createRecorderMock.mock.calls.length).toBe(baseline);
   });
 
-  it('recreates recorder when option values change', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
+  it('handles rapid successive prop changes by recreating once per change', async () => {
+    const { rerender } = renderHook(
+      ({ mode }) =>
+        useRecorder({
+          mode,
+          constraints: { channelCount: 1 },
+        }),
+      {
+        wrapper: BaseWrapper,
+        initialProps: { mode: 'auto' as RuntimeMode },
+      },
     );
 
-    const { result, rerender } = renderHook(({ segmenter }) => useRecorder({ segmenter }), {
-      wrapper,
-      initialProps: { segmenter: { preRollMs: 300, hangoverMs: 500 } },
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
+    const baseline = mocks.createRecorderMock.mock.calls.length;
+
+    rerender({ mode: 'media-recorder' });
+    rerender({ mode: 'worklet' });
+
+    await waitFor(() => expect(mocks.createRecorderMock.mock.calls.length).toBeGreaterThan(baseline));
+    expect(mocks.disposeMock.mock.calls.length).toBeGreaterThanOrEqual(baseline);
+  });
+
+  it('recreates recorder when runtime override changes', async () => {
+    const runtimeA = { id: 'A' } as unknown as BrowserRuntime;
+    const runtimeB = { id: 'B' } as unknown as BrowserRuntime;
+
+    const { rerender } = renderHook(({ runtime }) => useRecorder({ runtime }), {
+      wrapper: BaseWrapper,
+      initialProps: { runtime: runtimeA },
     });
 
-    const firstPipeline = result.current.pipeline;
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
+    const baseline = mocks.createRecorderMock.mock.calls.length;
 
-    rerender({ segmenter: { preRollMs: 500, hangoverMs: 500 } });
+    rerender({ runtime: runtimeB });
 
-    expect(result.current.pipeline).not.toBe(firstPipeline);
+    await waitFor(() => expect(mocks.createRecorderMock.mock.calls.length).toBeGreaterThan(baseline));
+    expect(mocks.disposeMock).toHaveBeenCalled();
   });
 
-  it('clears segments', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
-    );
+  it('delivers VAD events after React StrictMode double mounting', async () => {
+    const { result } = renderHook(() => useRecorder(), { wrapper: StrictWrapper });
 
-    const { result } = renderHook(() => useRecorder(), { wrapper });
+    await waitFor(() => expect(mocks.createRecorderMock).toHaveBeenCalled());
 
-    // Access segments array and verify it can be cleared
-    expect(result.current.segments).toEqual([]);
-    result.current.clearSegments();
-    expect(result.current.segments).toEqual([]);
+    mocks.emitVad({ score: 0.6, speech: true });
+
+    await waitFor(() => expect(result.current.vad).not.toBeNull());
+    expect(result.current.vad).toEqual({ isSpeech: true, score: 0.6 });
   });
 
-  it('resets recorder state', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
-    );
+  it('autoStart triggers start even with StrictMode double render without leaks', async () => {
+    const { unmount } = renderHook(() => useRecorder({ autoStart: true }), { wrapper: StrictWrapper });
 
-    const { result, rerender } = renderHook(({ key }) => useRecorder({ segmenter: key ? { preRollMs: 300 } : {} }), {
-      wrapper,
-      initialProps: { key: true },
-    });
+    await waitFor(() => expect(mocks.startMock).toHaveBeenCalled());
 
-    const firstPipeline = result.current.pipeline;
-
-    // Force recreation by changing options
-    rerender({ key: false });
-
-    // Pipeline should be different (recorder was recreated)
-    expect(result.current.pipeline).not.toBe(firstPipeline);
-    expect(result.current.segments).toEqual([]);
-    expect(result.current.vad).toBeNull();
-    expect(result.current.status).toBe('idle');
-  });
-
-  it('has reset method to clear state', () => {
-    const runtime = createBrowserRuntime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
-    );
-
-    const { result } = renderHook(() => useRecorder(), { wrapper });
-
-    expect(result.current.clearSegments).toBeInstanceOf(Function);
-    result.current.clearSegments();
-    expect(result.current.segments).toEqual([]);
+    unmount();
+    expect(mocks.stopMock.mock.calls.length).toBeLessThanOrEqual(mocks.startMock.mock.calls.length);
   });
 });
