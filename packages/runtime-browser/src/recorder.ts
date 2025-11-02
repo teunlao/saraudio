@@ -34,6 +34,7 @@ export interface RecorderOptions {
 }
 
 export type RecorderConfigureOptions = Partial<Pick<RecorderOptions, 'stages' | 'segmenter'>>;
+export type RecorderUpdateOptions = Partial<Omit<RecorderOptions, 'runtime' | 'runtimeOptions'>>;
 
 export interface SubscribeHandle {
   unsubscribe(): void;
@@ -49,6 +50,7 @@ export interface Recorder {
   readonly error: Error | null;
   readonly pipeline: Pipeline;
   configure(options?: RecorderConfigureOptions): Promise<void>;
+  update(options?: RecorderUpdateOptions): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
   reset(): void;
@@ -85,11 +87,18 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   let status: RecorderStatus = 'idle';
   let lastError: Error | null = null;
   let source: ReturnType<BrowserRuntime['createMicrophoneSource']> | null = null;
-  let assembler = new RecordingAssembler({
-    collectCleaned: options.produce?.cleaned ?? true,
-    collectFull: options.produce?.full ?? true,
-    collectMasked: options.produce?.masked ?? true,
-  });
+  const produceState = {
+    cleaned: options.produce?.cleaned ?? true,
+    full: options.produce?.full ?? true,
+    masked: options.produce?.masked ?? true,
+  };
+  const createAssembler = (): RecordingAssembler =>
+    new RecordingAssembler({
+      collectCleaned: produceState.cleaned,
+      collectFull: produceState.full,
+      collectMasked: produceState.masked,
+    });
+  let assembler = createAssembler();
   let segmentActive = false;
 
   // Attach pipeline listeners
@@ -122,6 +131,16 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   let stageSources: StageController[] = options.stages ? [...options.stages] : [];
   let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
   let currentStages: StageController[] = [];
+  const captureOptions: {
+    constraints?: MicrophoneSourceOptions['constraints'];
+    mode?: RuntimeMode;
+    allowFallback?: boolean;
+  } = {
+    constraints: options.constraints,
+    mode: options.mode,
+    allowFallback: options.allowFallback,
+  };
+  let streamHandler = options.onStream;
 
   const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageController | null => {
     if (input === false) {
@@ -146,14 +165,83 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     pipeline.configure({ stages: currentStages });
   };
 
+  type UpdateKey = keyof RecorderUpdateOptions;
+
+  const pipelineMutators: {
+    [K in UpdateKey]?: (value: RecorderUpdateOptions[K]) => boolean;
+  } = {
+    stages: (value) => {
+      stageSources = value ? [...value] : [];
+      return true;
+    },
+    segmenter: (value) => {
+      segmenterSource = value;
+      return true;
+    },
+    produce: (value) => {
+      const nextProduce = value;
+      if (nextProduce) {
+        if ('cleaned' in nextProduce) {
+          produceState.cleaned = nextProduce.cleaned ?? produceState.cleaned;
+        }
+        if ('full' in nextProduce) {
+          produceState.full = nextProduce.full ?? produceState.full;
+        }
+        if ('masked' in nextProduce) {
+          produceState.masked = nextProduce.masked ?? produceState.masked;
+        }
+      } else {
+        produceState.cleaned = true;
+        produceState.full = true;
+        produceState.masked = true;
+      }
+      assembler = createAssembler();
+      return false;
+    },
+  };
+
+  const captureMutators: {
+    [K in UpdateKey]?: (value: RecorderUpdateOptions[K]) => void;
+  } = {
+    constraints: (value) => {
+      captureOptions.constraints = value;
+    },
+    mode: (value) => {
+      captureOptions.mode = value;
+    },
+    allowFallback: (value) => {
+      captureOptions.allowFallback = value;
+    },
+    onStream: (value) => {
+      streamHandler = value;
+    },
+  };
+
+  const update = async (next: RecorderUpdateOptions = {}): Promise<void> => {
+    const entries = Object.entries(next) as Array<[UpdateKey, RecorderUpdateOptions[UpdateKey]]>;
+    let pipelineNeedsRefresh = entries.length === 0;
+
+    for (const [key, value] of entries) {
+      const pipelineMutator = pipelineMutators[key] as
+        | ((input: RecorderUpdateOptions[typeof key]) => boolean)
+        | undefined;
+      if (pipelineMutator) {
+        if (pipelineMutator(value as RecorderUpdateOptions[typeof key])) {
+          pipelineNeedsRefresh = true;
+        }
+      }
+
+      const captureMutator = captureMutators[key] as ((input: RecorderUpdateOptions[typeof key]) => void) | undefined;
+      captureMutator?.(value as RecorderUpdateOptions[typeof key]);
+    }
+
+    if (pipelineNeedsRefresh) {
+      refreshStages();
+    }
+  };
+
   const configure = async (next: RecorderConfigureOptions = {}): Promise<void> => {
-    if ('stages' in next) {
-      stageSources = next.stages ? [...next.stages] : [];
-    }
-    if ('segmenter' in next) {
-      segmenterSource = next.segmenter;
-    }
-    refreshStages();
+    await update(next);
   };
 
   const start = async (): Promise<void> => {
@@ -171,15 +259,18 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       console.log('[recorder] pipeline configured with', currentStages.length, 'stages');
 
       console.log('[recorder] creating microphone source', {
-        mode: options.mode,
-        allowFallback: options.allowFallback,
+        mode: captureOptions.mode,
+        allowFallback: captureOptions.allowFallback,
       });
-      source = runtime.createMicrophoneSource({
-        constraints: options.constraints,
-        mode: options.mode,
-        onStream: options.onStream,
-        allowFallback: options.allowFallback,
-      });
+      const sourceOptions: MicrophoneSourceOptions = {
+        constraints: captureOptions.constraints,
+        mode: captureOptions.mode,
+        onStream: streamHandler,
+      };
+      if (captureOptions.allowFallback !== undefined) {
+        sourceOptions.allowFallback = captureOptions.allowFallback;
+      }
+      source = runtime.createMicrophoneSource(sourceOptions);
 
       const localSource = source;
       await localSource.start((frame) => {
@@ -222,16 +313,12 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       throw lastError;
     } finally {
       source = null;
-      options.onStream?.(null);
+      streamHandler?.(null);
     }
   };
 
   const reset = (): void => {
-    assembler = new RecordingAssembler({
-      collectCleaned: options.produce?.cleaned ?? true,
-      collectFull: options.produce?.full ?? true,
-      collectMasked: options.produce?.masked ?? true,
-    });
+    assembler = createAssembler();
   };
 
   const dispose = (): void => {
@@ -283,6 +370,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       return pipeline;
     },
     configure,
+    update,
     start,
     stop,
     reset,

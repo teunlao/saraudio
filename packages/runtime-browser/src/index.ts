@@ -6,7 +6,13 @@ export {
   listAudioInputs,
   watchAudioDeviceChanges,
 } from './devices';
-export { createRecorder, type Recorder, type RecorderOptions, type RecorderStatus } from './recorder';
+export {
+  createRecorder,
+  type Recorder,
+  type RecorderOptions,
+  type RecorderStatus,
+  type RecorderUpdateOptions,
+} from './recorder';
 export { buildStages, createBrowserRuntime } from './runtime';
 export type {
   BrowserFrameSource,

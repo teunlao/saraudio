@@ -1,11 +1,11 @@
 import type { Segment, Stage, StageController, VADScore } from '@saraudio/core';
-import type { SegmenterFactoryOptions } from '@saraudio/runtime-browser';
+import type { MicrophoneSourceOptions, RuntimeMode, SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { withSetup } from './test-utils/withSetup';
 import { useRecorder } from './useRecorder';
 
-const configureMock = vi.fn();
+const updateMock = vi.fn(async () => {});
 const startMock = vi.fn(async () => {});
 const stopMock = vi.fn(async () => {});
 
@@ -27,7 +27,8 @@ vi.mock('@saraudio/runtime-browser', () => ({
         flush: vi.fn(),
         dispose: vi.fn(),
       },
-      configure: configureMock,
+      configure: vi.fn(),
+      update: updateMock,
       start: startMock,
       stop: stopMock,
       reset: vi.fn(),
@@ -62,7 +63,7 @@ describe('useRecorder', () => {
       app.unmount();
     }
     apps = [];
-    configureMock.mockReset();
+    updateMock.mockReset();
     startMock.mockReset();
     stopMock.mockReset();
   });
@@ -159,13 +160,18 @@ describe('useRecorder', () => {
 
     await nextTick();
     await Promise.resolve();
-    configureMock.mockClear();
+    updateMock.mockClear();
 
     stages.value = [controller, controller];
     await nextTick();
     await Promise.resolve();
 
-    expect(configureMock).toHaveBeenCalledWith({ stages: [controller, controller], segmenter: undefined });
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stages: [controller, controller],
+        segmenter: undefined,
+      }),
+    );
   });
 
   it('reconfigures when segmenter toggles', async () => {
@@ -176,12 +182,80 @@ describe('useRecorder', () => {
 
     await nextTick();
     await Promise.resolve();
-    configureMock.mockClear();
+    updateMock.mockClear();
 
     segmenter.value = { preRollMs: 200 };
     await nextTick();
     await Promise.resolve();
 
-    expect(configureMock).toHaveBeenCalledWith({ stages: undefined, segmenter: { preRollMs: 200 } });
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stages: undefined,
+        segmenter: { preRollMs: 200 },
+      }),
+    );
+  });
+
+  it('updates constraints when capture options change', async () => {
+    const constraints = ref<MicrophoneSourceOptions['constraints'] | undefined>(undefined);
+
+    const [_rec, app] = withSetup(() => useRecorder({ constraints }));
+    apps.push(app);
+
+    await nextTick();
+    await Promise.resolve();
+    updateMock.mockClear();
+
+    constraints.value = { channelCount: 1 };
+    await nextTick();
+    await Promise.resolve();
+
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: { channelCount: 1 },
+      }),
+    );
+  });
+
+  it('updates mode when runtime mode changes', async () => {
+    const mode = ref<RuntimeMode | undefined>('auto');
+
+    const [_rec, app] = withSetup(() => useRecorder({ mode }));
+    apps.push(app);
+
+    await nextTick();
+    await Promise.resolve();
+    updateMock.mockClear();
+
+    mode.value = 'media-recorder';
+    await nextTick();
+    await Promise.resolve();
+
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'media-recorder',
+      }),
+    );
+  });
+
+  it('updates allowFallback when toggled', async () => {
+    const allowFallback = ref<boolean | undefined>(true);
+
+    const [_rec, app] = withSetup(() => useRecorder({ allowFallback }));
+    apps.push(app);
+
+    await nextTick();
+    await Promise.resolve();
+    updateMock.mockClear();
+
+    allowFallback.value = false;
+    await nextTick();
+    await Promise.resolve();
+
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowFallback: false,
+      }),
+    );
   });
 });

@@ -128,16 +128,49 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       error.value = new Error(e.message);
     });
 
-    const stopConfigurationWatch = watch(
+    const resolveStages = (): StageController[] | undefined => {
+      if (options.stages === undefined) return undefined;
+      const resolved = toValue(options.stages);
+      if (resolved === undefined) return undefined;
+      return cloneStages(resolved);
+    };
+
+    const resolveSegmenter = (): SegmenterFactoryOptions | StageController | false | undefined => {
+      if (options.segmenter === undefined) return undefined;
+      return toValue(options.segmenter);
+    };
+
+    const resolveConstraints = (): MicrophoneSourceOptions['constraints'] | undefined => {
+      if (options.constraints === undefined) return undefined;
+      return toValue(options.constraints);
+    };
+
+    const resolveMode = (): RuntimeMode | undefined => {
+      if (options.mode === undefined) return undefined;
+      return toValue(options.mode);
+    };
+
+    const resolveAllowFallback = (): boolean | undefined => {
+      if (options.allowFallback === undefined) return undefined;
+      return toValue(options.allowFallback);
+    };
+
+    const stopUpdateWatch = watch(
       () => ({
-        stages: options.stages ? cloneStages(toValue(options.stages)) : undefined,
-        segmenter: options.segmenter ? toValue(options.segmenter) : undefined,
+        stages: resolveStages(),
+        segmenter: resolveSegmenter(),
+        constraints: resolveConstraints(),
+        mode: resolveMode(),
+        allowFallback: resolveAllowFallback(),
       }),
-      async ({ stages: nextStages, segmenter: nextSegmenter }) => {
+      async (nextOptions) => {
         if (!recorder.value) return;
-        await recorder.value.configure({
-          stages: nextStages,
-          segmenter: nextSegmenter,
+        await recorder.value.update({
+          stages: nextOptions.stages,
+          segmenter: nextOptions.segmenter,
+          constraints: nextOptions.constraints,
+          mode: nextOptions.mode,
+          allowFallback: nextOptions.allowFallback,
         });
       },
       { immediate: true },
@@ -147,7 +180,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       vadUnsub.unsubscribe();
       segmentUnsub.unsubscribe();
       errorUnsub.unsubscribe();
-      stopConfigurationWatch();
+      stopUpdateWatch();
       initialRecorder.dispose();
     });
   });
