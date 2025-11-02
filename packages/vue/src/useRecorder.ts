@@ -1,8 +1,16 @@
-import type { Pipeline, Segment, VADScore } from '@saraudio/core';
-import type { Recorder, RecorderOptions, RecorderStatus } from '@saraudio/runtime-browser';
+import type { Pipeline, Segment, Stage, StageController, VADScore } from '@saraudio/core';
+import type {
+  BrowserRuntime,
+  BrowserRuntimeOptions,
+  MicrophoneSourceOptions,
+  Recorder,
+  RecorderStatus,
+  RuntimeMode,
+  SegmenterFactoryOptions,
+} from '@saraudio/runtime-browser';
 import { createRecorder } from '@saraudio/runtime-browser';
-import type { Ref } from 'vue';
-import { onMounted, onUnmounted, ref } from 'vue';
+import type { MaybeRefOrGetter, Ref } from 'vue';
+import { onMounted, onUnmounted, ref, toValue, watch } from 'vue';
 
 export interface UseRecorderResult {
   recorder: Ref<Recorder | null>;
@@ -24,7 +32,26 @@ export interface UseRecorderResult {
   clearSegments: () => void;
 }
 
-export function useRecorder(options: RecorderOptions = {}): UseRecorderResult {
+type StageFactory = () => Stage | StageController | Promise<Stage | StageController>;
+type StageResolvable = Stage | StageController | StageFactory | string;
+type SegmenterResolvable = SegmenterFactoryOptions | Stage | StageController | false | undefined;
+
+export interface UseRecorderOptions {
+  runtime?: BrowserRuntime;
+  runtimeOptions?: BrowserRuntimeOptions;
+  stages?: MaybeRefOrGetter<StageResolvable[] | undefined>;
+  segmenter?: MaybeRefOrGetter<SegmenterResolvable>;
+  constraints?: MaybeRefOrGetter<MicrophoneSourceOptions['constraints'] | undefined>;
+  mode?: MaybeRefOrGetter<RuntimeMode | undefined>;
+  allowFallback?: MaybeRefOrGetter<boolean | undefined>;
+}
+
+const cloneStages = (value: StageResolvable[] | undefined): StageResolvable[] | undefined => {
+  if (!value) return undefined;
+  return [...value];
+};
+
+export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult {
   const recorder = ref<Recorder | null>(null);
   const status = ref<RecorderStatus>('idle');
   const error = ref<Error | null>(null);
@@ -37,32 +64,6 @@ export function useRecorder(options: RecorderOptions = {}): UseRecorderResult {
     masked: { getBlob: async () => null as Blob | null, durationMs: 0 },
     meta: () => ({ sessionDurationMs: 0, cleanedDurationMs: 0 }),
     clear: () => {},
-  });
-
-  onMounted(() => {
-    const rec = createRecorder(options);
-    recorder.value = rec;
-    pipeline.value = rec.pipeline;
-    recordings.value = rec.recordings;
-
-    const vadUnsub = rec.onVad((v: VADScore) => {
-      vad.value = v;
-    });
-
-    const segmentUnsub = rec.onSegment((s: Segment) => {
-      segments.value = [...segments.value, s];
-    });
-
-    const errorUnsub = rec.onError((e) => {
-      error.value = new Error(e.message);
-    });
-
-    onUnmounted(() => {
-      vadUnsub.unsubscribe();
-      segmentUnsub.unsubscribe();
-      errorUnsub.unsubscribe();
-      rec.dispose();
-    });
   });
 
   const start = async () => {
@@ -103,6 +104,57 @@ export function useRecorder(options: RecorderOptions = {}): UseRecorderResult {
   const clearSegments = () => {
     segments.value = [];
   };
+
+  onMounted(() => {
+    const initialRecorder = createRecorder({
+      runtime: options.runtime,
+      runtimeOptions: options.runtimeOptions,
+      stages: options.stages ? cloneStages(toValue(options.stages)) : undefined,
+      segmenter: options.segmenter ? toValue(options.segmenter) : undefined,
+      constraints: toValue(options.constraints ?? undefined),
+      mode: toValue(options.mode ?? undefined),
+      allowFallback: toValue(options.allowFallback ?? undefined),
+    });
+
+    recorder.value = initialRecorder;
+    pipeline.value = initialRecorder.pipeline;
+    recordings.value = initialRecorder.recordings;
+
+    const vadUnsub = initialRecorder.onVad((v: VADScore) => {
+      vad.value = v;
+    });
+
+    const segmentUnsub = initialRecorder.onSegment((s: Segment) => {
+      segments.value = [...segments.value, s];
+    });
+
+    const errorUnsub = initialRecorder.onError((e) => {
+      error.value = new Error(e.message);
+    });
+
+    const stopConfigurationWatch = watch(
+      () => ({
+        stages: options.stages ? cloneStages(toValue(options.stages)) : undefined,
+        segmenter: options.segmenter ? toValue(options.segmenter) : undefined,
+      }),
+      async ({ stages: nextStages, segmenter: nextSegmenter }) => {
+        if (!recorder.value) return;
+        await recorder.value.configure({
+          stages: nextStages,
+          segmenter: nextSegmenter,
+        });
+      },
+      { immediate: true },
+    );
+
+    onUnmounted(() => {
+      vadUnsub.unsubscribe();
+      segmentUnsub.unsubscribe();
+      errorUnsub.unsubscribe();
+      stopConfigurationWatch();
+      initialRecorder.dispose();
+    });
+  });
 
   return {
     recorder,

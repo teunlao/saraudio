@@ -1,17 +1,22 @@
-import type { Segment, VADScore } from '@saraudio/core';
+import type { Segment, Stage, VADScore } from '@saraudio/core';
+import type { SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { nextTick, ref } from 'vue';
 import { withSetup } from './test-utils/withSetup';
 import { useRecorder } from './useRecorder';
 
-// Mock createRecorder
+const configureMock = vi.fn();
+const startMock = vi.fn(async () => {});
+const stopMock = vi.fn(async () => {});
+
 vi.mock('@saraudio/runtime-browser', () => ({
-  createRecorder: () => {
+  createRecorder: vi.fn(() => {
     const vadHandlers = new Set<(v: VADScore) => void>();
     const segmentHandlers = new Set<(s: Segment) => void>();
     const errorHandlers = new Set<(e: { message: string }) => void>();
 
     return {
-      status: 'idle',
+      status: 'idle' as const,
       error: null,
       pipeline: {
         events: {
@@ -21,10 +26,10 @@ vi.mock('@saraudio/runtime-browser', () => ({
         push: vi.fn(),
         flush: vi.fn(),
         dispose: vi.fn(),
-        configure: vi.fn(),
       },
-      start: vi.fn(async () => {}),
-      stop: vi.fn(async () => {}),
+      configure: configureMock,
+      start: startMock,
+      stop: stopMock,
       reset: vi.fn(),
       dispose: vi.fn(),
       onVad: (handler: (v: VADScore) => void) => {
@@ -46,7 +51,7 @@ vi.mock('@saraudio/runtime-browser', () => ({
         };
       },
     };
-  },
+  }),
 }));
 
 describe('useRecorder', () => {
@@ -57,6 +62,9 @@ describe('useRecorder', () => {
       app.unmount();
     }
     apps = [];
+    configureMock.mockReset();
+    startMock.mockReset();
+    stopMock.mockReset();
   });
 
   it('initializes with default state', () => {
@@ -132,5 +140,44 @@ describe('useRecorder', () => {
     expect(rec.error.value).toBe(null);
     expect(rec.segments.value).toEqual([]);
     expect(rec.vad.value).toBe(null);
+  });
+
+  it('reconfigures when stages change', async () => {
+    const stage: Stage = {
+      name: 'test',
+      setup: () => {},
+      handle: () => {},
+    };
+    const stages = ref([stage]);
+
+    const [_rec, app] = withSetup(() => useRecorder({ stages }));
+    apps.push(app);
+
+    await nextTick();
+    await Promise.resolve();
+    configureMock.mockClear();
+
+    stages.value = [stage, stage];
+    await nextTick();
+    await Promise.resolve();
+
+    expect(configureMock).toHaveBeenCalledWith({ stages: [stage, stage], segmenter: undefined });
+  });
+
+  it('reconfigures when segmenter toggles', async () => {
+    const segmenter = ref<SegmenterFactoryOptions | false>(false);
+
+    const [_rec, app] = withSetup(() => useRecorder({ segmenter }));
+    apps.push(app);
+
+    await nextTick();
+    await Promise.resolve();
+    configureMock.mockClear();
+
+    segmenter.value = { preRollMs: 200 };
+    await nextTick();
+    await Promise.resolve();
+
+    expect(configureMock).toHaveBeenCalledWith({ stages: undefined, segmenter: { preRollMs: 200 } });
   });
 });

@@ -78,13 +78,20 @@ const audioConstraints = computed(() =>
   }),
 );
 
+const runtimeStages = computed(() => [
+  vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }),
+  meter(),
+]);
+
+const segmenterOptions = computed(() => ({ preRollMs: 300, hangoverMs: 500 }));
+
 // Recorder with dynamic configuration
 const rec = useRecorder({
   stages: [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()],
-  segmenter: { preRollMs: 300, hangoverMs: 500 },
-  constraints: audioConstraints.value,
-  mode: mode.value,
-  allowFallback: allowFallback.value,
+  segmenter: segmenterOptions,
+  constraints: audioConstraints,
+  mode,
+  allowFallback,
 });
 
 const meterLevels = useMeter({ pipeline: rec.pipeline });
