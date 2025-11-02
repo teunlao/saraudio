@@ -103,13 +103,6 @@ export const App = () => {
     return constraints;
   }, [selectedDeviceId]);
 
-  // Build lazy loaders for stages (energy VAD + meter)
-  const stageLoaders = useMemo(() => {
-    const energyVad = () => createEnergyVadStage({ thresholdDb, smoothMs });
-    const meter = () => createAudioMeterStage();
-    return [energyVad, meter];
-  }, [thresholdDb, smoothMs]);
-
   const segmenterOptions = useMemo(() => ({ preRollMs: 250, hangoverMs: 400 }), []);
 
   const {
@@ -124,7 +117,7 @@ export const App = () => {
     fallbackReason,
     recordings,
   } = useSaraudio({
-    stages: stageLoaders,
+    stages: [createEnergyVadStage({ thresholdDb, smoothMs }), createAudioMeterStage()],
     segmenter: segmenterOptions,
     constraints: audioConstraints,
   });

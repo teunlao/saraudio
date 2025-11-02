@@ -6,6 +6,7 @@ export default defineConfig({
   dts: {
     compilerOptions: {
       composite: false,
+      declarationMap: true,
     },
   },
   sourcemap: true,
