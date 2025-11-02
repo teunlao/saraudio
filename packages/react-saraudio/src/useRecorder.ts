@@ -111,7 +111,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     };
   }, [recorder]);
 
-  const meterLevels = useMeter({ pipeline });
+  const { rms, peak, db } = useMeter({ pipeline });
 
   const [status, setStatus] = useState(recorder.status);
   const [micError, setMicError] = useState<Error | null>(null);
@@ -173,7 +173,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     start,
     stop,
     vad,
-    levels: meterLevels,
+    levels: { rms, peak, db },
     segments,
     clearSegments,
     fallbackReason,

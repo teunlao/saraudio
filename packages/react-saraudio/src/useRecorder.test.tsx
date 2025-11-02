@@ -58,4 +58,54 @@ describe('useRecorder', () => {
 
     expect(result.current.pipeline).not.toBe(firstPipeline);
   });
+
+  it('clears segments', () => {
+    const runtime = createBrowserRuntime();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
+    );
+
+    const { result } = renderHook(() => useRecorder(), { wrapper });
+
+    // Access segments array and verify it can be cleared
+    expect(result.current.segments).toEqual([]);
+    result.current.clearSegments();
+    expect(result.current.segments).toEqual([]);
+  });
+
+  it('resets recorder state', () => {
+    const runtime = createBrowserRuntime();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
+    );
+
+    const { result, rerender } = renderHook(({ key }) => useRecorder({ segmenter: key ? { preRollMs: 300 } : {} }), {
+      wrapper,
+      initialProps: { key: true },
+    });
+
+    const firstPipeline = result.current.pipeline;
+
+    // Force recreation by changing options
+    rerender({ key: false });
+
+    // Pipeline should be different (recorder was recreated)
+    expect(result.current.pipeline).not.toBe(firstPipeline);
+    expect(result.current.segments).toEqual([]);
+    expect(result.current.vad).toBeNull();
+    expect(result.current.status).toBe('idle');
+  });
+
+  it('has reset method to clear state', () => {
+    const runtime = createBrowserRuntime();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SaraudioProvider runtime={runtime}>{children}</SaraudioProvider>
+    );
+
+    const { result } = renderHook(() => useRecorder(), { wrapper });
+
+    expect(result.current.clearSegments).toBeInstanceOf(Function);
+    result.current.clearSegments();
+    expect(result.current.segments).toEqual([]);
+  });
 });

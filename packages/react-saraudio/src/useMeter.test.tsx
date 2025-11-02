@@ -121,4 +121,45 @@ describe('useMeter', () => {
     expect(result.current.peak).toBe(0);
     expect(result.current.db).toBe(-Infinity);
   });
+
+  it('resets values to defaults', () => {
+    const pipeline = new Pipeline({
+      now: () => 0,
+      createId: () => 'test-id',
+    });
+
+    const meterStage = createAudioMeterStage();
+    pipeline.use(meterStage);
+
+    const { result } = renderHook(() => useMeter({ pipeline }));
+
+    const frame: Frame = {
+      pcm: new Float32Array([0.5, 0.5, 0.5]),
+      tsMs: 100,
+      sampleRate: 16000,
+      channels: 1,
+    };
+
+    act(() => {
+      pipeline.push(frame);
+    });
+
+    expect(result.current.rms).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.rms).toBe(0);
+    expect(result.current.peak).toBe(0);
+    expect(result.current.db).toBe(-Infinity);
+  });
+
+  it('handles null pipeline', () => {
+    const { result } = renderHook(() => useMeter({ pipeline: null }));
+
+    expect(result.current.rms).toBe(0);
+    expect(result.current.peak).toBe(0);
+    expect(result.current.db).toBe(-Infinity);
+  });
 });

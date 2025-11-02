@@ -1,8 +1,8 @@
 import type { MeterPayload, Pipeline } from '@saraudio/core';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface UseMeterOptions {
-  pipeline: Pipeline;
+  pipeline: Pipeline | null;
   onMeter?: (payload: MeterPayload) => void;
 }
 
@@ -10,9 +10,10 @@ export interface UseMeterResult {
   rms: number;
   peak: number;
   db: number;
+  reset: () => void;
 }
 
-const INITIAL_STATE: UseMeterResult = {
+const INITIAL_STATE = {
   rms: 0,
   peak: 0,
   db: -Infinity,
@@ -20,10 +21,16 @@ const INITIAL_STATE: UseMeterResult = {
 
 export const useMeter = (options: UseMeterOptions): UseMeterResult => {
   const { pipeline, onMeter } = options;
-  const [meterState, setMeterState] = useState<UseMeterResult>(INITIAL_STATE);
+  const [meterState, setMeterState] = useState<typeof INITIAL_STATE>(INITIAL_STATE);
+
+  const reset = useCallback(() => {
+    setMeterState(INITIAL_STATE);
+  }, []);
 
   useEffect(() => {
     setMeterState(INITIAL_STATE);
+
+    if (!pipeline) return;
 
     const unsubscribe = pipeline.events.on('meter', (payload: MeterPayload) => {
       onMeter?.(payload);
@@ -39,5 +46,5 @@ export const useMeter = (options: UseMeterOptions): UseMeterResult => {
     };
   }, [pipeline, onMeter]);
 
-  return meterState;
+  return { ...meterState, reset };
 };
