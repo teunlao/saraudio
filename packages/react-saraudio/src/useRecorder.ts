@@ -4,6 +4,7 @@ import { createRecorder } from '@saraudio/runtime-browser';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
 import { toError } from './internal/errorUtils';
+import { useDeepCompareEffect } from './internal/useDeepCompareEffect';
 import { useShallowStable } from './internal/useShallowStable';
 import { type StageInput, useStableLoaders } from './internal/useStableLoaders';
 import { useMeter } from './useMeter';
@@ -64,7 +65,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
 
   const [recorder, setRecorder] = useState(() => createRecorder(recorderOptions));
 
-  useEffect(() => {
+  useDeepCompareEffect(() => {
     const newRecorder = createRecorder(recorderOptions);
     setRecorder((prev) => {
       prev.dispose();

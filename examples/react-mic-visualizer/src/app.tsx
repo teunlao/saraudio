@@ -150,10 +150,7 @@ export const App = () => {
 
   // device enumeration handled by hook
 
-  const audioConstraints = useMemo<MediaTrackConstraints>(
-    () => buildAudioConstraints({ deviceId: selectedDeviceId, sampleRate: 16000, channelCount: 1 }),
-    [selectedDeviceId],
-  );
+  const audioConstraints = buildAudioConstraints({ deviceId: selectedDeviceId, sampleRate: 16000, channelCount: 1 });
 
   const segmenterOptions = useMemo(() => ({ preRollMs: 250, hangoverMs: 400 }), []);
 

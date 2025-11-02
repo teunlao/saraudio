@@ -3,6 +3,7 @@
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
+**Git commits:** KEEP IT SHORT. NO detailed descriptions unless asked. Just "type(scope): what changed".
 
 **Project:** SARAUDIO - Multi-source audio stack for AI-native apps.
 
@@ -21,6 +22,7 @@
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
+**Git commits:** KEEP IT SHORT. NO detailed descriptions unless asked. Just "type(scope): what changed".
 
 ---
 
