@@ -1,17 +1,22 @@
-import type { Pipeline, Segment } from '@saraudio/core';
-import type { BrowserRuntime, MicrophoneSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
+import type { Pipeline, Segment, StageController } from '@saraudio/core';
+import type {
+  BrowserRuntime,
+  MicrophoneSourceOptions,
+  RuntimeMode,
+  SegmenterFactoryOptions,
+} from '@saraudio/runtime-browser';
 import { createRecorder } from '@saraudio/runtime-browser';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
 import { toError } from './internal/errorUtils';
 import { useDeepCompareEffect } from './internal/useDeepCompareEffect';
 import { useShallowStable } from './internal/useShallowStable';
-import { type StageInput, useStableLoaders } from './internal/useStableLoaders';
+import { useStableControllers } from './internal/useStableControllers';
 import { useMeter } from './useMeter';
 
 export interface UseRecorderOptions {
-  stages?: StageInput[];
-  segmenter?: { preRollMs?: number; hangoverMs?: number } | false;
+  stages?: StageController[];
+  segmenter?: SegmenterFactoryOptions | StageController | false;
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
   runtime?: BrowserRuntime;
@@ -47,9 +52,11 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
 
   const [loadError, setLoadError] = useState<Error | null>(null);
 
-  const stableStages = useStableLoaders(stages);
+  const stableStages = useStableControllers(stages);
   const stableConstraints = useShallowStable(constraints);
-  const finalSegmenter = useShallowStable(segmenter === false ? (false as const) : (segmenter ?? {}));
+  const normalizedSegmenter = segmenter === false ? undefined : segmenter;
+  const stableSegmenter = useShallowStable(normalizedSegmenter);
+  const finalSegmenter = segmenter === false ? (false as const) : stableSegmenter;
 
   const recorderOptions = useMemo(
     () => ({

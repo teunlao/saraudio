@@ -1,4 +1,4 @@
-import { createSegmenterController, Pipeline, type Stage, type StageController, type StageInput } from '@saraudio/core';
+import { createSegmenterController, Pipeline, type StageController } from '@saraudio/core';
 import { createRuntimeServices } from './context/services';
 import {
   snapshotCapabilities,
@@ -19,27 +19,21 @@ import type {
   SegmenterFactoryOptions,
 } from './types';
 
-const isStageInstance = (value: unknown): value is Stage =>
-  typeof value === 'object' && value !== null && typeof (value as Stage).handle === 'function';
-
 const isStageController = (value: unknown): value is StageController =>
   typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
 
-export const toSegmenterInput = (value: SegmenterFactoryOptions | Stage | StageController | undefined): StageInput => {
+export const toSegmenterInput = (value: SegmenterFactoryOptions | StageController | undefined): StageController => {
   if (!value) {
     return createSegmenterController();
   }
   if (isStageController(value)) {
     return value;
   }
-  if (isStageInstance(value)) {
-    return value;
-  }
   return createSegmenterController(value);
 };
 
-export const buildStages = (opts?: BrowserPipelineOptions): StageInput[] => {
-  const base = opts?.stages ? [...opts.stages] : [];
+export const buildStages = (opts?: BrowserPipelineOptions): StageController[] => {
+  const base: StageController[] = opts?.stages ? [...opts.stages] : [];
   if (opts?.segmenter !== false) {
     base.push(toSegmenterInput(opts?.segmenter));
   }

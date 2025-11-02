@@ -1,4 +1,4 @@
-import type { CoreError, Frame, Pipeline, Segment, Stage, StageController, StageInput, VADScore } from '@saraudio/core';
+import type { CoreError, Frame, Pipeline, Segment, StageController, VADScore } from '@saraudio/core';
 import { encodeWavPcm16, RecordingAssembler } from '@saraudio/core';
 import { createBrowserRuntime } from './runtime';
 import type {
@@ -7,7 +7,6 @@ import type {
   MicrophoneSourceOptions,
   RuntimeMode,
   SegmenterFactoryOptions,
-  StageLoader,
 } from './types';
 
 export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
@@ -20,9 +19,8 @@ export interface RecorderProduceOptions {
 
 export interface RecorderOptions {
   // Pipeline config
-  stages?: Array<Stage | StageController | StageLoader | string>; // external or lazy stages or ids
-  segmenter?: SegmenterFactoryOptions | Stage | StageController | false;
-  resolveStage?: (id: string) => Promise<Stage | StageController> | Stage | StageController; // resolves string ids to stages
+  stages?: StageController[];
+  segmenter?: SegmenterFactoryOptions | StageController | false;
   // Capture options
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
@@ -118,33 +116,14 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     status = next;
   };
 
-  type StageResolvable = Stage | StageController | StageLoader | string;
-
   const isStageControllerValue = (value: unknown): value is StageController =>
     typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
 
-  const isStageInstance = (value: unknown): value is Stage =>
-    typeof value === 'object' && value !== null && typeof (value as Stage).handle === 'function';
-
-  let stageSources: StageResolvable[] = options.stages ? [...options.stages] : [];
+  let stageSources: StageController[] = options.stages ? [...options.stages] : [];
   let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
-  let currentStages: StageInput[] = [];
+  let currentStages: StageController[] = [];
 
-  const resolveStageItem = async (item: StageResolvable): Promise<StageInput> => {
-    if (typeof item === 'string') {
-      if (!options.resolveStage) throw new Error(`No resolveStage provided for id: ${item}`);
-      const resolved = await options.resolveStage(item);
-      return isStageControllerValue(resolved) ? resolved : resolved;
-    }
-    if (typeof item === 'function') {
-      const maybe = (item as StageLoader)();
-      const resolved = maybe instanceof Promise ? await maybe : maybe;
-      return isStageControllerValue(resolved) ? resolved : resolved;
-    }
-    return isStageControllerValue(item) ? item : item;
-  };
-
-  const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageInput | null => {
+  const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageController | null => {
     if (input === false) {
       return null;
     }
@@ -154,17 +133,11 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     if (isStageControllerValue(input)) {
       return input;
     }
-    if (isStageInstance(input)) {
-      return input;
-    }
     return runtime.createSegmenter(input);
   };
 
-  const refreshStages = async (): Promise<void> => {
-    const resolved: StageInput[] = [];
-    for (const item of stageSources) {
-      resolved.push(await resolveStageItem(item));
-    }
+  const refreshStages = (): void => {
+    const resolved: StageController[] = [...stageSources];
     const segmenter = resolveSegmenterInput(segmenterSource);
     if (segmenter) {
       resolved.push(segmenter);
@@ -180,7 +153,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     if ('segmenter' in next) {
       segmenterSource = next.segmenter;
     }
-    await refreshStages();
+    refreshStages();
   };
 
   const start = async (): Promise<void> => {
@@ -194,7 +167,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
 
     try {
       // Configure pipeline with stages (controllers allow dynamic reconfig)
-      await refreshStages();
+      refreshStages();
       console.log('[recorder] pipeline configured with', currentStages.length, 'stages');
 
       console.log('[recorder] creating microphone source', {

@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { Frame, Pipeline, Stage, StageController, StageInput } from '@saraudio/core';
+import type { Frame, Pipeline, StageController } from '@saraudio/core';
 
 export interface RuntimeLogger {
   info: (...messages: ReadonlyArray<unknown>) => void;
@@ -18,8 +18,8 @@ export interface RuntimeOptions {
 }
 
 export interface NodePipelineOptions {
-  stages?: StageInput[];
-  segmenter?: SegmenterFactoryOptions | Stage | StageController | false;
+  stages?: StageController[];
+  segmenter?: SegmenterFactoryOptions | StageController | false;
 }
 
 export interface NodeFrameSource {

@@ -1,4 +1,4 @@
-import type { Segment, Stage, VADScore } from '@saraudio/core';
+import type { Segment, Stage, StageController, VADScore } from '@saraudio/core';
 import type { SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
@@ -143,12 +143,16 @@ describe('useRecorder', () => {
   });
 
   it('reconfigures when stages change via ref', async () => {
-    const stage: Stage = {
-      name: 'test',
-      setup: () => {},
-      handle: () => {},
+    const controller: StageController = {
+      id: 'test',
+      create: () =>
+        ({
+          name: 'test',
+          setup: () => {},
+          handle: () => {},
+        }) satisfies Stage,
     };
-    const stages = ref([stage]);
+    const stages = ref([controller]);
 
     const [_rec, app] = withSetup(() => useRecorder({ stages }));
     apps.push(app);
@@ -157,11 +161,11 @@ describe('useRecorder', () => {
     await Promise.resolve();
     configureMock.mockClear();
 
-    stages.value = [stage, stage];
+    stages.value = [controller, controller];
     await nextTick();
     await Promise.resolve();
 
-    expect(configureMock).toHaveBeenCalledWith({ stages: [stage, stage], segmenter: undefined });
+    expect(configureMock).toHaveBeenCalledWith({ stages: [controller, controller], segmenter: undefined });
   });
 
   it('reconfigures when segmenter toggles', async () => {

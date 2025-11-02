@@ -1,4 +1,4 @@
-import type { Pipeline, Segment, Stage, StageController, VADScore } from '@saraudio/core';
+import type { Pipeline, Segment, StageController, VADScore } from '@saraudio/core';
 import type {
   BrowserRuntime,
   BrowserRuntimeOptions,
@@ -32,21 +32,17 @@ export interface UseRecorderResult {
   clearSegments: () => void;
 }
 
-type StageFactory = () => Stage | StageController | Promise<Stage | StageController>;
-type StageResolvable = Stage | StageController | StageFactory | string;
-type SegmenterResolvable = SegmenterFactoryOptions | Stage | StageController | false | undefined;
-
 export interface UseRecorderOptions {
   runtime?: BrowserRuntime;
   runtimeOptions?: BrowserRuntimeOptions;
-  stages?: MaybeRefOrGetter<StageResolvable[] | undefined>;
-  segmenter?: MaybeRefOrGetter<SegmenterResolvable>;
+  stages?: MaybeRefOrGetter<StageController[] | undefined>;
+  segmenter?: MaybeRefOrGetter<SegmenterFactoryOptions | StageController | false | undefined>;
   constraints?: MaybeRefOrGetter<MicrophoneSourceOptions['constraints'] | undefined>;
   mode?: MaybeRefOrGetter<RuntimeMode | undefined>;
   allowFallback?: MaybeRefOrGetter<boolean | undefined>;
 }
 
-const cloneStages = (value: StageResolvable[] | undefined): StageResolvable[] | undefined => {
+const cloneStages = (value: StageController[] | undefined): StageController[] | undefined => {
   if (!value) return undefined;
   return [...value];
 };

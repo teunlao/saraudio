@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import type { Segment } from '@saraudio/core';
-import { createEnergyVadStage } from '@saraudio/vad-energy';
+import { createEnergyVadController } from '@saraudio/vad-energy';
 import { describe, expect, it } from 'vitest';
 import { createNodeRuntime } from '../runtime';
 
@@ -33,9 +33,9 @@ describe('createNodeRuntime', () => {
     const stream = Readable.from(buffers);
 
     const runtime = createNodeRuntime();
-    const vadStage = createEnergyVadStage({ thresholdDb: -45, smoothMs: 5 });
+    const vadController = createEnergyVadController({ thresholdDb: -45, smoothMs: 5 });
     const pipeline = runtime.createPipeline({
-      stages: [vadStage],
+      stages: [vadController],
       segmenter: { preRollMs: 40, hangoverMs: 40 },
     });
 

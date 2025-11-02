@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Segment } from '@saraudio/core';
-import { createEnergyVadStage } from '@saraudio/vad-energy';
+import { createEnergyVadController } from '@saraudio/vad-energy';
 import { describe, expect, it } from 'vitest';
 import { createNodeRuntime } from '../runtime';
 
@@ -10,7 +10,7 @@ describe('node runtime with real PCM', () => {
   it('produces segment events for galileo sample', async () => {
     const runtime = createNodeRuntime();
     const pipeline = runtime.createPipeline({
-      stages: [createEnergyVadStage({ thresholdDb: -46, smoothMs: 15 })],
+      stages: [createEnergyVadController({ thresholdDb: -46, smoothMs: 15 })],
       segmenter: { preRollMs: 80, hangoverMs: 120 },
     });
 
