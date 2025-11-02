@@ -22,6 +22,7 @@ Open [http://localhost:3000](http://localhost:3000)
 - **Nuxt 4** - Vue framework
 - **Vue 3** - Composition API with TypeScript
 - **Tailwind CSS 4** - Styling
+- **@saraudio/vue** - Vue 3 composables
 - **@saraudio/runtime-browser** - Audio recording
 - **@saraudio/vad-energy** - Voice activity detection
 - **@saraudio/meter** - Audio level metering
