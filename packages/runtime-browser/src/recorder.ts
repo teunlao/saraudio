@@ -143,15 +143,24 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const start = async (): Promise<void> => {
-    if (status === 'acquiring' || status === 'running') return;
+    console.log('[recorder] start called', { status });
+    if (status === 'acquiring' || status === 'running') {
+      console.log('[recorder] already acquiring/running, returning');
+      return;
+    }
     lastError = null;
     setStatus('acquiring');
 
     try {
       // Configure pipeline with stages lazily at first start
       const stagesToUse = await resolveAllStages();
+      console.log('[recorder] configuring pipeline with', stagesToUse.length, 'stages');
       pipeline.configure({ stages: stagesToUse });
 
+      console.log('[recorder] creating microphone source', {
+        mode: options.mode,
+        allowFallback: options.allowFallback
+      });
       source = runtime.createMicrophoneSource({
         constraints: options.constraints,
         mode: options.mode,
@@ -179,8 +188,15 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const stop = async (): Promise<void> => {
-    if (status !== 'running' && status !== 'acquiring') return;
-    if (!source) return;
+    console.log('[recorder] stop called', { status, hasSource: !!source });
+    if (status !== 'running' && status !== 'acquiring') {
+      console.log('[recorder] not running/acquiring, returning');
+      return;
+    }
+    if (!source) {
+      console.log('[recorder] no source, returning');
+      return;
+    }
     setStatus('stopping');
     try {
       await source.stop();

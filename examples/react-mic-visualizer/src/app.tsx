@@ -1,6 +1,6 @@
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import { useAudioInputs, useSaraudio } from '@saraudio/react';
+import { useAudioInputs, useRecorder } from '@saraudio/react';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { buildAudioConstraints, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
@@ -167,7 +167,7 @@ export const App = () => {
     segments,
     clearSegments,
     recordings,
-  } = useSaraudio({
+  } = useRecorder({
     stages: [vadEnergy({ thresholdDb, smoothMs }), meter()],
     segmenter: segmenterOptions,
     constraints: audioConstraints,

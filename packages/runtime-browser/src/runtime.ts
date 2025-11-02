@@ -104,17 +104,26 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
   const createSegmenter = (segmenterOptions?: SegmenterFactoryOptions): Stage => toSegmenterStage(segmenterOptions);
 
   const createMicrophoneSource = (sourceOptions?: MicrophoneSourceOptions): BrowserFrameSource => {
+    console.log('[runtime] createMicrophoneSource called', {
+      requestedMode: sourceOptions?.mode ?? options?.mode ?? 'auto',
+      allowFallback: sourceOptions?.allowFallback ?? true
+    });
+
     const mode = resolveMode(
       sourceOptions?.mode ?? options?.mode ?? 'auto',
       (reason) => {
+        console.log('[runtime] fallback triggered', { reason });
         services.logger.warn('Runtime fallback', { reason });
         options?.onFallback?.(reason);
       },
       sourceOptions?.allowFallback ?? true,
     );
 
+    console.log('[runtime] resolved mode:', mode);
+
     if (mode === 'worklet') {
       try {
+        console.log('[runtime] creating worklet source');
         return createWorkletMicrophoneSource({
           constraints: sourceOptions?.constraints,
           ringBufferFrames: options?.worklet?.ringBufferFrames ?? 2048,
@@ -122,6 +131,13 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
           logger: services.logger,
         });
       } catch (error) {
+        console.log('[runtime] worklet creation failed', error);
+        const allowFallback = sourceOptions?.allowFallback ?? true;
+        if (!allowFallback) {
+          console.log('[runtime] fallback disabled, rethrowing error');
+          throw error;
+        }
+        console.log('[runtime] falling back to MediaRecorder');
         services.logger.warn('AudioWorklet microphone source not available, falling back to MediaRecorder', { error });
         options?.onFallback?.('worklet-unsupported');
         return createMediaRecorderSource({
@@ -133,6 +149,7 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
       }
     }
 
+    console.log('[runtime] creating MediaRecorder source');
     return createMediaRecorderSource({
       constraints: sourceOptions?.constraints,
       frameSize: options?.recorder?.frameSize,

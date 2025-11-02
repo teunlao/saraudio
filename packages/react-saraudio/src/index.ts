@@ -4,7 +4,5 @@ export type { UseAudioInputsOptions, UseAudioInputsResult } from './useAudioInpu
 export { useAudioInputs } from './useAudioInputs';
 export type { UseMeterOptions, UseMeterResult } from './useMeter';
 export { useMeter } from './useMeter';
-export type { UseRecorderOptions } from './useRecorder';
+export type { UseRecorderOptions, UseRecorderResult } from './useRecorder';
 export { useRecorder } from './useRecorder';
-export type { UseSaraudioOptions, UseSaraudioResult } from './useSaraudio';
-export { useSaraudio } from './useSaraudio';
