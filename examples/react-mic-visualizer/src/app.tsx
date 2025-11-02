@@ -1,7 +1,9 @@
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
 import { useSaraudio } from '@saraudio/react';
+import { segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const formatDuration = (ms: number): string => `${(ms / 1000).toFixed(2)} s`;
@@ -208,29 +210,13 @@ export const App = () => {
     setPlayingId(null);
   };
 
-  const ensureContext = (sampleRate: number): AudioContext => {
-    const ctx = audioCtxRef.current;
-    if (ctx) return ctx;
-    const created = new AudioContext({ sampleRate });
-    audioCtxRef.current = created;
-    return created;
-  };
-
   const playSegment = (s: Segment): void => {
     if (!s.pcm || s.pcm.length === 0) return;
-    const ctx = ensureContext(s.sampleRate);
-    // Build AudioBuffer from interleaved Int16 PCM
-    const channels = Math.max(1, Math.floor(s.channels));
-    const frames = Math.floor(s.pcm.length / channels);
-    const buffer = ctx.createBuffer(channels, frames, s.sampleRate);
-    // Convert int16 → float32 and deinterleave if needed
-    for (let ch = 0; ch < channels; ch += 1) {
-      const out = buffer.getChannelData(ch);
-      let i = 0;
-      for (let f = ch; f < s.pcm.length; f += channels) {
-        out[i++] = (s.pcm[f] ?? 0) / 32768;
-      }
-    }
+    stopCurrent();
+    const ctx = audioCtxRef.current ?? new AudioContext({ sampleRate: s.sampleRate });
+    audioCtxRef.current = ctx;
+    const buffer = segmentToAudioBuffer(ctx, s);
+    if (!buffer) return;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
@@ -238,7 +224,6 @@ export const App = () => {
       if (sourceRef.current === source) sourceRef.current = null;
       setPlayingId((prev) => (prev === s.id ? null : prev));
     };
-    stopCurrent();
     sourceRef.current = source;
     setPlayingId(s.id);
     source.start();

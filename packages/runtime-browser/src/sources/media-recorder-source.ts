@@ -1,6 +1,6 @@
 import type { Logger } from '@saraudio/utils';
+import { float32ToInt16 } from '@saraudio/utils';
 import type { BrowserFrameSource } from '../types';
-import { float32ToInt16 } from '../utils/audio';
 import { downmixToMono } from '../utils/downmix';
 
 export interface MediaRecorderSourceConfig {

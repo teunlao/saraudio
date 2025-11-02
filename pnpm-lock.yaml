@@ -68,6 +68,9 @@ importers:
       '@saraudio/react':
         specifier: workspace:*
         version: link:../../packages/react-saraudio
+      '@saraudio/runtime-browser':
+        specifier: workspace:*
+        version: link:../../packages/runtime-browser
       '@saraudio/vad-energy':
         specifier: workspace:*
         version: link:../../packages/vad-energy

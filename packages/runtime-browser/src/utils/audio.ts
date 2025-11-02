@@ -1,8 +1,37 @@
-export const float32ToInt16 = (data: Float32Array): Int16Array => {
-  const output = new Int16Array(data.length);
-  for (let i = 0; i < data.length; i += 1) {
-    const value = Math.max(-1, Math.min(1, data[i]));
-    output[i] = value < 0 ? value * 0x8000 : value * 0x7fff;
+import type { Segment } from '@saraudio/core';
+
+export interface AudioBufferOptionsLike {
+  sampleRate: number;
+  channels: number;
+}
+
+// Convert interleaved Int16 PCM to an AudioBuffer using the provided AudioContext.
+export function int16InterleavedToAudioBuffer(
+  ctx: AudioContext,
+  pcm: Int16Array,
+  opts: AudioBufferOptionsLike,
+): AudioBuffer {
+  const channels = Math.max(1, Math.floor(opts.channels));
+  const frames = Math.floor(pcm.length / channels);
+  const buffer = ctx.createBuffer(channels, frames, opts.sampleRate);
+
+  // Deinterleave and convert to float32
+  for (let ch = 0; ch < channels; ch += 1) {
+    const out = buffer.getChannelData(ch);
+    let i = 0;
+    for (let f = ch; f < pcm.length; f += channels) {
+      out[i++] = (pcm[f] ?? 0) / 32768;
+    }
   }
-  return output;
-};
+
+  return buffer;
+}
+
+export function segmentToAudioBuffer(ctx: AudioContext, segment: Segment): AudioBuffer | null {
+  if (!segment.pcm || segment.pcm.length === 0) return null;
+  const channels = Math.max(1, Math.floor(segment.channels));
+  return int16InterleavedToAudioBuffer(ctx, segment.pcm, {
+    sampleRate: segment.sampleRate,
+    channels,
+  });
+}

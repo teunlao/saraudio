@@ -11,3 +11,5 @@ export type {
   RuntimeMode,
   SegmenterFactoryOptions,
 } from './types';
+// Expose only low-level audio helpers; playback orchestration belongs to apps/examples
+export { int16InterleavedToAudioBuffer, segmentToAudioBuffer } from './utils/audio';
