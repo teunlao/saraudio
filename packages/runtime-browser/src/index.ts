@@ -13,3 +13,11 @@ export type {
 } from './types';
 // Expose only low-level audio helpers; playback orchestration belongs to apps/examples
 export { int16InterleavedToAudioBuffer, segmentToAudioBuffer } from './utils/audio';
+export {
+  buildAudioConstraints,
+  listAudioInputs,
+  type DevicePermission,
+  type ListAudioInputsOptions,
+  type ListAudioInputsResult,
+  watchAudioDeviceChanges,
+} from './devices';

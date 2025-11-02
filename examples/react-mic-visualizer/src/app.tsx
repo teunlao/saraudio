@@ -1,7 +1,7 @@
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import { useSaraudio } from '@saraudio/react';
-import { segmentToAudioBuffer } from '@saraudio/runtime-browser';
+import { useAudioInputs, useSaraudio } from '@saraudio/react';
+import { buildAudioConstraints, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -62,65 +62,25 @@ const SegmentList = ({
 };
 
 export const App = () => {
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const [enumerating, setEnumerating] = useState(false);
-  const [enumerationError, setEnumerationError] = useState<string | null>(null);
+  const {
+    devices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    enumerating,
+    error: enumerationError,
+    refresh: enumerateAudioInputs,
+  } = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
 
   const [thresholdDb, setThresholdDb] = useState(-55);
   const [smoothMs, setSmoothMs] = useState(30);
   const [hasVadEvent, setHasVadEvent] = useState(false);
 
-  const enumerateAudioInputs = async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) {
-      setEnumerationError('Browser does not support device enumeration.');
-      setDevices([]);
-      return;
-    }
-    setEnumerating(true);
-    setEnumerationError(null);
-    try {
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = allDevices.filter((device) => device.kind === 'audioinput');
-      setDevices(audioInputs);
-      if (audioInputs.length > 0) {
-        setSelectedDeviceId((current) => {
-          if (current) return current;
-          const firstId = audioInputs[0]?.deviceId ?? '';
-          return firstId;
-        });
-      } else {
-        setSelectedDeviceId('');
-      }
-    } catch (error) {
-      setEnumerationError(error instanceof Error ? error.message : 'Failed to enumerate audio devices.');
-      setDevices([]);
-      setSelectedDeviceId('');
-    } finally {
-      setEnumerating(false);
-    }
-  };
+  // device enumeration handled by hook
 
-  useEffect(() => {
-    void enumerateAudioInputs();
-    // Try to prompt permissions so labels appear
-    if (navigator.mediaDevices?.getUserMedia) {
-      void navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
-        void enumerateAudioInputs();
-      });
-    }
-  }, []);
-
-  const audioConstraints = useMemo<MediaTrackConstraints>(() => {
-    const constraints: MediaTrackConstraints = {
-      channelCount: 1,
-      sampleRate: 16000,
-    };
-    if (selectedDeviceId) {
-      constraints.deviceId = { exact: selectedDeviceId };
-    }
-    return constraints;
-  }, [selectedDeviceId]);
+  const audioConstraints = useMemo<MediaTrackConstraints>(
+    () => buildAudioConstraints({ deviceId: selectedDeviceId, sampleRate: 16000, channelCount: 1 }),
+    [selectedDeviceId],
+  );
 
   const segmenterOptions = useMemo(() => ({ preRollMs: 250, hangoverMs: 400 }), []);
 
