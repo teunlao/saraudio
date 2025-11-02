@@ -1,7 +1,7 @@
 import type { MeterPayload, Pipeline } from '@saraudio/core';
 
 export interface CreateMeterOptions {
-  pipeline: Pipeline;
+  pipeline: Pipeline | null;
   onMeter?: (payload: MeterPayload) => void;
 }
 
@@ -23,6 +23,8 @@ export function createMeter(options: CreateMeterOptions): MeterResult {
   let state = $state({ ...INITIAL_VALUES });
 
   $effect(() => {
+    if (!pipeline) return;
+
     const unsubscribe = pipeline.events.on('meter', (payload: MeterPayload) => {
       onMeter?.(payload);
       state = {
