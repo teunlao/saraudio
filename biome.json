@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.0/schema.json",
   "files": {
-    "includes": ["**", "!external", "!.external", "!**/node_modules", "!**/dist", "!.katacut", "!**/.vitepress"]
+    "includes": [
+      "**",
+      "!external",
+      "!.external",
+      "!**/node_modules",
+      "!**/dist",
+      "!.katacut",
+      "!**/.vitepress",
+      "!.svelte",
+      "!**/*.svelte",
+      "!**/.svelte-kit"
+    ]
   },
   "formatter": {
     "enabled": true,

@@ -33,7 +33,7 @@ function useDeepCompareMemoize(dependencies: unknown[]): unknown[] {
   return useMemo(() => dependenciesRef.current, [signalRef.current]);
 }
 
-export function useDeepCompareEffect(effect: () => void | (() => void), deps: unknown[]): void {
+export function useDeepCompareEffect(effect: () => undefined | (() => void), deps: unknown[]): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: memoized deps
   useEffect(effect, useDeepCompareMemoize(deps));
 }

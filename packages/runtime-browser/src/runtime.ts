@@ -106,7 +106,7 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
   const createMicrophoneSource = (sourceOptions?: MicrophoneSourceOptions): BrowserFrameSource => {
     console.log('[runtime] createMicrophoneSource called', {
       requestedMode: sourceOptions?.mode ?? options?.mode ?? 'auto',
-      allowFallback: sourceOptions?.allowFallback ?? true
+      allowFallback: sourceOptions?.allowFallback ?? true,
     });
 
     const mode = resolveMode(

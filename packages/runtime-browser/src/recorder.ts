@@ -159,7 +159,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
 
       console.log('[recorder] creating microphone source', {
         mode: options.mode,
-        allowFallback: options.allowFallback
+        allowFallback: options.allowFallback,
       });
       source = runtime.createMicrophoneSource({
         constraints: options.constraints,

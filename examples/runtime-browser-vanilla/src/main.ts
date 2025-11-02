@@ -1,6 +1,6 @@
+import { meter } from '@saraudio/meter';
 import { createRecorder } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
-import { meter } from '@saraudio/meter';
 
 const statusEl = document.getElementById('status') as HTMLSpanElement;
 const startBtn = document.getElementById('start') as HTMLButtonElement;

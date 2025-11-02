@@ -71,6 +71,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       prev.dispose();
       return newRecorder;
     });
+    return undefined;
   }, [recorderOptions]);
 
   useEffect(() => {
