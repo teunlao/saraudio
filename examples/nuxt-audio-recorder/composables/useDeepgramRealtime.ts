@@ -13,6 +13,9 @@ export function useDeepgramRealtime() {
   const log = ref<string[]>([]); // keep short list of last 50 events
 
   let ws: WebSocket | null = null;
+  let bytesSent = 0;
+  let messagesReceived = 0;
+  let audioChunksSent = 0;
 
   // Very small, CPU-cheap resampler for demo:
   // - If src=48000 -> 16000: average each 3 samples
@@ -74,6 +77,9 @@ export function useDeepgramRealtime() {
     partial.value = '';
     transcript.value = '';
     lastClose.value = null;
+    bytesSent = 0;
+    messagesReceived = 0;
+    audioChunksSent = 0;
     log.value.unshift(`[ws] connecting to ${url}`);
     if (log.value.length > 50) log.value.length = 50;
 
@@ -91,6 +97,7 @@ export function useDeepgramRealtime() {
       status.value = 'open';
       const msg = `[ws] open protocol=${ws?.protocol ?? ''}`;
       console.log('[deepgram]', msg);
+      console.log('[deepgram] ready to stream audio @ 16kHz mono PCM16');
       log.value.unshift(msg);
       if (log.value.length > 50) log.value.length = 50;
     };
@@ -113,27 +120,38 @@ export function useDeepgramRealtime() {
     };
     ws.onmessage = (ev) => {
       if (typeof ev.data !== 'string') return;
+      messagesReceived += 1;
       try {
         const raw = JSON.parse(ev.data) as unknown;
         type Alt = { transcript?: string };
         type Chan = { alternatives?: Alt[] };
-        type DG = { is_final?: boolean; channel?: Chan };
+        type DG = { is_final?: boolean; channel?: Chan; metadata?: { request_id?: string } };
         const msg = raw as DG;
         const text = msg.channel?.alternatives?.[0]?.transcript ?? '';
         const isFinal = Boolean(msg.is_final);
+
+        console.log('[deepgram] ←', {
+          type: isFinal ? 'FINAL' : 'PARTIAL',
+          text,
+          length: text.length,
+          metadata: msg.metadata,
+          raw: ev.data.slice(0, 200),
+        });
+
         if (typeof text === 'string' && text.length > 0) {
           if (isFinal) {
             const trimmed = text.trim();
             if (trimmed.length > 0) {
               transcript.value = transcript.value ? `${transcript.value} ${trimmed}` : trimmed;
+              console.log('[deepgram] final transcript updated:', trimmed);
             }
             partial.value = '';
           } else {
             partial.value = text;
           }
         }
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.warn('[deepgram] failed to parse message:', ev.data.slice(0, 100), err);
       }
     };
   }
@@ -141,6 +159,12 @@ export function useDeepgramRealtime() {
   function close(): void {
     if (ws) {
       try {
+        console.log('[deepgram] closing connection', {
+          bytesSent,
+          audioChunksSent,
+          messagesReceived,
+          totalKB: (bytesSent / 1024).toFixed(1),
+        });
         ws.close();
       } catch {}
       ws = null;
@@ -151,7 +175,21 @@ export function useDeepgramRealtime() {
   function sendPcm16(pcm: Int16Array, sampleRate: number): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const resampled = to16kMonoInt16(pcm, sampleRate);
-    // Deepgram expects raw little-endian PCM16 frames as binary
+    const bytes = resampled.byteLength;
+    bytesSent += bytes;
+    audioChunksSent += 1;
+
+    if (audioChunksSent % 50 === 0) {
+      console.log('[deepgram] →', {
+        chunks: audioChunksSent,
+        totalBytes: bytesSent,
+        totalKB: (bytesSent / 1024).toFixed(1),
+        lastChunkBytes: bytes,
+        lastChunkSamples: resampled.length,
+        durationMs: ((resampled.length / 16000) * 1000).toFixed(0),
+      });
+    }
+
     ws.send(resampled.buffer);
   }
 

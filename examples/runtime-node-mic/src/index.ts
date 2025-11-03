@@ -164,10 +164,12 @@ const main = async () => {
   const ffmpeg = createFfmpegProcess(inputConfig);
   const runtime = createNodeRuntime();
   const pipeline = runtime.createPipeline({
-    stages: [{
-      id: 'vad',
-      create: () => createEnergyVadStage({ thresholdDb: parseEnergyThreshold(), smoothMs: 20 })
-    }],
+    stages: [
+      {
+        id: 'vad',
+        create: () => createEnergyVadStage({ thresholdDb: parseEnergyThreshold(), smoothMs: 20 }),
+      },
+    ],
     segmenter: { preRollMs: 150, hangoverMs: 220 },
   });
 

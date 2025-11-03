@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useRecorder } from '@saraudio/vue';
-import { vadEnergy } from '@saraudio/vad-energy';
-import { meter } from '@saraudio/meter';
-import { buildAudioConstraints, type RuntimeMode } from '@saraudio/runtime-browser';
-import { useAudioInputs, useMeter } from '@saraudio/vue';
 import type { Frame } from '@saraudio/core';
+import { meter } from '@saraudio/meter';
+import type { RecorderSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useDeepgramRealtime } from '../../composables/useDeepgramRealtime';
 
 const mode = ref<RuntimeMode>('auto');
@@ -14,16 +13,15 @@ const thresholdDb = ref(-50);
 const smoothMs = ref(30);
 
 const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
-const audioConstraints = computed(() => buildAudioConstraints({
-  deviceId: audioInputs.selectedDeviceId.value,
-  sampleRate: 48000,
-  channelCount: 1,
-}));
 
 const rec = useRecorder({
   stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
   segmenter: { preRollMs: 120, hangoverMs: 250 },
-  constraints: audioConstraints,
+  source: {
+    microphone: {
+      deviceId: audioInputs.selectedDeviceId.value,
+    },
+  },
   mode,
   allowFallback,
 });
@@ -46,18 +44,19 @@ const wsLog = computed(() => {
 async function start() {
   dg.connect();
   // Subscribe to raw frames and forward to Deepgram
-  unsubscribe = rec.recorder.value?.subscribeRawFrames((frame: Frame) => {
-    const int16 = frame.pcm instanceof Int16Array ? frame.pcm : new Int16Array(frame.pcm.length);
-    if (!(frame.pcm instanceof Int16Array)) {
-      // simple float -> int16 conversion
-      const src = frame.pcm;
-      for (let i = 0; i < src.length; i += 1) {
-        const s = Math.max(-1, Math.min(1, src[i] ?? 0));
-        int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  unsubscribe =
+    rec.recorder.value?.subscribeRawFrames((frame: Frame) => {
+      const int16 = frame.pcm instanceof Int16Array ? frame.pcm : new Int16Array(frame.pcm.length);
+      if (!(frame.pcm instanceof Int16Array)) {
+        // simple float -> int16 conversion
+        const src = frame.pcm;
+        for (let i = 0; i < src.length; i += 1) {
+          const s = Math.max(-1, Math.min(1, src[i] ?? 0));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
       }
-    }
-    dg.sendPcm16(int16, frame.sampleRate);
-  }) ?? null;
+      dg.sendPcm16(int16, frame.sampleRate);
+    }) ?? null;
   await rec.start();
 }
 

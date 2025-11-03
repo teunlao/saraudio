@@ -1,5 +1,8 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.0/schema.json",
+  "vcs": {
+    "useIgnoreFile": true
+  },
   "files": {
     "includes": [
       "**",

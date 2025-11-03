@@ -47,6 +47,22 @@ export interface MicrophoneSourceOptions {
   allowFallback?: boolean;
 }
 
+export interface MicrophoneSourceConfig {
+  deviceId?: string;
+}
+
+export interface RecorderSourceOptions {
+  microphone?: MicrophoneSourceConfig;
+}
+
+export type RecorderFrameEncoding = 'pcm16';
+
+export interface RecorderFormatOptions {
+  sampleRate?: number;
+  channels?: 1 | 2;
+  encoding?: RecorderFrameEncoding;
+}
+
 export interface RunOptions {
   source: BrowserFrameSource;
   pipeline: Pipeline;

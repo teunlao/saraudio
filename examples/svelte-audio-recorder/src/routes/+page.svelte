@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import { buildAudioConstraints, segmentToAudioBuffer, type RuntimeMode } from '@saraudio/runtime-browser';
+import { buildAudioConstraints, type RuntimeMode, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { createAudioInputs, createMeter, createRecorder } from '@saraudio/svelte';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { onMount } from 'svelte';

@@ -5,11 +5,24 @@ import type {
   BrowserRuntime,
   BrowserRuntimeOptions,
   MicrophoneSourceOptions,
+  RecorderSourceOptions,
   RuntimeMode,
   SegmenterFactoryOptions,
 } from './types';
 
 export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
+
+const deriveConstraintsFromSource = (
+  source: RecorderSourceOptions | undefined,
+  // TODO remove legacy constraints after deprecating RecorderOptions.constraints
+  fallback: MicrophoneSourceOptions['constraints'],
+): MicrophoneSourceOptions['constraints'] => {
+  const deviceId = source?.microphone?.deviceId?.trim();
+  if (deviceId && deviceId.length > 0) {
+    return { deviceId: { exact: deviceId } } satisfies MediaTrackConstraints;
+  }
+  return fallback;
+};
 
 export interface RecorderProduceOptions {
   cleaned?: boolean; // speech-only concatenated
@@ -22,6 +35,8 @@ export interface RecorderOptions {
   stages?: StageController[];
   segmenter?: SegmenterFactoryOptions | StageController | false;
   // Capture options
+  source?: RecorderSourceOptions;
+  // TODO remove legacy constraints after deprecating RecorderOptions.constraints
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
   allowFallback?: boolean;
@@ -154,11 +169,13 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
   let currentStages: StageController[] = [];
   const captureOptions: {
+    source?: RecorderSourceOptions;
     constraints?: MicrophoneSourceOptions['constraints'];
     mode?: RuntimeMode;
     allowFallback?: boolean;
   } = {
-    constraints: options.constraints,
+    source: options.source,
+    constraints: options.constraints, // TODO remove legacy constraints after deprecation window
     mode: options.mode,
     allowFallback: options.allowFallback,
   };
@@ -232,8 +249,11 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   const captureMutators: {
     [K in UpdateKey]?: (value: RecorderUpdateOptions[K]) => void;
   } = {
+    source: (value) => {
+      captureOptions.source = value;
+    },
     constraints: (value) => {
-      captureOptions.constraints = value;
+      captureOptions.constraints = value; // TODO remove legacy constraints after deprecation window
     },
     mode: (value) => {
       captureOptions.mode = value;
@@ -308,7 +328,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
         allowFallback: captureOptions.allowFallback,
       });
       const sourceOptions: MicrophoneSourceOptions = {
-        constraints: captureOptions.constraints,
+        constraints: deriveConstraintsFromSource(captureOptions.source, captureOptions.constraints),
         mode: captureOptions.mode,
         onStream: streamHandler,
       };
