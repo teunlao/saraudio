@@ -136,15 +136,24 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="grid grid-cols-2 gap-6">
-        <div class="p-4 bg-gray-800 rounded">
-          <h2 class="text-lg font-semibold mb-2">Partial</h2>
-          <div class="min-h-24 whitespace-pre-wrap text-gray-200">{{ dg.partial }}</div>
+      <section class="p-6 bg-gray-800 rounded-lg">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-semibold">Transcript</h2>
+          <button
+            @click="dg.clear"
+            :disabled="!dg.transcript.value && !dg.partial.value"
+            class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
         </div>
-        <div class="p-4 bg-gray-800 rounded">
-          <h2 class="text-lg font-semibold mb-2">Final</h2>
-          <div class="space-y-1">
-            <div v-for="(line,i) in dg.finalLines" :key="i" class="text-gray-200">{{ line }}</div>
+        <div class="min-h-48 max-h-96 overflow-y-auto p-4 bg-gray-900 rounded border border-gray-700">
+          <div v-if="!dg.transcript.value && !dg.partial.value" class="text-gray-500 text-center py-8">
+            Start recording to see live transcription...
+          </div>
+          <div v-else class="space-y-2 whitespace-pre-wrap">
+            <p v-if="dg.transcript.value" class="text-gray-200 leading-relaxed">{{ dg.transcript.value }}</p>
+            <p v-if="dg.partial.value" class="text-gray-400 italic">{{ dg.partial.value }}</p>
           </div>
         </div>
       </section>

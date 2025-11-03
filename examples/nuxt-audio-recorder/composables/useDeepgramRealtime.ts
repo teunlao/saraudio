@@ -6,7 +6,7 @@ export function useDeepgramRealtime() {
   const status = ref<'idle' | 'connecting' | 'open' | 'closed' | 'error'>('idle');
   const error = ref<string | null>(null);
   const partial = ref<string>('');
-  const finalLines = ref<string[]>([]);
+  const transcript = ref<string>('');
   const model = ref<string>('nova-2');
   // Debug/state: expose last close details and a small rolling log to surface issues in UI
   const lastClose = ref<{ code: number; reason: string; wasClean: boolean } | null>(null);
@@ -72,7 +72,7 @@ export function useDeepgramRealtime() {
     status.value = 'connecting';
     error.value = null;
     partial.value = '';
-    finalLines.value = [];
+    transcript.value = '';
     lastClose.value = null;
     log.value.unshift(`[ws] connecting to ${url}`);
     if (log.value.length > 50) log.value.length = 50;
@@ -119,15 +119,17 @@ export function useDeepgramRealtime() {
         type Chan = { alternatives?: Alt[] };
         type DG = { is_final?: boolean; channel?: Chan };
         const msg = raw as DG;
-        const transcript = msg.channel?.alternatives?.[0]?.transcript ?? '';
+        const text = msg.channel?.alternatives?.[0]?.transcript ?? '';
         const isFinal = Boolean(msg.is_final);
-        if (typeof transcript === 'string') {
+        if (typeof text === 'string' && text.length > 0) {
           if (isFinal) {
-            const t = transcript.trim();
-            if (t.length > 0) finalLines.value.push(t);
+            const trimmed = text.trim();
+            if (trimmed.length > 0) {
+              transcript.value = transcript.value ? `${transcript.value} ${trimmed}` : trimmed;
+            }
             partial.value = '';
           } else {
-            partial.value = transcript;
+            partial.value = text;
           }
         }
       } catch {
@@ -153,16 +155,22 @@ export function useDeepgramRealtime() {
     ws.send(resampled.buffer);
   }
 
+  const clear = (): void => {
+    partial.value = '';
+    transcript.value = '';
+  };
+
   return {
     status,
     error,
     partial,
-    finalLines,
+    transcript,
     model,
     lastClose,
     log,
     connect,
     close,
+    clear,
     sendPcm16,
   };
 }
