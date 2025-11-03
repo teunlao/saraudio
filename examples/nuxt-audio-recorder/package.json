@@ -8,7 +8,9 @@
     "generate": "pnpm exec nuxt generate",
     "preview": "pnpm exec nuxt preview",
     "postinstall": "pnpm exec nuxt prepare",
-    "typecheck": "pnpm exec nuxi typecheck"
+    "typecheck": "pnpm exec nuxi typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "dependencies": {
     "@saraudio/core": "workspace:*",

@@ -14,12 +14,14 @@
       "!**/.svelte-kit",
       "!**/*.vue",
       "!**/.nuxt",
+      "!**/.output",
       "!**/*.js",
       "!**/*.mjs",
       "!**/*.cjs",
       "!**/*.d.ts",
       "!**/.vinxi",
-      "!**/assets"
+      "!**/assets",
+      "!**/public"
     ]
   },
   "formatter": {
