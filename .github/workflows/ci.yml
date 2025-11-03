@@ -30,7 +30,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
 
       - name: Run Biome check
         run: pnpm lint
@@ -54,7 +54,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
 
       - name: Build packages
         run: pnpm build
@@ -84,7 +84,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
 
       - name: Build packages
         run: pnpm build
@@ -111,7 +111,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
 
       - name: Build packages first
         run: pnpm build
@@ -119,11 +119,11 @@ jobs:
       - name: Build React example
         run: cd examples/react-mic-visualizer && pnpm build
 
-      - name: Build Vue example
-        run: cd examples/vue-audio-recorder && pnpm build
-
       - name: Build Svelte example
         run: cd examples/svelte-audio-recorder && pnpm build
+
+      - name: Build Solid example
+        run: cd examples/solid-audio-recorder && pnpm build
 
   bundle-size:
     name: 'Bundle Size'
@@ -144,7 +144,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
 
       - name: Build packages
         run: pnpm build
