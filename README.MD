@@ -1,33 +1,112 @@
-# SARAUDIO (previously known as Silence Aware Recorder)
+# SARAUDIO
 
-> ⚠️ The repository is undergoing a full reboot for the v3 architecture. The legacy `silence-aware-recorder` package has been archived; all new work happens under the modular `@saraudio/*` namespace.
+Modular audio processing pipeline for real-time voice applications. Capture, detect speech, and process audio with minimal latency.
 
-## Monorepo Layout
+> ⚠️ **Active development** - v3 is in progress, APIs may change. Legacy `silence-aware-recorder` package is on the `main` branch.
 
-- `packages/core` — pipeline engine
-- `packages/utils` — DSP utilities
-- `packages/vad-energy` — energy-based VAD stage
-- `packages/runtime-node` — Node/Bun runtime
-- `packages/runtime-browser` — browser runtime
-- `examples/runtime-node-mic` — interactive CLI demo
+## What is this?
 
-## Quick Start
+SARAUDIO provides building blocks for audio processing:
+- Real-time voice activity detection (VAD)
+- Smart audio segmentation with configurable buffers
+- Low-latency processing via AudioWorklet (10ms)
+- Cross-platform support (browser, Node.js)
+
+## Quick start
 
 ```bash
+npm install @saraudio/react @saraudio/vad-energy
+```
+
+```tsx
+import { useRecorder } from '@saraudio/react';
+import { vadEnergy } from '@saraudio/vad-energy';
+
+function App() {
+  const { start, stop, segments } = useRecorder({
+    stages: [vadEnergy({ thresholdDb: -50 })]
+  });
+
+  return (
+    <>
+      <button onClick={start}>Start</button>
+      <button onClick={stop}>Stop</button>
+      {segments.map(s => (
+        <audio key={s.id} src={URL.createObjectURL(s.blob)} controls />
+      ))}
+    </>
+  );
+}
+```
+
+## Architecture
+
+The pipeline processes audio through composable stages:
+
+```
+Audio Input → VAD Stage → Segmenter → Your App
+                ↓
+            Events (speech start/end, segments)
+```
+
+## Packages
+
+### Core
+- `@saraudio/core` - Pipeline engine and base types
+- `@saraudio/utils` - DSP utilities (RMS, buffers, conversions)
+- `@saraudio/vad-energy` - Energy-based voice detection
+- `@saraudio/meter` - Audio level measurement
+
+### Runtimes
+- `@saraudio/runtime-browser` - Browser implementation (AudioWorklet/MediaRecorder)
+- `@saraudio/runtime-node` - Node.js microphone support
+
+### Framework bindings
+- `@saraudio/react` - React hooks
+- `@saraudio/vue` - Vue composables
+- `@saraudio/svelte` - Svelte stores
+- `@saraudio/solid` - SolidJS primitives
+
+## Examples
+
+Check the `examples/` directory for working demos:
+- `react-mic-visualizer` - Real-time visualization with React
+- `vue-audio-recorder` - Vue 3 composition API example  
+- `svelte-audio-recorder` - Svelte example
+- `solid-audio-recorder` - SolidJS example
+- `runtime-browser-vanilla` - Pure JavaScript usage
+- `runtime-node-mic` - Node.js recording
+
+## Key features
+
+- **Low latency** - 10ms with AudioWorklet, automatic fallback to MediaRecorder
+- **Modular design** - Use only what you need, tree-shakeable
+- **TypeScript first** - Full type safety and great DX
+
+## Browser compatibility
+
+- Chrome/Edge 90+ (AudioWorklet)
+- Firefox 85+ (AudioWorklet)
+- Safari 14.5+ (AudioWorklet with limitations)
+- Older browsers use MediaRecorder fallback (higher latency)
+
+## Development
+
+```bash
+# Install dependencies
 pnpm install
-pnpm typecheck
-pnpm lint
+
+# Run tests
 pnpm test
+
+# Build all packages
+pnpm build
+
+# Run example
+cd examples/react-mic-visualizer
+pnpm dev
 ```
 
-### Run the interactive mic example (macOS)
+## License
 
-```bash
-pnpm --filter @saraudio/example-runtime-node-mic start
-```
-
-The CLI lists `avfoundation` devices, lets you pick an input, renders a live VAD bar, and saves PCM segments to `examples/runtime-node-mic/.segments/`.
-
-See [`examples/runtime-node-mic/README.md`](examples/runtime-node-mic/README.md) for full usage, environment variables, and playback tips.
-
-> ⚠️ **Alpha Development Branch**: This is the v3 development branch with breaking changes and experimental features. For stable npm releases, see the `main` branch. Not production-ready.
+MIT
