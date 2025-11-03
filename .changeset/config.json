@@ -3,9 +3,11 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [],
-  "linked": [],
+  "linked": [
+    ["@saraudio/*"]
+  ],
   "access": "public",
-  "baseBranch": "main",
+  "baseBranch": "v3",
   "updateInternalDependencies": "patch",
   "ignore": []
 }

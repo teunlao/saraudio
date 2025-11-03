@@ -1,0 +1,89 @@
+name: Bug Report
+description: Report a bug in SARAUDIO
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below.
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: |
+        When I try to start recording with AudioWorklet mode, I get an error...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Import useRecorder from @saraudio/react
+        2. Call start() method
+        3. See error in console
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Recording should start without errors
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: |
+        Please provide the following information:
+      value: |
+        - OS: [e.g. macOS 14.0]
+        - Browser: [e.g. Chrome 120]
+        - Node version: [e.g. 20.10.0]
+        - Package versions:
+          - @saraudio/core: 
+          - @saraudio/react: 
+          - @saraudio/runtime-browser: 
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Runtime Mode
+      description: Which runtime mode are you using?
+      options:
+        - AudioWorklet
+        - MediaRecorder
+        - Auto (default)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Code Example
+      description: If possible, provide a minimal code example that reproduces the issue
+      render: tsx
+      placeholder: |
+        const { start, error } = useRecorder({
+          mode: 'worklet',
+          stages: [vadEnergy()]
+        });
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (error messages, screenshots, etc.)
+
+  - type: checkboxes
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched for existing issues
+          required: true
+        - label: I have tested with the latest version
+          required: true

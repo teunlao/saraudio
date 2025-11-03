@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - v3
+  pull_request:
+    branches:
+      - main
+      - v3
+
+jobs:
+  lint:
+    name: 'Lint'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Biome check
+        run: pnpm lint
+
+  typecheck:
+    name: 'TypeScript'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run TypeScript type check
+        run: pnpm typecheck
+
+  test:
+    name: 'Test'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+  build-examples:
+    name: 'Build Examples'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages first
+        run: pnpm build
+
+      - name: Build React example
+        run: cd examples/react-mic-visualizer && pnpm build
+
+      - name: Build Vue example
+        run: cd examples/vue-audio-recorder && pnpm build
+
+      - name: Build Svelte example
+        run: cd examples/svelte-audio-recorder && pnpm build
+
+  bundle-size:
+    name: 'Bundle Size'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Check bundle sizes
+        run: |
+          echo "📦 Bundle sizes:"
+          echo ""
+          find packages/*/dist -name "*.js" -o -name "*.mjs" | while read file; do
+            size=$(wc -c < "$file" | tr -d ' ')
+            gzipped=$(gzip -c "$file" | wc -c | tr -d ' ')
+            echo "$file: $(numfmt --to=iec-i --suffix=B $size) ($(numfmt --to=iec-i --suffix=B $gzipped) gzipped)"
+          done
+
+      - name: Core bundle size check
+        run: |
+          CORE_SIZE=$(wc -c < packages/core/dist/index.mjs | tr -d ' ')
+          MAX_SIZE=$((20 * 1024)) # 20KB
+          
+          echo "Core bundle size: $(numfmt --to=iec-i --suffix=B $CORE_SIZE)"
+          echo "Max allowed: $(numfmt --to=iec-i --suffix=B $MAX_SIZE)"
+          
+          if [ $CORE_SIZE -gt $MAX_SIZE ]; then
+            echo "❌ Core bundle size exceeds limit!"
+            exit 1
+          else
+            echo "✅ Core bundle size is within limit"
+          fi

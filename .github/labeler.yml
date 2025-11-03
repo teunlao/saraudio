@@ -1,0 +1,38 @@
+# Add labels to PRs based on file changes
+
+core:
+  - packages/core/**/*
+
+runtime:
+  - packages/runtime-browser/**/*
+  - packages/runtime-node/**/*
+
+framework:
+  - packages/react-saraudio/**/*
+  - packages/vue/**/*
+  - packages/svelte/**/*
+  - packages/solid/**/*
+
+vad:
+  - packages/vad-energy/**/*
+  - packages/meter/**/*
+
+utils:
+  - packages/utils/**/*
+
+documentation:
+  - README.md
+  - packages/**/README.md
+  - .lab/**/*.md
+
+examples:
+  - examples/**/*
+
+ci:
+  - .github/**/*
+  - .changeset/**/*
+
+dependencies:
+  - package.json
+  - pnpm-lock.yaml
+  - packages/**/package.json
