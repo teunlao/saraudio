@@ -4,12 +4,12 @@
   "version": "0.0.0-alpha-20251103022458",
   "type": "module",
   "scripts": {
-    "serve": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "prepare": "svelte-kit sync || echo ''",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "serve": "pnpm exec vite dev",
+    "build": "pnpm exec vite build",
+    "preview": "pnpm exec vite preview",
+    "prepare": "pnpm exec svelte-kit sync || echo ''",
+    "check": "pnpm exec svelte-kit sync && pnpm exec svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "pnpm exec svelte-kit sync && pnpm exec svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.0",

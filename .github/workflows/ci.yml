@@ -30,7 +30,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
+        run: pnpm install --frozen-lockfile
 
       - name: Run Biome check
         run: pnpm lint
@@ -54,7 +54,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages
         run: pnpm build
@@ -84,7 +84,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages
         run: pnpm build
@@ -111,7 +111,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages first
         run: pnpm build
@@ -144,7 +144,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter '!nuxt-audio-recorder'
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages
         run: pnpm build

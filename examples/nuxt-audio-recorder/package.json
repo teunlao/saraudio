@@ -3,12 +3,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
-    "serve": "nuxt dev",
-    "generate": "nuxt generate",
-    "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
-    "typecheck": "nuxi typecheck"
+    "build": "pnpm exec nuxt build",
+    "serve": "pnpm exec nuxt dev",
+    "generate": "pnpm exec nuxt generate",
+    "preview": "pnpm exec nuxt preview",
+    "postinstall": "pnpm exec nuxt prepare",
+    "typecheck": "pnpm exec nuxi typecheck"
   },
   "dependencies": {
     "@saraudio/core": "workspace:*",
