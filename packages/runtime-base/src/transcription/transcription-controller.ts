@@ -7,19 +7,14 @@ import type {
   TranscriptResult,
   Transport,
 } from '@saraudio/core';
-import { encodeWavPcm16, isRetryable, RateLimitError } from '@saraudio/core';
+import { isRetryable, RateLimitError } from '@saraudio/core';
 
 import type { Logger } from '@saraudio/utils';
-import {
-  computeBackoff,
-  createDeferred,
-  createHttpLiveAggregator,
-  type Deferred,
-  type HttpLiveAggregator,
-  type RetryConfig,
-} from '@saraudio/utils';
+import { computeBackoff, createDeferred, type Deferred, type RetryConfig } from '@saraudio/utils';
 
 import { PreconnectBuffer } from './helpers/preconnect-buffer';
+import { createHttpTransport } from './transports/http-transport';
+import { connectWsTransport } from './transports/ws-transport';
 
 export interface CreateTranscriptionOptions {
   provider: TranscriptionProvider;
@@ -82,7 +77,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   let unsubscribeRecorder: (() => void) | null = null;
   let unsubscribeSegment: (() => void) | null = null;
   let unsubscribeStream: Array<() => void> = [];
-  let aggregator: HttpLiveAggregator<TranscriptResult> | null = null;
+  let httpTransport: ReturnType<typeof createHttpTransport> | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let connectDeferred: Deferred<void> | null = null;
   let attempts = 0;
@@ -192,83 +187,43 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     }, delay);
   };
 
-  const wireStream = (s: TranscriptionStream, signal?: AbortSignal): void => {
+  const wireStream = (stream: TranscriptionStream, signal?: AbortSignal): void => {
     unsubscribeStreamHandlers();
     unsubscribeStream.push(
-      s.onTranscript((r: TranscriptResult) => transcriptSubs.forEach((h) => h(r))),
-      s.onError((e: Error) => {
+      stream.onTranscript((r: TranscriptResult) => transcriptSubs.forEach((h) => h(r))),
+      stream.onError((e: Error) => {
         lastError = e;
         errorSubs.forEach((h) => h(e));
         startRetry(e, signal);
       }),
-      s.onStatusChange((st: StreamStatus) => setStatus(st)),
+      stream.onStatusChange((status: StreamStatus) => setStatus(status)),
     );
-    if (s.onPartial) {
-      unsubscribeStream.push(s.onPartial((t: string) => partialSubs.forEach((h) => h(t))));
+    if (stream.onPartial) {
+      unsubscribeStream.push(stream.onPartial((t: string) => partialSubs.forEach((h) => h(t))));
     }
-  };
-
-  const subscribeSegmentFlush = (onFlush: () => void, eventName: string): void => {
-    const FORCE_COOLDOWN_MS = 200;
-    let lastForceTs = 0;
-    unsubscribeSegment =
-      recorder?.onSegment(() => {
-        const now = Date.now();
-        if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
-        lastForceTs = now;
-        logger?.debug(eventName, {
-          module: 'runtime-base',
-          event: 'segment-end',
-          providerId: provider.id,
-        });
-        onFlush();
-      }) ?? null;
   };
 
   const attemptConnect = async (signal?: AbortSignal): Promise<void> => {
     setStatus('connecting');
     attempts += 1;
-    // HTTP path: chunking aggregator instead of WS stream
+
     if (provider.transport === 'http' && isBatchProvider(provider)) {
-      if (!aggregator) {
-        aggregator = createHttpLiveAggregator<TranscriptResult>({
-          intervalMs: opts.chunking?.intervalMs,
-          minDurationMs: opts.chunking?.minDurationMs,
-          overlapMs: opts.chunking?.overlapMs,
-          maxInFlight: opts.chunking?.maxInFlight,
-          timeoutMs: opts.chunking?.timeoutMs,
-          onFlush: async ({ pcm, sampleRate, channels, signal: flushSignal }) => {
-            const wav = encodeWavPcm16(pcm, { sampleRate, channels });
-            return await provider.transcribe(wav, undefined, flushSignal);
-          },
-          onResult: (res) => {
-            // HTTP providers do not emit partials; only finals are forwarded.
-            transcriptSubs.forEach((h) => h(res));
-          },
+      if (!httpTransport) {
+        httpTransport = createHttpTransport({
+          provider,
+          logger,
+          preconnectBuffer,
+          onTranscript: (res) => transcriptSubs.forEach((h) => h(res)),
           onError: (err) => {
-            lastError = (err as Error) ?? new Error('HTTP chunk flush failed');
-            errorSubs.forEach((h) => h(lastError as Error));
+            lastError = err;
+            errorSubs.forEach((h) => h(err));
             setStatus('error');
           },
-          logger,
+          chunking: opts.chunking,
         });
       }
       connected = true;
-      const frames = preconnectBuffer.drain();
-      for (let i = 0; i < frames.length; i += 1) {
-        const f = frames[i];
-        aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
-      }
-      if (recorder && opts.flushOnSegmentEnd === true) {
-        subscribeSegmentFlush(() => aggregator?.forceFlush(), 'force flush on segment end');
-      }
       setStatus('connected');
-      logger?.debug('connected', {
-        module: 'runtime-base',
-        event: 'connect',
-        providerId: provider.id,
-        transport: 'http',
-      });
       attempts = 0;
       connectDeferred?.resolve();
       connectDeferred = null;
@@ -278,26 +233,17 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     const stream = ensureStream();
     wireStream(stream, signal);
     try {
-      await stream.connect(signal);
-      // Flush preconnect buffer first-in-first-out
-      const frames = preconnectBuffer.drain();
-      for (let i = 0; i < frames.length; i += 1) {
-        stream.send(frames[i]);
-      }
-      // Subscribe to segment end → force endpoint when requested and supported
-      if (recorder && opts.flushOnSegmentEnd === true) {
-        if (provider.capabilities.forceEndpoint) {
-          subscribeSegmentFlush(() => void stream.forceEndpoint(), 'forceEndpoint on segment end');
-        } else {
-          logger?.debug('flushOnSegmentEnd requested but provider does not support forceEndpoint', {
-            module: 'runtime-base',
-            providerId: provider.id,
-          });
-        }
-      }
+      await connectWsTransport(
+        {
+          logger,
+          stream,
+          preconnectBuffer,
+          providerId: provider.id,
+        },
+        signal,
+      );
       connected = true;
       setStatus('connected');
-      logger?.debug('connected', { module: 'runtime-base', event: 'connect', providerId: provider.id });
       attempts = 0;
       connectDeferred?.resolve();
       connectDeferred = null;
@@ -316,17 +262,48 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       await connectDeferred.promise;
       return;
     }
-    // Re-subscribe to recorder if disconnected (guard against double subscription)
-    if (recorder && !unsubscribeRecorder) {
+    if (recorder) {
+      if (unsubscribeRecorder) {
+        unsubscribeRecorder();
+      }
       unsubscribeRecorder = recorder.subscribeFrames((frame) => {
         if (!connected) {
           preconnectBuffer.push(frame);
-        } else if (provider.transport === 'http' && aggregator) {
-          aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
+        } else if (httpTransport) {
+          httpTransport.aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
         } else if (stream) {
           stream.send(frame);
         }
       });
+
+      if (opts.flushOnSegmentEnd === true) {
+        if (unsubscribeSegment) {
+          unsubscribeSegment();
+        }
+        const FORCE_COOLDOWN_MS = 200;
+        let lastForceTs = 0;
+        unsubscribeSegment = recorder.onSegment(() => {
+          const now = Date.now();
+          if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
+          lastForceTs = now;
+
+          if (httpTransport) {
+            logger?.debug('force flush on segment end', {
+              module: 'runtime-base',
+              event: 'segment-end',
+              providerId: provider.id,
+            });
+            httpTransport.aggregator.forceFlush();
+          } else if (stream && provider.capabilities.forceEndpoint) {
+            logger?.debug('forceEndpoint on segment end', {
+              module: 'runtime-base',
+              event: 'segment-end',
+              providerId: provider.id,
+            });
+            void stream.forceEndpoint();
+          }
+        });
+      }
     }
     connectDeferred = createDeferred<void>();
     attempts = 0;
@@ -348,9 +325,9 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       connectDeferred?.resolve();
       connectDeferred = null;
       preconnectBuffer.clear();
-      if (aggregator) {
-        aggregator.close(true);
-        aggregator = null;
+      if (httpTransport) {
+        httpTransport.aggregator.close(true);
+        httpTransport = null;
       }
       if (stream) {
         await stream.disconnect();
@@ -363,8 +340,8 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   };
 
   const forceEndpoint = async (): Promise<void> => {
-    if (provider.transport === 'http' && aggregator) {
-      aggregator.forceFlush();
+    if (provider.transport === 'http' && httpTransport) {
+      httpTransport.aggregator.forceFlush();
       return;
     }
     const stream = ensureStream();
@@ -375,15 +352,10 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     preconnectBuffer.clear();
   };
 
-  // Subscribe to recorder frames for preconnect buffer and live streaming
   if (recorder) {
     unsubscribeRecorder = recorder.subscribeFrames((frame) => {
       if (!connected) {
         preconnectBuffer.push(frame);
-      } else if (provider.transport === 'http' && aggregator) {
-        aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
-      } else if (stream) {
-        stream.send(frame);
       }
     });
   }
