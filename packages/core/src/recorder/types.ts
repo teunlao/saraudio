@@ -1,4 +1,13 @@
-import type { CoreError, Frame, NormalizedFrame, Pipeline, RecorderFrameEncoding, Segment, StageController, VADScore } from '../index';
+import type {
+  CoreError,
+  Frame,
+  NormalizedFrame,
+  Pipeline,
+  RecorderFrameEncoding,
+  Segment,
+  StageController,
+  VADScore,
+} from '../index';
 
 export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
 
@@ -72,8 +81,10 @@ export interface RecorderRecordings<Exports extends RecordingExports = Recording
  */
 export interface Recorder<
   E extends RecorderFrameEncoding = 'pcm16',
-  Exports extends RecordingExports = RecordingExports
-> extends RecorderState, RecorderLifecycle, RecorderSubscriptions {
+  Exports extends RecordingExports = RecordingExports,
+> extends RecorderState,
+    RecorderLifecycle,
+    RecorderSubscriptions {
   configure(options?: RecorderConfigureOptions): Promise<void>;
   update(options?: unknown): Promise<void>;
   // Live streaming

@@ -3,7 +3,7 @@ import { Pipeline } from '../pipeline';
 import type { Recorder } from '../recorder/types';
 import type { CoreError, Frame, Segment, VADScore } from '../types';
 
-export interface RecorderStubOptions<E extends RecorderFrameEncoding = 'pcm16'> {
+export interface RecorderStubOptions<_E extends RecorderFrameEncoding = 'pcm16'> {
   initialStatus?: 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
   initialError?: Error | null;
 }
