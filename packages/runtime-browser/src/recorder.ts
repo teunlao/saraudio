@@ -3,7 +3,6 @@ import type {
   Frame,
   NormalizedFrame,
   Pipeline,
-  RecorderEncodingOf,
   RecorderFormatOptions,
   RecorderFrameEncoding,
   Segment,
@@ -98,10 +97,6 @@ export interface Recorder<E extends RecorderFrameEncoding = 'pcm16'> {
   };
 }
 
-export function createRecorder<O extends RecorderOptions<RecorderFrameEncoding>>(
-  options?: O,
-): Recorder<RecorderEncodingOf<O>>;
-export function createRecorder(options?: RecorderOptions): Recorder<'pcm16'>;
 export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   options: RecorderOptions<E> = {},
 ): Recorder<E> {
