@@ -1,14 +1,11 @@
 import type {
   BatchTranscriptionProvider,
   NormalizedFrame,
-  Recorder,
-  RecorderStatus,
-  Segment,
   StreamOptions,
   TranscriptionStream,
   TranscriptResult,
 } from '@saraudio/core';
-import { Pipeline } from '@saraudio/core';
+import { createRecorderStub } from '@saraudio/core/testing';
 import { describe, expect, test } from 'vitest';
 
 import { createTranscription } from './transcription-controller';
@@ -19,62 +16,6 @@ function makeFrame(samples = 320, rate = 16000, channels: 1 | 2 = 1): Normalized
   const pcm = new Int16Array(samples * channels);
   for (let i = 0; i < samples * channels; i += 1) pcm[i] = i % 64;
   return { pcm, tsMs: 0, sampleRate: rate, channels };
-}
-
-function createRecorderStub(): {
-  recorder: Recorder;
-  emitFrame: (f: NormalizedFrame<'pcm16'>) => void;
-  emitSegment: () => void;
-} {
-  const frameHandlers = new Set<(f: NormalizedFrame<'pcm16'>) => void>();
-  const segmentHandlers = new Set<(s: Segment) => void>();
-  const pipeline = new Pipeline({ now: () => 0, createId: () => 'id' });
-  const recorder: Recorder = {
-    get status() {
-      const s: RecorderStatus = 'idle';
-      return s;
-    },
-    get error() {
-      return null;
-    },
-    pipeline,
-    async start() {},
-    async stop() {},
-    reset() {},
-    dispose() {},
-    onVad: () => () => {},
-    onSegment: (h: (s: Segment) => void) => {
-      segmentHandlers.add(h);
-      return () => segmentHandlers.delete(h);
-    },
-    onError: () => () => {},
-    subscribeRawFrames: () => () => {},
-    subscribeSpeechFrames: () => () => {},
-    subscribeFrames(h) {
-      frameHandlers.add(h);
-      return () => frameHandlers.delete(h);
-    },
-    onReady: () => () => {},
-    async configure() {},
-    async update() {},
-    recordings: {
-      cleaned: { durationMs: 0 },
-      full: { durationMs: 0 },
-      masked: { durationMs: 0 },
-      meta() {
-        return { sessionDurationMs: 0, cleanedDurationMs: 0 };
-      },
-      clear() {},
-    },
-  };
-  return {
-    recorder,
-    emitFrame: (f: NormalizedFrame<'pcm16'>) => frameHandlers.forEach((h) => h(f)),
-    emitSegment: () =>
-      segmentHandlers.forEach((h) =>
-        h({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 }),
-      ),
-  };
 }
 
 function createHttpProviderStub(): BatchTranscriptionProvider {
@@ -127,7 +68,7 @@ function createHttpProviderStub(): BatchTranscriptionProvider {
 describe('transcription controller — HTTP chunking path', () => {
   test('frames go through aggregator and result is emitted', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame, emitSegment } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -139,8 +80,8 @@ describe('transcription controller — HTTP chunking path', () => {
     controller.onTranscript((r) => finals.push(r));
 
     await controller.connect();
-    emitFrame(makeFrame(320));
-    emitSegment();
+    recorder.emitNormalizedFrame(makeFrame(320));
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
     expect(finals.length).toBe(1);
     expect(finals[0].text.startsWith('bytes:')).toBe(true);
@@ -148,12 +89,12 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('forceEndpoint maps to aggregator.forceFlush', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({ provider, recorder, chunking: { intervalMs: 0, minDurationMs: 0 } });
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
     await controller.connect();
-    emitFrame(makeFrame(320));
+    recorder.emitNormalizedFrame(makeFrame(320));
     await controller.forceEndpoint();
     await flushPromises();
     expect(finals.length).toBe(1);
@@ -161,25 +102,25 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('disconnect closes aggregator and prevents further flushes', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame, emitSegment } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({ provider, recorder, chunking: { intervalMs: 0, minDurationMs: 0 } });
     let count = 0;
     controller.onTranscript(() => {
       count += 1;
     });
     await controller.connect();
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
     await controller.disconnect();
     await flushPromises();
     const before = count;
-    emitSegment();
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
     expect(count).toBe(before);
   });
 
   test('Bug #1: preconnect frames are drained into aggregator (race condition check)', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -189,8 +130,8 @@ describe('transcription controller — HTTP chunking path', () => {
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
 
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
 
     await controller.connect();
     await controller.forceEndpoint();
@@ -203,7 +144,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('Bug #1: frames during connect() are not lost', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -214,8 +155,8 @@ describe('transcription controller — HTTP chunking path', () => {
     controller.onTranscript((r) => finals.push(r));
 
     const connectPromise = controller.connect();
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
     await connectPromise;
 
     await controller.forceEndpoint();
@@ -228,7 +169,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('Bug #2: stereo frames calculate duration correctly for preconnect buffer', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -239,9 +180,9 @@ describe('transcription controller — HTTP chunking path', () => {
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
 
-    emitFrame(makeFrame(160, 16000, 2));
-    emitFrame(makeFrame(160, 16000, 2));
-    emitFrame(makeFrame(160, 16000, 2));
+    recorder.emitNormalizedFrame(makeFrame(160, 16000, 2));
+    recorder.emitNormalizedFrame(makeFrame(160, 16000, 2));
+    recorder.emitNormalizedFrame(makeFrame(160, 16000, 2));
 
     await controller.connect();
     await controller.forceEndpoint();
@@ -254,7 +195,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('segment flush respects cooldown period', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame, emitSegment } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -268,14 +209,14 @@ describe('transcription controller — HTTP chunking path', () => {
     });
 
     await controller.connect();
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
 
-    emitSegment();
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
     const afterFirst = flushCount;
 
-    emitSegment();
-    emitSegment();
+    recorder.emitSegment({ id: 'seg2', startMs: 100, endMs: 200, durationMs: 100, sampleRate: 16000, channels: 1 });
+    recorder.emitSegment({ id: 'seg3', startMs: 200, endMs: 300, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
 
     expect(flushCount).toBe(afterFirst);
@@ -289,7 +230,7 @@ describe('transcription controller — HTTP chunking path', () => {
       return await originalTranscribe(audio, opts, signal);
     };
 
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -297,7 +238,7 @@ describe('transcription controller — HTTP chunking path', () => {
     });
 
     await controller.connect();
-    emitFrame(makeFrame(320));
+    recorder.emitNormalizedFrame(makeFrame(320));
     void controller.forceEndpoint();
 
     await controller.disconnect();
@@ -308,7 +249,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('multiple frames before connect are all sent', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -318,10 +259,10 @@ describe('transcription controller — HTTP chunking path', () => {
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
 
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
 
     await controller.connect();
     await controller.forceEndpoint();
@@ -334,7 +275,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('frames after connect go directly to aggregator', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -346,8 +287,8 @@ describe('transcription controller — HTTP chunking path', () => {
 
     await controller.connect();
 
-    emitFrame(makeFrame(160));
-    emitFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
 
     await controller.forceEndpoint();
     await flushPromises();
@@ -359,7 +300,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('preconnect buffer respects max duration', async () => {
     const provider = createHttpProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -371,7 +312,7 @@ describe('transcription controller — HTTP chunking path', () => {
     controller.onTranscript((r) => finals.push(r));
 
     for (let i = 0; i < 10; i += 1) {
-      emitFrame(makeFrame(160));
+      recorder.emitNormalizedFrame(makeFrame(160));
     }
 
     await controller.connect();
@@ -383,7 +324,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('empty preconnect buffer does not cause errors', async () => {
     const provider = createHttpProviderStub();
-    const { recorder } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
@@ -396,7 +337,7 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('forceEndpoint without frames does not crash', async () => {
     const provider = createHttpProviderStub();
-    const { recorder } = createRecorderStub();
+    const recorder = createRecorderStub();
     const controller = createTranscription({
       provider,
       recorder,
