@@ -1,6 +1,5 @@
 import type {
   BatchTranscriptionProvider,
-  NormalizedFrame,
   Recorder,
   StreamStatus,
   TranscriptionProvider,
@@ -11,9 +10,16 @@ import type {
 import { encodeWavPcm16, isRetryable, RateLimitError } from '@saraudio/core';
 
 import type { Logger } from '@saraudio/utils';
-import { createDeferred, createHttpLiveAggregator, type Deferred, type HttpLiveAggregator } from '@saraudio/utils';
+import {
+  computeBackoff,
+  createDeferred,
+  createHttpLiveAggregator,
+  type Deferred,
+  type HttpLiveAggregator,
+  type RetryConfig,
+} from '@saraudio/utils';
 
-import { frameDurationMs } from './helpers/frame-duration';
+import { PreconnectBuffer } from './helpers/preconnect-buffer';
 
 export interface CreateTranscriptionOptions {
   provider: TranscriptionProvider;
@@ -89,20 +95,17 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     jitterRatio: 0,
   };
   const retryCfg = { ...retryDefaults, ...(opts.retry ?? {}) };
-
-  const computeBackoff = (attempt: number, err?: unknown): number => {
-    if (err instanceof RateLimitError && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
-      return Math.min(err.retryAfterMs, retryCfg.maxDelayMs);
-    }
-    const exp = Math.min(retryCfg.baseDelayMs * retryCfg.factor ** Math.max(0, attempt - 1), retryCfg.maxDelayMs);
-    if (!retryCfg.jitterRatio) return exp;
-    const jitter = exp * retryCfg.jitterRatio * (Math.random() - 0.5) * 2;
-    return Math.max(0, Math.min(retryCfg.maxDelayMs, Math.floor(exp + jitter)));
+  const retryConfig: RetryConfig = {
+    baseDelayMs: retryCfg.baseDelayMs,
+    factor: retryCfg.factor,
+    maxDelayMs: retryCfg.maxDelayMs,
+    jitterRatio: retryCfg.jitterRatio,
   };
 
-  // onReady buffer: keep a small pre-connect buffer to avoid losing the beginning of speech
-  const DEFAULT_PRECONNECT_MS = 60;
-  const SOFT_MAX_PRECONNECT_MS = 120;
+  // onReady buffer: cover handshake window to avoid losing early speech
+  // Default 120ms, soft‑max 250ms based on typical 2*RTT for WS/TLS on mobile networks
+  const DEFAULT_PRECONNECT_MS = 120;
+  const SOFT_MAX_PRECONNECT_MS = 250;
   const requestedPreconnect = opts.preconnectBufferMs;
   let maxPreconnectMs = DEFAULT_PRECONNECT_MS;
   if (typeof requestedPreconnect === 'number') {
@@ -125,18 +128,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     }
   }
 
-  const preconnectBuffer: Array<NormalizedFrame<'pcm16'>> = [];
-  let preconnectBufferedMs = 0;
-
-  const pushPreconnect = (f: NormalizedFrame<'pcm16'>): void => {
-    preconnectBuffer.push(f);
-    preconnectBufferedMs += frameDurationMs(f);
-    // Trim from the head while exceeding the time budget
-    while (preconnectBufferedMs > maxPreconnectMs && preconnectBuffer.length > 1) {
-      const dropped = preconnectBuffer.shift();
-      if (dropped) preconnectBufferedMs -= frameDurationMs(dropped);
-    }
-  };
+  const preconnectBuffer = new PreconnectBuffer(maxPreconnectMs);
 
   const setStatus = (next: StreamStatus): void => {
     if (status === next) return;
@@ -181,7 +173,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       setStatus('error');
       return;
     }
-    const delay = computeBackoff(attempts, err);
+    const delay = computeBackoff(attempts, retryConfig, err instanceof RateLimitError ? err : undefined);
     logger?.debug('retry scheduled', {
       module: 'runtime-base',
       event: 'retry',
@@ -245,13 +237,10 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
         });
       }
       connected = true;
-      if (preconnectBuffer.length > 0) {
-        for (let i = 0; i < preconnectBuffer.length; i += 1) {
-          const f = preconnectBuffer[i];
-          aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
-        }
-        preconnectBuffer.length = 0;
-        preconnectBufferedMs = 0;
+      const frames = preconnectBuffer.drain();
+      for (let i = 0; i < frames.length; i += 1) {
+        const f = frames[i];
+        aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
       }
       if (recorder && opts.flushOnSegmentEnd === true) {
         const FORCE_COOLDOWN_MS = 200;
@@ -286,12 +275,9 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     try {
       await stream.connect(signal);
       // Flush preconnect buffer first-in-first-out
-      if (preconnectBuffer.length > 0) {
-        for (let i = 0; i < preconnectBuffer.length; i += 1) {
-          stream.send(preconnectBuffer[i]);
-        }
-        preconnectBuffer.length = 0;
-        preconnectBufferedMs = 0;
+      const frames = preconnectBuffer.drain();
+      for (let i = 0; i < frames.length; i += 1) {
+        stream.send(frames[i]);
       }
       // Subscribe to segment end → force endpoint when requested and supported
       if (recorder && opts.flushOnSegmentEnd === true) {
@@ -341,7 +327,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     if (recorder && !unsubscribeRecorder) {
       unsubscribeRecorder = recorder.subscribeFrames((frame) => {
         if (!connected) {
-          pushPreconnect(frame);
+          preconnectBuffer.push(frame);
         } else if (provider.transport === 'http' && aggregator) {
           aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
         } else if (stream) {
@@ -368,8 +354,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       cleanupRetry();
       connectDeferred?.resolve();
       connectDeferred = null;
-      preconnectBuffer.length = 0;
-      preconnectBufferedMs = 0;
+      preconnectBuffer.clear();
       if (aggregator) {
         aggregator.close(true);
         aggregator = null;
@@ -394,15 +379,14 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   };
 
   const clear = (): void => {
-    preconnectBuffer.length = 0;
-    preconnectBufferedMs = 0;
+    preconnectBuffer.clear();
   };
 
   // Subscribe to recorder frames for preconnect buffer and live streaming
   if (recorder) {
     unsubscribeRecorder = recorder.subscribeFrames((frame) => {
       if (!connected) {
-        pushPreconnect(frame);
+        preconnectBuffer.push(frame);
       } else if (provider.transport === 'http' && aggregator) {
         aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
       } else if (stream) {

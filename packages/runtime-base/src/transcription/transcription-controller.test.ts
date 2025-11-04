@@ -314,7 +314,7 @@ describe('createTranscription controller', () => {
         ? ((warnings[0].context as Record<string, unknown>).clampedTo as number)
         : undefined;
     expect(provided).toBe(500);
-    expect(clampedTo).toBe(120);
+    expect(clampedTo).toBe(250);
   });
 
   test('preconnectBufferMs clamps negative to 0 with warning', async () => {
@@ -479,8 +479,8 @@ describe('createTranscription controller', () => {
 
     const partials: string[] = [];
     const finals: TranscriptResult[] = [];
-    controller.onPartial((t) => partials.push(t));
-    controller.onTranscript((r) => finals.push(r));
+    controller.onPartial((t: string) => partials.push(t));
+    controller.onTranscript((r: TranscriptResult) => finals.push(r));
 
     await controller.connect();
     provider.streamInstance.emitPartial('hel');
@@ -496,7 +496,7 @@ describe('createTranscription controller', () => {
     const controller = createTranscription({ provider, recorder });
 
     const errors: Error[] = [];
-    controller.onError((e) => errors.push(e));
+    controller.onError((e: Error) => errors.push(e));
 
     await controller.connect();
     const boom = new Error('boom');

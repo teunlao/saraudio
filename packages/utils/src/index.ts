@@ -4,6 +4,7 @@ export { frameDurationMs } from './dsp/frame-duration';
 export { createHysteresis, type HysteresisOptions, type HysteresisState } from './dsp/hysteresis';
 export { resampleLinear } from './dsp/resample';
 export { rms } from './dsp/rms';
+export { computeBackoff, type RetryConfig, type RetryableError } from './retry/exponential-backoff';
 export type { AggregatorFrame, HttpLiveAggregator, HttpLiveAggregatorOptions } from './http/http-live-aggregator';
 export { createHttpLiveAggregator } from './http/http-live-aggregator';
 export type { HttpClient, HttpRequest, HttpResponse } from './http/types';
