@@ -1,4 +1,5 @@
 import type {
+  BatchTranscriptionProvider,
   NormalizedFrame,
   Recorder,
   StreamStatus,
@@ -7,10 +8,10 @@ import type {
   TranscriptResult,
   Transport,
 } from '@saraudio/core';
-import { isRetryable, RateLimitError } from '@saraudio/core';
+import { encodeWavPcm16, isRetryable, RateLimitError } from '@saraudio/core';
 
 import type { Logger } from '@saraudio/utils';
-import { createDeferred, type Deferred } from '@saraudio/utils';
+import { createDeferred, createHttpLiveAggregator, type Deferred, type HttpLiveAggregator } from '@saraudio/utils';
 
 export interface CreateTranscriptionOptions {
   provider: TranscriptionProvider;
@@ -20,6 +21,14 @@ export interface CreateTranscriptionOptions {
   flushOnSegmentEnd?: boolean;
   /** Max duration of pre-connect audio buffer to avoid losing early speech (ms). Default: 60, soft-max: 120. */
   preconnectBufferMs?: number;
+  /** Chunked sending options for HTTP providers (ignored for WebSocket). */
+  chunking?: {
+    intervalMs?: number;
+    minDurationMs?: number;
+    overlapMs?: number;
+    maxInFlight?: number;
+    timeoutMs?: number;
+  };
   /** Retry policy for transient errors. */
   retry?: {
     enabled?: boolean;
@@ -65,6 +74,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   let unsubscribeRecorder: (() => void) | null = null;
   let unsubscribeSegment: (() => void) | null = null;
   let unsubscribeStream: Array<() => void> = [];
+  let aggregator: HttpLiveAggregator<TranscriptResult> | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let connectDeferred: Deferred<void> | null = null;
   let attempts = 0;
@@ -84,8 +94,8 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     }
     const exp = Math.min(retryCfg.baseDelayMs * retryCfg.factor ** Math.max(0, attempt - 1), retryCfg.maxDelayMs);
     if (!retryCfg.jitterRatio) return exp;
-    const jitter = exp * retryCfg.jitterRatio * 0.5; // deterministic half-jitter
-    return Math.max(0, Math.min(retryCfg.maxDelayMs, Math.floor(exp - jitter)));
+    const jitter = exp * retryCfg.jitterRatio * (Math.random() - 0.5) * 2;
+    return Math.max(0, Math.min(retryCfg.maxDelayMs, Math.floor(exp + jitter)));
   };
 
   // onReady buffer: keep a small pre-connect buffer to avoid losing the beginning of speech
@@ -118,7 +128,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
 
   const frameDurationMs = (f: NormalizedFrame<'pcm16'>): number => {
     const samples = f.pcm.length;
-    const duration = (samples / f.sampleRate) * 1000;
+    const duration = (samples / (f.sampleRate * f.channels)) * 1000;
     return duration;
   };
 
@@ -137,6 +147,9 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     status = next;
     statusSubs.forEach((h) => h(status));
   };
+
+  const isBatchProvider = (p: TranscriptionProvider): p is BatchTranscriptionProvider =>
+    typeof (p as BatchTranscriptionProvider).transcribe === 'function';
 
   const ensureStream = (): TranscriptionStream => {
     if (!stream) {
@@ -210,19 +223,70 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   const attemptConnect = async (signal?: AbortSignal): Promise<void> => {
     setStatus('connecting');
     attempts += 1;
+    // HTTP path: chunking aggregator instead of WS stream
+    if (provider.transport === 'http' && isBatchProvider(provider)) {
+      if (!aggregator) {
+        aggregator = createHttpLiveAggregator<TranscriptResult>({
+          intervalMs: opts.chunking?.intervalMs,
+          minDurationMs: opts.chunking?.minDurationMs,
+          overlapMs: opts.chunking?.overlapMs,
+          maxInFlight: opts.chunking?.maxInFlight,
+          timeoutMs: opts.chunking?.timeoutMs,
+          onFlush: async ({ pcm, sampleRate, channels, signal: flushSignal }) => {
+            const wav = encodeWavPcm16(pcm, { sampleRate, channels });
+            return await provider.transcribe(wav, undefined, flushSignal);
+          },
+          onResult: (res) => {
+            transcriptSubs.forEach((h) => h(res));
+            if (res.text) partialSubs.forEach((h) => h(res.text));
+          },
+          onError: (err) => {
+            lastError = (err as Error) ?? new Error('HTTP chunk flush failed');
+            errorSubs.forEach((h) => h(lastError as Error));
+            setStatus('error');
+          },
+          logger,
+        });
+      }
+      connected = true;
+      if (preconnectBuffer.length > 0) {
+        for (let i = 0; i < preconnectBuffer.length; i += 1) {
+          const f = preconnectBuffer[i];
+          aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
+        }
+        preconnectBuffer.length = 0;
+        preconnectBufferedMs = 0;
+      }
+      if (recorder && opts.flushOnSegmentEnd === true) {
+        const FORCE_COOLDOWN_MS = 200;
+        let lastForceTs = 0;
+        unsubscribeSegment = recorder.onSegment(() => {
+          const now = Date.now();
+          if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
+          lastForceTs = now;
+          logger?.debug('force flush on segment end', {
+            module: 'runtime-base',
+            event: 'segment-end',
+            providerId: provider.id,
+          });
+          aggregator?.forceFlush();
+        });
+      }
+      setStatus('connected');
+      logger?.debug('connected', {
+        module: 'runtime-base',
+        event: 'connect',
+        providerId: provider.id,
+        transport: 'http',
+      });
+      attempts = 0;
+      connectDeferred?.resolve();
+      connectDeferred = null;
+      return;
+    }
+
     const stream = ensureStream();
     wireStream(stream, signal);
-    // Subscribe frames before awaiting connect to avoid losing early audio
-    if (recorder && !unsubscribeRecorder) {
-      unsubscribeRecorder = recorder.subscribeFrames((frame) => {
-        if (!connected) {
-          pushPreconnect(frame);
-        } else {
-          const active = stream;
-          if (active) active.send(frame);
-        }
-      });
-    }
     try {
       await stream.connect(signal);
       // Flush preconnect buffer first-in-first-out
@@ -259,7 +323,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       connected = true;
       setStatus('connected');
       logger?.debug('connected', { module: 'runtime-base', event: 'connect', providerId: provider.id });
-      attempts = 1; // reset window for subsequent retries if needed
+      attempts = 0;
       connectDeferred?.resolve();
       connectDeferred = null;
     } catch (e) {
@@ -296,6 +360,10 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       cleanupRetry();
       connectDeferred?.resolve();
       connectDeferred = null;
+      if (aggregator) {
+        aggregator.close(true);
+        aggregator = null;
+      }
       if (stream) {
         await stream.disconnect();
       }
@@ -307,15 +375,30 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   };
 
   const forceEndpoint = async (): Promise<void> => {
+    if (provider.transport === 'http' && aggregator) {
+      aggregator.forceFlush();
+      return;
+    }
     const stream = ensureStream();
     await stream.forceEndpoint();
   };
 
   const clear = (): void => {
-    // Minimal stub: higher layers can reset accumulators/partials if needed
     preconnectBuffer.length = 0;
     preconnectBufferedMs = 0;
   };
+
+  if (recorder) {
+    unsubscribeRecorder = recorder.subscribeFrames((frame) => {
+      if (!connected) {
+        pushPreconnect(frame);
+      } else if (provider.transport === 'http' && aggregator) {
+        aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
+      } else if (stream) {
+        stream.send(frame);
+      }
+    });
+  }
 
   return {
     get status() {
