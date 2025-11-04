@@ -208,6 +208,23 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     }
   };
 
+  const subscribeSegmentFlush = (onFlush: () => void, eventName: string): void => {
+    const FORCE_COOLDOWN_MS = 200;
+    let lastForceTs = 0;
+    unsubscribeSegment =
+      recorder?.onSegment(() => {
+        const now = Date.now();
+        if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
+        lastForceTs = now;
+        logger?.debug(eventName, {
+          module: 'runtime-base',
+          event: 'segment-end',
+          providerId: provider.id,
+        });
+        onFlush();
+      }) ?? null;
+  };
+
   const attemptConnect = async (signal?: AbortSignal): Promise<void> => {
     setStatus('connecting');
     attempts += 1;
@@ -243,19 +260,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
         aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
       }
       if (recorder && opts.flushOnSegmentEnd === true) {
-        const FORCE_COOLDOWN_MS = 200;
-        let lastForceTs = 0;
-        unsubscribeSegment = recorder.onSegment(() => {
-          const now = Date.now();
-          if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
-          lastForceTs = now;
-          logger?.debug('force flush on segment end', {
-            module: 'runtime-base',
-            event: 'segment-end',
-            providerId: provider.id,
-          });
-          aggregator?.forceFlush();
-        });
+        subscribeSegmentFlush(() => aggregator?.forceFlush(), 'force flush on segment end');
       }
       setStatus('connected');
       logger?.debug('connected', {
@@ -282,19 +287,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       // Subscribe to segment end → force endpoint when requested and supported
       if (recorder && opts.flushOnSegmentEnd === true) {
         if (provider.capabilities.forceEndpoint) {
-          const FORCE_COOLDOWN_MS = 200;
-          let lastForceTs = 0;
-          unsubscribeSegment = recorder.onSegment(() => {
-            const now = Date.now();
-            if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
-            lastForceTs = now;
-            logger?.debug('forceEndpoint on segment end', {
-              module: 'runtime-base',
-              event: 'segment-end',
-              providerId: provider.id,
-            });
-            void stream.forceEndpoint();
-          });
+          subscribeSegmentFlush(() => void stream.forceEndpoint(), 'forceEndpoint on segment end');
         } else {
           logger?.debug('flushOnSegmentEnd requested but provider does not support forceEndpoint', {
             module: 'runtime-base',
