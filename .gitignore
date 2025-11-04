@@ -3,6 +3,7 @@
 .lab
 .external
 .turbo
+.docs
 
 node_modules
 dist
