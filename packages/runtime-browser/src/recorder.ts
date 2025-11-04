@@ -3,6 +3,7 @@ import type {
   Frame,
   NormalizedFrame,
   Pipeline,
+  RecorderEncodingOf,
   RecorderFormatOptions,
   RecorderFrameEncoding,
   Segment,
@@ -97,9 +98,13 @@ export interface Recorder<E extends RecorderFrameEncoding = 'pcm16'> {
   };
 }
 
-export const createRecorder = <E extends RecorderFrameEncoding = 'pcm16'>(
+export function createRecorder<O extends RecorderOptions<RecorderFrameEncoding>>(
+  options?: O,
+): Recorder<RecorderEncodingOf<O>>;
+export function createRecorder(options?: RecorderOptions): Recorder<'pcm16'>;
+export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   options: RecorderOptions<E> = {},
-): Recorder<E> => {
+): Recorder<E> {
   const runtime = options.runtime ?? createBrowserRuntime(options.runtimeOptions);
   // Build empty pipeline now; configure with plugins on start()
   const pipeline: Pipeline = runtime.createPipeline();
@@ -486,4 +491,4 @@ export const createRecorder = <E extends RecorderFrameEncoding = 'pcm16'>(
       },
     },
   };
-};
+}

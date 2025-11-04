@@ -2,7 +2,6 @@ import type {
   Frame,
   NormalizedFrame,
   RecorderFormatOptions,
-  RecorderFrameEncoding,
   Segment,
   StageController,
   SubscribeHandle,
@@ -22,14 +21,14 @@ import { createRecorder } from '@saraudio/runtime-browser';
 import type { MaybeRefOrGetter, Ref } from 'vue';
 import { onMounted, onUnmounted, ref, toValue, watch } from 'vue';
 
-export interface UseRecorderResult<E extends RecorderFrameEncoding = 'pcm16'> {
-  recorder: Ref<Recorder<E> | null>;
+export interface UseRecorderResult {
+  recorder: Ref<Recorder | null>;
   status: Ref<RecorderStatus>;
   error: Ref<Error | null>;
   segments: Ref<Segment[]>;
   vad: Ref<VADScore | null>;
   // Use runtime's pipeline type to avoid class identity mismatch across packages
-  pipeline: Ref<Recorder<E>['pipeline'] | null>;
+  pipeline: Ref<Recorder['pipeline'] | null>;
   recordings: Ref<{
     cleaned: { getBlob: () => Promise<Blob | null>; durationMs: number };
     full: { getBlob: () => Promise<Blob | null>; durationMs: number };
@@ -41,11 +40,11 @@ export interface UseRecorderResult<E extends RecorderFrameEncoding = 'pcm16'> {
   stop: () => Promise<void>;
   reset: () => void;
   clearSegments: () => void;
-  subscribeFrames: (handler: (frame: NormalizedFrame<E>) => void) => SubscribeHandle;
+  subscribeFrames: (handler: (frame: NormalizedFrame<'pcm16'>) => void) => SubscribeHandle;
   subscribeRawFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
   subscribeSpeechFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
   onReady: (handler: () => void) => SubscribeHandle;
-  update: (options?: RecorderUpdateOptions<E>) => Promise<void>;
+  update: (options?: RecorderUpdateOptions) => Promise<void>;
 }
 
 export interface UseRecorderOptions {
@@ -64,22 +63,13 @@ const cloneStages = (value: StageController[] | undefined): StageController[] | 
   return [...value];
 };
 
-type ExtractEncoding<T> = T extends { format?: { encoding?: infer E } }
-  ? E extends RecorderFrameEncoding
-    ? E
-    : 'pcm16'
-  : 'pcm16';
-
-export function useRecorder<Opt extends UseRecorderOptions>(
-  options: Opt = {} as Opt,
-): UseRecorderResult<ExtractEncoding<Opt>> {
-  type Enc = ExtractEncoding<Opt>;
-  const recorder = ref<Recorder<Enc> | null>(null);
+export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult {
+  const recorder = ref<Recorder | null>(null);
   const status = ref<RecorderStatus>('idle');
   const error = ref<Error | null>(null);
   const segments = ref<Segment[]>([]);
   const vad = ref<VADScore | null>(null);
-  const pipeline = ref<Recorder<Enc>['pipeline'] | null>(null);
+  const pipeline = ref<Recorder['pipeline'] | null>(null);
   const recordings = ref({
     cleaned: { getBlob: async () => null as Blob | null, durationMs: 0 },
     full: { getBlob: async () => null as Blob | null, durationMs: 0 },
@@ -90,7 +80,7 @@ export function useRecorder<Opt extends UseRecorderOptions>(
 
   const noopHandle: SubscribeHandle = () => {};
 
-  const subscribeFrames = (handler: (frame: NormalizedFrame<Enc>) => void): SubscribeHandle =>
+  const subscribeFrames = (handler: (frame: NormalizedFrame<'pcm16'>) => void): SubscribeHandle =>
     recorder.value ? recorder.value.subscribeFrames(handler) : noopHandle;
 
   const subscribeRawFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
@@ -102,7 +92,7 @@ export function useRecorder<Opt extends UseRecorderOptions>(
   const onReady = (handler: () => void): SubscribeHandle =>
     recorder.value ? recorder.value.onReady(handler) : noopHandle;
 
-  const updateRecorder = async (next?: RecorderUpdateOptions<Enc>): Promise<void> => {
+  const updateRecorder = async (next?: RecorderUpdateOptions): Promise<void> => {
     if (!recorder.value) return;
     await recorder.value.update(next);
   };
@@ -147,10 +137,8 @@ export function useRecorder<Opt extends UseRecorderOptions>(
   };
 
   onMounted(() => {
-    const fmt = options.format
-      ? (toValue(options.format) as Omit<RecorderFormatOptions, 'encoding'> & { encoding?: Enc })
-      : undefined;
-    const initialRecorder = createRecorder<Enc>({
+    const fmt = options.format ? toValue(options.format) : undefined;
+    const initialRecorder = createRecorder({
       runtime: options.runtime,
       runtimeOptions: options.runtimeOptions,
       stages: options.stages ? cloneStages(toValue(options.stages)) : undefined,
@@ -194,9 +182,9 @@ export function useRecorder<Opt extends UseRecorderOptions>(
       return toValue(options.source);
     };
 
-    const resolveFormat = (): (Omit<RecorderFormatOptions, 'encoding'> & { encoding?: Enc }) | undefined => {
+    const resolveFormat = (): RecorderFormatOptions | undefined => {
       if (options.format === undefined) return undefined;
-      return toValue(options.format) as Omit<RecorderFormatOptions, 'encoding'> & { encoding?: Enc };
+      return toValue(options.format);
     };
 
     const resolveMode = (): RuntimeMode | undefined => {
@@ -223,7 +211,7 @@ export function useRecorder<Opt extends UseRecorderOptions>(
           stages: nextOptions.stages,
           segmenter: nextOptions.segmenter,
           source: nextOptions.source,
-          format: nextOptions.format as Omit<RecorderFormatOptions, 'encoding'> & { encoding?: Enc },
+          format: nextOptions.format,
           mode: nextOptions.mode,
           allowFallback: nextOptions.allowFallback,
         });
@@ -257,5 +245,5 @@ export function useRecorder<Opt extends UseRecorderOptions>(
     subscribeSpeechFrames,
     onReady,
     update: updateRecorder,
-  } as UseRecorderResult<Enc>;
+  } as UseRecorderResult;
 }

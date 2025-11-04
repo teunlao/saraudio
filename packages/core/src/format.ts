@@ -18,3 +18,10 @@ export interface NormalizedFrame<E extends RecorderFrameEncoding> {
   sampleRate: number;
   channels: 1 | 2;
 }
+
+// Infer encoding type from an options-like object
+export type RecorderEncodingOf<T> = T extends { format?: { encoding?: infer E } }
+  ? E extends RecorderFrameEncoding
+    ? E
+    : 'pcm16'
+  : 'pcm16';
