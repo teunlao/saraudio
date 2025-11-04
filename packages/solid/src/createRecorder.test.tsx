@@ -1,45 +1,17 @@
-import type { Segment, VADScore } from '@saraudio/core';
+import { createRecorderStub } from '@saraudio/core/testing';
 import { render } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRecorder } from './createRecorder';
 
-// Mock createRecorder
 vi.mock('@saraudio/runtime-browser', () => ({
   createRecorder: () => {
-    const vadHandlers = new Set<(v: VADScore) => void>();
-    const segmentHandlers = new Set<(s: Segment) => void>();
-    const errorHandlers = new Set<(e: { message: string }) => void>();
-
-    return {
-      status: 'idle',
-      error: null,
-      pipeline: {
-        events: {
-          on: vi.fn(),
-          emit: vi.fn(),
-        },
-        push: vi.fn(),
-        flush: vi.fn(),
-        dispose: vi.fn(),
-        configure: vi.fn(),
-      },
-      start: vi.fn(async () => {}),
-      stop: vi.fn(async () => {}),
-      reset: vi.fn(),
-      dispose: vi.fn(),
-      onVad: (handler: (v: VADScore) => void) => {
-        vadHandlers.add(handler);
-        return () => vadHandlers.delete(handler);
-      },
-      onSegment: (handler: (s: Segment) => void) => {
-        segmentHandlers.add(handler);
-        return () => segmentHandlers.delete(handler);
-      },
-      onError: (handler: (e: { message: string }) => void) => {
-        errorHandlers.add(handler);
-        return () => errorHandlers.delete(handler);
-      },
-    };
+    const stub = createRecorderStub();
+    // Wrap methods with vi.fn() for mocking capabilities
+    stub.start = vi.fn(stub.start);
+    stub.stop = vi.fn(stub.stop);
+    stub.reset = vi.fn(stub.reset);
+    stub.dispose = vi.fn(stub.dispose);
+    return stub;
   },
 }));
 

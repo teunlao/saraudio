@@ -1,4 +1,5 @@
-import type { Pipeline, Segment, StageController } from '@saraudio/core';
+import type { StageController } from '@saraudio/core';
+import { createRecorderStub } from '@saraudio/core/testing';
 import type { BrowserRuntime, RuntimeMode } from '@saraudio/runtime-browser';
 import { renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, StrictMode } from 'react';
@@ -19,52 +20,37 @@ const mocks = vi.hoisted(() => {
   const stopMock = vi.fn(async () => {});
   const disposeMock = vi.fn();
 
-  const vadHandlers = new Set<(payload: { score: number; speech: boolean }) => void>();
-  const errorHandlers = new Set<(payload: { message: string }) => void>();
+  // SHARED handlers across all stubs (for StrictMode compatibility)
+  const vadHandlers = new Set<(payload: { score: number; speech: boolean; tsMs: number }) => void>();
+  const segmentHandlers = new Set<(segment: any) => void>();
+  const errorHandlers = new Set<(error: any) => void>();
 
-  const pipeline = {
-    events: {
-      on: vi.fn(() => () => {}),
-    },
-  } as unknown as Pipeline;
+  const createRecorderMock = vi.fn(() => {
+    const stub = createRecorderStub();
+    stub.update = updateMock;
+    stub.start = startMock;
+    stub.stop = stopMock;
+    stub.dispose = disposeMock;
 
-  const recordings = {
-    cleaned: { getBlob: async () => null, durationMs: 0 },
-    full: { getBlob: async () => null, durationMs: 0 },
-    masked: { getBlob: async () => null, durationMs: 0 },
-    meta: () => ({ sessionDurationMs: 0, cleanedDurationMs: 0 }),
-    clear: vi.fn(),
-  };
-
-  const createRecorderMock = vi.fn(() => ({
-    status: 'idle' as const,
-    pipeline,
-    recordings,
-    update: updateMock,
-    start: startMock,
-    stop: stopMock,
-    reset: vi.fn(),
-    dispose: disposeMock,
-    onVad(handler: (payload: { score: number; speech: boolean }) => void) {
+    // Override to use SHARED handlers
+    stub.onVad = (handler: any) => {
       vadHandlers.add(handler);
-      return () => {
-        vadHandlers.delete(handler);
-      };
-    },
-    onSegment(handler: (segment: Segment) => void) {
-      void handler;
-      return () => {};
-    },
-    onError(handler: (payload: { message: string }) => void) {
+      return () => vadHandlers.delete(handler);
+    };
+    stub.onSegment = (handler: any) => {
+      segmentHandlers.add(handler);
+      return () => segmentHandlers.delete(handler);
+    };
+    stub.onError = (handler: any) => {
       errorHandlers.add(handler);
-      return () => {
-        errorHandlers.delete(handler);
-      };
-    },
-  }));
+      return () => errorHandlers.delete(handler);
+    };
+
+    return stub;
+  });
 
   const emitVad = (payload: { score: number; speech: boolean }) => {
-    vadHandlers.forEach((handler) => handler(payload));
+    vadHandlers.forEach((h) => h({ ...payload, tsMs: Date.now() }));
   };
 
   return {

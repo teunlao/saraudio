@@ -1,4 +1,5 @@
-import type { Segment, Stage, StageController, VADScore } from '@saraudio/core';
+import type { Stage, StageController } from '@saraudio/core';
+import { createRecorderStub } from '@saraudio/core/testing';
 import type { RecorderSourceOptions, RuntimeMode, SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
@@ -11,47 +12,12 @@ const stopMock = vi.fn(async () => {});
 
 vi.mock('@saraudio/runtime-browser', () => ({
   createRecorder: vi.fn(() => {
-    const vadHandlers = new Set<(v: VADScore) => void>();
-    const segmentHandlers = new Set<(s: Segment) => void>();
-    const errorHandlers = new Set<(e: { message: string }) => void>();
-
-    return {
-      status: 'idle' as const,
-      error: null,
-      pipeline: {
-        events: {
-          on: vi.fn(),
-          emit: vi.fn(),
-        },
-        push: vi.fn(),
-        flush: vi.fn(),
-        dispose: vi.fn(),
-      },
-      configure: vi.fn(),
-      update: updateMock,
-      start: startMock,
-      stop: stopMock,
-      reset: vi.fn(),
-      dispose: vi.fn(),
-      onVad: (handler: (v: VADScore) => void) => {
-        vadHandlers.add(handler);
-        return () => {
-          vadHandlers.delete(handler);
-        };
-      },
-      onSegment: (handler: (s: Segment) => void) => {
-        segmentHandlers.add(handler);
-        return () => {
-          segmentHandlers.delete(handler);
-        };
-      },
-      onError: (handler: (e: { message: string }) => void) => {
-        errorHandlers.add(handler);
-        return () => {
-          errorHandlers.delete(handler);
-        };
-      },
-    };
+    const stub = createRecorderStub();
+    // Wrap methods for vitest tracking
+    stub.update = updateMock;
+    stub.start = startMock;
+    stub.stop = stopMock;
+    return stub;
   }),
 }));
 
