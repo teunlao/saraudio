@@ -348,4 +348,142 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
   });
+
+  test('Bug: frames emitted when aggregator is null are not lost', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.disconnect();
+    await flushPromises();
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.forceEndpoint();
+    await flushPromises();
+
+    expect(finals.length).toBeGreaterThan(0);
+  });
+
+  test('Bug: frames are not silently lost when aggregator is null', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    let errorCaught = false;
+
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    controller.onError(() => {
+      errorCaught = true;
+    });
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.disconnect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await flushPromises();
+
+    expect(errorCaught).toBe(false);
+  });
+
+  test('After disconnect, frames are ignored (not buffered)', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.disconnect();
+    await flushPromises();
+
+    const afterDisconnect = finals.length;
+
+    recorder.emitNormalizedFrame(makeFrame(160));
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await flushPromises();
+
+    expect(finals.length).toBe(afterDisconnect);
+  });
+
+  test('Reconnect after disconnect subscribes anew (no old frames)', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.disconnect();
+
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await flushPromises();
+
+    await controller.connect();
+    recorder.emitNormalizedFrame(makeFrame(160));
+    await controller.forceEndpoint();
+    await flushPromises();
+
+    expect(finals.length).toBe(2);
+  });
+
+  test('Bug: double await in connect does not cause issues', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    const start = Date.now();
+    await controller.connect();
+    const duration = Date.now() - start;
+
+    expect(controller.isConnected).toBe(true);
+    expect(duration).toBeLessThan(100);
+  });
+
+  test('No double subscription across repeated connect/disconnect', async () => {
+    const provider = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
+
+    await controller.connect();
+    const subscribersAfterFirstConnect = recorder.normalizedFrameHandlers.size;
+    await controller.disconnect();
+    await controller.connect();
+    const subscribersAfterReconnect = recorder.normalizedFrameHandlers.size;
+
+    expect(subscribersAfterFirstConnect).toBe(1);
+    expect(subscribersAfterReconnect).toBe(1);
+  });
 });

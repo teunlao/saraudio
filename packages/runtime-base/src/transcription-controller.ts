@@ -237,8 +237,8 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
             return await provider.transcribe(wav, undefined, flushSignal);
           },
           onResult: (res) => {
+            // HTTP providers do not emit partials; only finals are forwarded.
             transcriptSubs.forEach((h) => h(res));
-            if (res.text) partialSubs.forEach((h) => h(res.text));
           },
           onError: (err) => {
             lastError = (err as Error) ?? new Error('HTTP chunk flush failed');
@@ -341,6 +341,18 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       await connectDeferred.promise;
       return;
     }
+    // Re-subscribe to recorder if disconnected (guard against double subscription)
+    if (recorder && !unsubscribeRecorder) {
+      unsubscribeRecorder = recorder.subscribeFrames((frame) => {
+        if (!connected) {
+          pushPreconnect(frame);
+        } else if (provider.transport === 'http' && aggregator) {
+          aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
+        } else if (stream) {
+          stream.send(frame);
+        }
+      });
+    }
     connectDeferred = createDeferred<void>();
     attempts = 0;
     await attemptConnect(signal);
@@ -360,6 +372,8 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       cleanupRetry();
       connectDeferred?.resolve();
       connectDeferred = null;
+      preconnectBuffer.length = 0;
+      preconnectBufferedMs = 0;
       if (aggregator) {
         aggregator.close(true);
         aggregator = null;
@@ -388,6 +402,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     preconnectBufferedMs = 0;
   };
 
+  // Subscribe to recorder frames for preconnect buffer and live streaming
   if (recorder) {
     unsubscribeRecorder = recorder.subscribeFrames((frame) => {
       if (!connected) {
