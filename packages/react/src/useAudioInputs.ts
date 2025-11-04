@@ -77,7 +77,7 @@ export function useAudioInputs(options: UseAudioInputsOptions = {}): UseAudioInp
     const sub = watchAudioDeviceChanges(() => void refresh());
     return () => {
       mountedRef.current = false;
-      sub.unsubscribe();
+      sub();
     };
   }, [refresh]);
 

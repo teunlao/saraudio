@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SubscribeHandle } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import type { RecorderSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
+import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
@@ -13,6 +13,7 @@ const thresholdDb = ref(-50);
 const smoothMs = ref(30);
 
 const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
+const devices = computed(() => audioInputs.devices.value);
 
 const rec = useRecorder({
   stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
@@ -43,8 +44,7 @@ const wsLog = computed(() => {
   return Array.isArray(lines) ? lines.join('\n') : '';
 });
 
-async function start() {
-  dg.connect();
+onMounted(() => {
   readySubscription = rec.onReady(() => {
     console.log('[nuxt] recorder ready — streaming normalized frames');
   });
@@ -55,22 +55,24 @@ async function start() {
     }
     dg.sendPcm16(frame.pcm, frame.sampleRate);
   });
+});
+
+async function start() {
+  dg.connect();
   await rec.start();
 }
 
 async function stop() {
   await rec.stop();
   levels.reset();
-  frameSubscription?.unsubscribe();
-  readySubscription?.unsubscribe();
-  frameSubscription = null;
-  readySubscription = null;
   dg.close();
 }
 
 const isRunning = computed(() => rec.status.value === 'running' || rec.status.value === 'acquiring');
 
 onUnmounted(() => {
+  readySubscription?.()
+  frameSubscription?.()
   void stop();
 });
 </script>
@@ -88,7 +90,7 @@ onUnmounted(() => {
           <div>
             <label class="block text-sm text-gray-400 mb-2">Input Device</label>
             <select v-model="audioInputs.selectedDeviceId.value" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
-              <option v-for="d in audioInputs.devices.value" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Mic ${d.deviceId.slice(0,6)}` }}</option>
+              <option v-for="d in devices" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Mic ${d.deviceId.slice(0,6)}` }}</option>
             </select>
           </div>
           <div class="grid grid-cols-2 gap-4">

@@ -47,9 +47,9 @@ export function createRecorder(options: RecorderOptions): SvelteRecorderResult {
   // Cleanup on unmount
   $effect(() => {
     return () => {
-      vadUnsub.unsubscribe();
-      segmentUnsub.unsubscribe();
-      errorUnsub.unsubscribe();
+      vadUnsub();
+      segmentUnsub();
+      errorUnsub();
       recorder.dispose();
     };
   });

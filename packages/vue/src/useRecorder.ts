@@ -79,7 +79,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     clear: () => {},
   });
 
-  const noopHandle: SubscribeHandle = { unsubscribe: () => {} };
+  const noopHandle: SubscribeHandle = () => {};
 
   const subscribeFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
     recorder.value ? recorder.value.subscribeFrames(handler) : noopHandle;
@@ -229,9 +229,9 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     );
 
     onUnmounted(() => {
-      vadUnsub.unsubscribe();
-      segmentUnsub.unsubscribe();
-      errorUnsub.unsubscribe();
+      vadUnsub();
+      segmentUnsub();
+      errorUnsub();
       stopUpdateWatch();
       initialRecorder.dispose();
     });

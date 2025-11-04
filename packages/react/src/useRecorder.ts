@@ -186,9 +186,9 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     });
 
     return () => {
-      unsubscribeVad.unsubscribe();
-      unsubscribeSegment.unsubscribe();
-      unsubscribeError.unsubscribe();
+      unsubscribeVad();
+      unsubscribeSegment();
+      unsubscribeError();
     };
   }, [recorder]);
 

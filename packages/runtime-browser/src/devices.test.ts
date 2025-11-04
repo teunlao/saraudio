@@ -37,9 +37,9 @@ describe('devices helpers', () => {
     } as unknown as Navigator;
 
     const h = vi.fn();
-    const sub = watchAudioDeviceChanges(h);
+    const unsub = watchAudioDeviceChanges(h);
     expect(addEventListener).toHaveBeenCalledWith('devicechange', expect.any(Function));
-    sub.unsubscribe();
+    unsub();
     expect(removeEventListener).toHaveBeenCalledWith('devicechange', expect.any(Function));
   });
 });

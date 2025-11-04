@@ -40,20 +40,20 @@ vi.mock('@saraudio/runtime-browser', () => ({
       dispose: vi.fn(),
       onVad: (handler: (v: VADScore) => void) => {
         vadHandlers.add(handler);
-        return {
-          unsubscribe: () => vadHandlers.delete(handler),
+        return () => {
+          vadHandlers.delete(handler);
         };
       },
       onSegment: (handler: (s: Segment) => void) => {
         segmentHandlers.add(handler);
-        return {
-          unsubscribe: () => segmentHandlers.delete(handler),
+        return () => {
+          segmentHandlers.delete(handler);
         };
       },
       onError: (handler: (e: { message: string }) => void) => {
         errorHandlers.add(handler);
-        return {
-          unsubscribe: () => errorHandlers.delete(handler),
+        return () => {
+          errorHandlers.delete(handler);
         };
       },
     };

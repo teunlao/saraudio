@@ -13,7 +13,7 @@ describe('useAudioInputs', () => {
 
   it('initializes with default state before mount', () => {
     const listSpy = vi.spyOn(runtime, 'listAudioInputs').mockImplementation(() => new Promise(() => {}));
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs());
 
@@ -35,7 +35,7 @@ describe('useAudioInputs', () => {
       devices,
       permission: 'granted',
     });
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs());
 
@@ -58,7 +58,7 @@ describe('useAudioInputs', () => {
       devices,
       permission: 'granted',
     });
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs({ autoSelectFirst: true }));
 
@@ -79,7 +79,7 @@ describe('useAudioInputs', () => {
       devices,
       permission: 'granted',
     });
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs({ autoSelectFirst: false }));
 
@@ -100,7 +100,7 @@ describe('useAudioInputs', () => {
       devices,
       permission: 'granted',
     });
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs());
 
@@ -116,7 +116,7 @@ describe('useAudioInputs', () => {
 
   it('handles errors during enumeration', async () => {
     const listSpy = vi.spyOn(runtime, 'listAudioInputs').mockRejectedValue(new Error('Permission denied'));
-    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue({ unsubscribe: vi.fn() });
+    const watchSpy = vi.spyOn(runtime, 'watchAudioDeviceChanges').mockReturnValue(vi.fn());
 
     const { result } = renderHook(() => useAudioInputs());
 

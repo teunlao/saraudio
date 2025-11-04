@@ -42,9 +42,9 @@ export async function listAudioInputs(options: ListAudioInputsOptions = {}): Pro
   return { devices: audioInputs, permission };
 }
 
-export function watchAudioDeviceChanges(handler: () => void): { unsubscribe(): void } {
+export function watchAudioDeviceChanges(handler: () => void): () => void {
   if (!hasNavigator() || !navigator.mediaDevices) {
-    return { unsubscribe: () => void 0 };
+    return () => void 0;
   }
   const md = navigator.mediaDevices as unknown as MediaDevices & {
     addEventListener?: (type: string, cb: () => void) => void;
@@ -55,14 +55,12 @@ export function watchAudioDeviceChanges(handler: () => void): { unsubscribe(): v
   const cb = () => handler();
   if (typeof md.addEventListener === 'function' && typeof md.removeEventListener === 'function') {
     md.addEventListener('devicechange', cb);
-    return { unsubscribe: () => md.removeEventListener?.('devicechange', cb) };
+    return () => md.removeEventListener?.('devicechange', cb);
   }
   const prev = md.ondevicechange ?? null;
   md.ondevicechange = cb;
-  return {
-    unsubscribe: () => {
-      md.ondevicechange = prev;
-    },
+  return () => {
+    md.ondevicechange = prev;
   };
 }
 

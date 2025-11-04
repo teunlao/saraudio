@@ -10,9 +10,7 @@ vi.mock('@saraudio/runtime-browser', () => ({
       { deviceId: 'device-2', label: 'Microphone 2', kind: 'audioinput' as const, groupId: '', toJSON: () => ({}) },
     ],
   })),
-  watchAudioDeviceChanges: vi.fn(() => ({
-    unsubscribe: vi.fn(),
-  })),
+  watchAudioDeviceChanges: vi.fn(() => vi.fn()),
 }));
 
 describe('createAudioInputs', () => {

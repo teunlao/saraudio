@@ -8,9 +8,7 @@ export interface RecorderProduceOptions {
   masked?: boolean;
 }
 
-export interface SubscribeHandle {
-  unsubscribe(): void;
-}
+export type SubscribeHandle = () => void;
 
 export interface BaseRecorderCallbacks {
   onVad?: (payload: VADScore) => void;

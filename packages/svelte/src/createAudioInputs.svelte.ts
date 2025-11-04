@@ -65,7 +65,7 @@ export function createAudioInputs(options: CreateAudioInputsOptions = {}): Audio
     const sub = watchAudioDeviceChanges(() => void refresh());
     return () => {
       mounted = false;
-      sub.unsubscribe();
+      sub();
     };
   });
 

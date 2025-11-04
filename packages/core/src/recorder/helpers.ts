@@ -6,9 +6,7 @@ export const isStageController = (value: unknown): value is StageController =>
 
 export const createSubscription = <T>(set: Set<(value: T) => void>, handler: (value: T) => void): SubscribeHandle => {
   set.add(handler);
-  return {
-    unsubscribe() {
-      set.delete(handler);
-    },
+  return () => {
+    set.delete(handler);
   };
 };

@@ -77,10 +77,10 @@ export function createAudioInputs(options: CreateAudioInputsOptions = {}): Audio
   onMount(() => {
     mounted = true;
     void refresh();
-    const sub = watchAudioDeviceChanges(() => void refresh());
+    const unsub = watchAudioDeviceChanges(() => void refresh());
     onCleanup(() => {
       mounted = false;
-      sub.unsubscribe();
+      unsub();
     });
   });
 

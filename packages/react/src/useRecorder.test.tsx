@@ -48,24 +48,18 @@ const mocks = vi.hoisted(() => {
     dispose: disposeMock,
     onVad(handler: (payload: { score: number; speech: boolean }) => void) {
       vadHandlers.add(handler);
-      return {
-        unsubscribe() {
-          vadHandlers.delete(handler);
-        },
+      return () => {
+        vadHandlers.delete(handler);
       };
     },
     onSegment(handler: (segment: Segment) => void) {
       void handler;
-      return {
-        unsubscribe() {},
-      };
+      return () => {};
     },
     onError(handler: (payload: { message: string }) => void) {
       errorHandlers.add(handler);
-      return {
-        unsubscribe() {
-          errorHandlers.delete(handler);
-        },
+      return () => {
+        errorHandlers.delete(handler);
       };
     },
   }));

@@ -42,9 +42,9 @@ export function createRecorder(options: RecorderOptions = {}): SolidRecorderResu
     });
 
     onCleanup(() => {
-      vadUnsub.unsubscribe();
-      segmentUnsub.unsubscribe();
-      errorUnsub.unsubscribe();
+      vadUnsub();
+      segmentUnsub();
+      errorUnsub();
       rec.dispose();
     });
   });

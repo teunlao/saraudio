@@ -45,7 +45,7 @@ describe('createSubscription', () => {
     const subscription = createSubscription(handlers, handler);
 
     expect(handlers.has(handler)).toBe(true);
-    expect(subscription).toHaveProperty('unsubscribe');
+    expect(typeof subscription).toBe('function');
   });
 
   it('removes handler from set when unsubscribe is called', () => {
@@ -55,7 +55,7 @@ describe('createSubscription', () => {
     const subscription = createSubscription(handlers, handler);
     expect(handlers.has(handler)).toBe(true);
 
-    subscription.unsubscribe();
+    subscription();
     expect(handlers.has(handler)).toBe(false);
   });
 
@@ -69,11 +69,11 @@ describe('createSubscription', () => {
 
     expect(handlers.size).toBe(2);
 
-    sub1.unsubscribe();
+    sub1();
     expect(handlers.size).toBe(1);
     expect(handlers.has(handler2)).toBe(true);
 
-    sub2.unsubscribe();
+    sub2();
     expect(handlers.size).toBe(0);
   });
 });
