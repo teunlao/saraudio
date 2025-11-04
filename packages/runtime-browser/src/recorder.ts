@@ -1,8 +1,10 @@
 import type {
   CoreError,
   Frame,
+  NormalizedFrame,
   Pipeline,
   RecorderFormatOptions,
+  RecorderFrameEncoding,
   Segment,
   StageController,
   VADScore,
@@ -40,13 +42,13 @@ const buildMicrophoneConstraints = (source: RecorderSourceOptions | undefined): 
   return undefined;
 };
 
-export interface RecorderOptions {
+export interface RecorderOptions<E extends RecorderFrameEncoding = 'pcm16'> {
   // Pipeline config
   stages?: StageController[];
   segmenter?: SegmenterFactoryOptions | StageController | false;
   // Capture options
   source?: RecorderSourceOptions;
-  format?: RecorderFormatOptions;
+  format?: Omit<RecorderFormatOptions, 'encoding'> & { encoding?: E };
   mode?: RuntimeMode;
   allowFallback?: boolean;
   // Output builders
@@ -57,19 +59,21 @@ export interface RecorderOptions {
   onStream?: (stream: MediaStream | null) => void;
 }
 
-export type RecorderUpdateOptions = Partial<Omit<RecorderOptions, 'runtime' | 'runtimeOptions'>>;
+export type RecorderUpdateOptions<E extends RecorderFrameEncoding = 'pcm16'> = Partial<
+  Omit<RecorderOptions<E>, 'runtime' | 'runtimeOptions'>
+>;
 
 export interface RecordingExports {
   getBlob(): Promise<Blob | null>;
   durationMs: number;
 }
 
-export interface Recorder {
+export interface Recorder<E extends RecorderFrameEncoding = 'pcm16'> {
   readonly status: RecorderStatus;
   readonly error: Error | null;
   readonly pipeline: Pipeline;
   configure(options?: RecorderConfigureOptions): Promise<void>;
-  update(options?: RecorderUpdateOptions): Promise<void>;
+  update(options?: RecorderUpdateOptions<E>): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
   reset(): void;
@@ -79,7 +83,7 @@ export interface Recorder {
   onSegment(handler: (segment: Segment) => void): SubscribeHandle;
   onError(handler: (error: CoreError) => void): SubscribeHandle;
   // Live streaming
-  subscribeFrames(handler: (frame: Frame) => void): SubscribeHandle;
+  subscribeFrames(handler: (frame: NormalizedFrame<E>) => void): SubscribeHandle;
   subscribeRawFrames(handler: (frame: Frame) => void): SubscribeHandle;
   subscribeSpeechFrames(handler: (frame: Frame) => void): SubscribeHandle;
   onReady(handler: () => void): SubscribeHandle;
@@ -93,7 +97,9 @@ export interface Recorder {
   };
 }
 
-export const createRecorder = (options: RecorderOptions = {}): Recorder => {
+export const createRecorder = <E extends RecorderFrameEncoding = 'pcm16'>(
+  options: RecorderOptions<E> = {},
+): Recorder<E> => {
   const runtime = options.runtime ?? createBrowserRuntime(options.runtimeOptions);
   // Build empty pipeline now; configure with plugins on start()
   const pipeline: Pipeline = runtime.createPipeline();
@@ -104,7 +110,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   const errSubs = new Set<(payload: CoreError) => void>();
   const rawSubs = new Set<(frame: Frame) => void>();
   const speechSubs = new Set<(frame: Frame) => void>();
-  const frameSubs = new Set<(frame: Frame) => void>();
+  const frameSubs = new Set<(frame: NormalizedFrame<E>) => void>();
   const readySubs = new Set<() => void>();
   const normalizedBuffer: Frame[] = [];
   const NORMALIZED_BUFFER_LIMIT = 5;
@@ -153,11 +159,11 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   let stageSources: StageController[] = options.stages ? [...options.stages] : [];
-  let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
+  let segmenterSource: RecorderOptions<E>['segmenter'] = options.segmenter;
   let currentStages: StageController[] = [];
   const captureOptions: {
     source?: RecorderSourceOptions;
-    format?: RecorderFormatOptions;
+    format?: Omit<RecorderFormatOptions, 'encoding'> & { encoding?: E };
     mode?: RuntimeMode;
     allowFallback?: boolean;
   } = {
@@ -185,7 +191,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     }
   };
 
-  const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageController | null => {
+  const resolveSegmenterInput = (input: RecorderOptions<E>['segmenter']): StageController | null => {
     if (input === false) {
       return null;
     }
@@ -215,10 +221,10 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     pipeline.configure({ stages: currentStages });
   };
 
-  type UpdateKey = keyof RecorderUpdateOptions;
+  type UpdateKey = keyof RecorderUpdateOptions<E>;
 
   const pipelineMutators: {
-    [K in UpdateKey]?: (value: RecorderUpdateOptions[K]) => boolean;
+    [K in UpdateKey]?: (value: RecorderUpdateOptions<E>[K]) => boolean;
   } = {
     stages: (value) => {
       stageSources = value ? [...value] : [];
@@ -251,7 +257,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const captureMutators: {
-    [K in UpdateKey]?: (value: RecorderUpdateOptions[K]) => void;
+    [K in UpdateKey]?: (value: RecorderUpdateOptions<E>[K]) => void;
   } = {
     source: (value) => {
       captureOptions.source = value;
@@ -356,7 +362,8 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
           logger: runtime.services.logger,
         });
         bufferNormalizedFrame(normalized);
-        for (const h of frameSubs) h(normalized);
+        const n = normalized as NormalizedFrame<E>;
+        for (const h of frameSubs) h(n);
         markReady();
         pipeline.push(frame);
       });
@@ -455,7 +462,8 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     subscribeFrames: (handler) => {
       if (normalizedBuffer.length > 0) {
         for (const frame of normalizedBuffer) {
-          handler(cloneFrame(frame));
+          const cloned = cloneFrame(frame) as NormalizedFrame<E>;
+          handler(cloned);
         }
       }
       return createSubscription(frameSubs, handler);

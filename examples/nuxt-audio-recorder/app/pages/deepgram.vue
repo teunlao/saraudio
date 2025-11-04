@@ -23,7 +23,7 @@ const rec = useRecorder({
       deviceId: audioInputs.selectedDeviceId.value,
     },
   },
-  format: { sampleRate: 16000, encoding: 'pcm16', channels: 2 },
+  format: { sampleRate: 16000 },
   mode,
   allowFallback,
 });

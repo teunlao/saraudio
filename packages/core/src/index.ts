@@ -1,5 +1,5 @@
 export { EventBus } from './event-bus';
-export type { RecorderFormatOptions, RecorderFrameEncoding } from './format';
+export type { NormalizedFrame, PCMForEncoding, RecorderFormatOptions, RecorderFrameEncoding } from './format';
 export { cloneFrame, type NormalizeFrameOptions, normalizeFrame } from './frame-normalizer';
 export type {
   PipelineDependencies,
