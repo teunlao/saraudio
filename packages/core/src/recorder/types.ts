@@ -1,4 +1,4 @@
-import type { CoreError, Frame, Pipeline, Segment, StageController, VADScore } from '../index';
+import type { CoreError, Frame, NormalizedFrame, Pipeline, RecorderFrameEncoding, Segment, StageController, VADScore } from '../index';
 
 export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
 
@@ -42,4 +42,43 @@ export interface RecorderState {
   readonly status: RecorderStatus;
   readonly error: Error | null;
   readonly pipeline: Pipeline;
+}
+
+/**
+ * Platform-agnostic recording exports interface.
+ * Runtime implementations provide platform-specific output types:
+ * - Browser: Blob via getBlob()
+ * - Node: Buffer via getBuffer() and saveToFile()
+ */
+export interface RecordingExports {
+  readonly durationMs: number;
+}
+
+/**
+ * Full recording metadata and control interface.
+ */
+export interface RecorderRecordings<Exports extends RecordingExports = RecordingExports> {
+  cleaned: Exports;
+  full: Exports;
+  masked: Exports;
+  meta(): { sessionDurationMs: number; cleanedDurationMs: number };
+  clear(): void;
+}
+
+/**
+ * Core recorder interface used across browser and node runtimes.
+ * Generic type E specifies the frame encoding (default: 'pcm16').
+ * Generic type Exports allows platform-specific recording export types.
+ */
+export interface Recorder<
+  E extends RecorderFrameEncoding = 'pcm16',
+  Exports extends RecordingExports = RecordingExports
+> extends RecorderState, RecorderLifecycle, RecorderSubscriptions {
+  configure(options?: RecorderConfigureOptions): Promise<void>;
+  update(options?: unknown): Promise<void>;
+  // Live streaming
+  subscribeFrames(handler: (frame: NormalizedFrame<E>) => void): SubscribeHandle;
+  onReady(handler: () => void): SubscribeHandle;
+  // Ready-made recordings
+  recordings: RecorderRecordings<Exports>;
 }

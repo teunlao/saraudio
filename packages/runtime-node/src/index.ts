@@ -1,13 +1,13 @@
 export { createRuntimeServices } from './context/services';
 export {
   createRecorder,
+  type NodeRecordingExports,
   type Recorder,
   type RecorderConfigureOptions,
   type RecorderOptions,
   type RecorderProduceOptions,
   type RecorderStatus,
   type RecorderUpdateOptions,
-  type RecordingExports,
   type SubscribeHandle,
 } from './recorder';
 export { createNodeRuntime } from './runtime';

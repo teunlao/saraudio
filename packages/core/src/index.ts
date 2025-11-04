@@ -22,12 +22,15 @@ export {
   PipelineManager,
   type PipelineManagerCallbacks,
   type PipelineManagerOptions,
+  type Recorder,
   type RecorderConfigureOptions,
   type RecorderLifecycle,
   type RecorderProduceOptions,
+  type RecorderRecordings,
   type RecorderState,
   type RecorderStatus,
   type RecorderSubscriptions,
+  type RecordingExports,
   type SubscribeHandle,
 } from './recorder';
 export { RecordingAssembler, type RecordingAssemblerOptions } from './recording/recording-assembler';

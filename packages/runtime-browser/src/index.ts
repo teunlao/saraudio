@@ -7,6 +7,7 @@ export {
   watchAudioDeviceChanges,
 } from './devices';
 export {
+  type BrowserRecordingExports,
   createRecorder,
   type Recorder,
   type RecorderOptions,

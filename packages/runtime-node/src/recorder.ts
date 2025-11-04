@@ -4,8 +4,10 @@ import type {
   Frame,
   NormalizedFrame,
   Pipeline,
+  Recorder as CoreRecorder,
   RecorderFormatOptions,
   RecorderFrameEncoding,
+  RecordingExports as CoreRecordingExports,
   Segment,
   StageController,
   VADScore,
@@ -46,40 +48,12 @@ export type RecorderUpdateOptions<E extends RecorderFrameEncoding = 'pcm16'> = P
   Omit<RecorderOptions<E>, 'runtime' | 'runtimeOptions'>
 >;
 
-export interface RecordingExports {
+export interface NodeRecordingExports extends CoreRecordingExports {
   getBuffer(): Promise<Buffer | null>;
   saveToFile(path: string): Promise<void>;
-  durationMs: number;
 }
 
-export interface Recorder<E extends RecorderFrameEncoding = 'pcm16'> {
-  readonly status: RecorderStatus;
-  readonly error: Error | null;
-  readonly pipeline: Pipeline;
-  configure(options?: RecorderConfigureOptions): Promise<void>;
-  update(options?: RecorderUpdateOptions<E>): Promise<void>;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  reset(): void;
-  dispose(): void;
-  // Events passthrough (for simple UI)
-  onVad(handler: (payload: VADScore) => void): SubscribeHandle;
-  onSegment(handler: (segment: Segment) => void): SubscribeHandle;
-  onError(handler: (error: CoreError) => void): SubscribeHandle;
-  // Live streaming
-  subscribeFrames(handler: (frame: NormalizedFrame<E>) => void): SubscribeHandle;
-  subscribeRawFrames(handler: (frame: Frame) => void): SubscribeHandle;
-  subscribeSpeechFrames(handler: (frame: Frame) => void): SubscribeHandle;
-  onReady(handler: () => void): SubscribeHandle;
-  // Ready-made recordings
-  recordings: {
-    cleaned: RecordingExports;
-    full: RecordingExports;
-    masked: RecordingExports;
-    meta(): { sessionDurationMs: number; cleanedDurationMs: number };
-    clear(): void;
-  };
-}
+export type Recorder<E extends RecorderFrameEncoding = 'pcm16'> = CoreRecorder<E, NodeRecordingExports>;
 
 export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   options: RecorderOptions<E> = {},
@@ -337,7 +311,7 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
 
   const wrapRecording = (
     getter: () => { pcm: Int16Array; sampleRate: number; channels: number } | null,
-  ): RecordingExports => ({
+  ): NodeRecordingExports => ({
     async getBuffer() {
       const data = getter();
       if (!data) return null;
