@@ -1,10 +1,5 @@
 import type { Pipeline, Segment, StageController } from '@saraudio/core';
-import type {
-  BrowserRuntime,
-  MicrophoneSourceOptions,
-  RuntimeMode,
-  SegmenterFactoryOptions,
-} from '@saraudio/runtime-browser';
+import type { BrowserRuntime, RuntimeMode, SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { createRecorder } from '@saraudio/runtime-browser';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSaraudioFallbackReason, useSaraudioRuntime } from './context';
@@ -17,7 +12,6 @@ import { useMeter } from './useMeter';
 export interface UseRecorderOptions {
   stages?: StageController[];
   segmenter?: SegmenterFactoryOptions | StageController | false;
-  constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
   runtime?: BrowserRuntime;
   autoStart?: boolean;
@@ -45,7 +39,7 @@ export interface UseRecorderResult {
 }
 
 export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult {
-  const { stages, segmenter, constraints, mode, runtime: runtimeOverride, autoStart, allowFallback } = options;
+  const { stages, segmenter, mode, runtime: runtimeOverride, autoStart, allowFallback } = options;
 
   const contextRuntime = useSaraudioRuntime(runtimeOverride);
   const fallbackReason = useSaraudioFallbackReason();
@@ -53,7 +47,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   const stableStages = useStableControllers(stages);
-  const stableConstraints = useShallowStable(constraints);
   const normalizedSegmenter = segmenter === false ? undefined : segmenter;
   const stableSegmenter = useShallowStable(normalizedSegmenter);
   const finalSegmenter = segmenter === false ? (false as const) : stableSegmenter;
@@ -61,7 +54,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   interface RecorderConfigSnapshot {
     stages: StageController[];
     segmenter: SegmenterFactoryOptions | StageController | false | undefined;
-    constraints?: MicrophoneSourceOptions['constraints'];
     mode?: RuntimeMode;
     allowFallback?: boolean;
   }
@@ -70,11 +62,10 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     () => ({
       stages: stableStages ?? [],
       segmenter: finalSegmenter,
-      constraints: stableConstraints,
       mode,
       allowFallback,
     }),
-    [stableStages, finalSegmenter, stableConstraints, mode, allowFallback],
+    [stableStages, finalSegmenter, mode, allowFallback],
   );
 
   const [recorder, setRecorder] = useState(() =>
@@ -108,7 +99,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     const updatePayload: {
       stages?: StageController[];
       segmenter?: SegmenterFactoryOptions | StageController | false | undefined;
-      constraints?: MicrophoneSourceOptions['constraints'];
       mode?: RuntimeMode;
       allowFallback?: boolean;
     } = {};
@@ -120,10 +110,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     }
     if (prev.segmenter !== config.segmenter) {
       updatePayload.segmenter = config.segmenter;
-      needsUpdate = true;
-    }
-    if (prev.constraints !== config.constraints) {
-      updatePayload.constraints = config.constraints;
       needsUpdate = true;
     }
     if (prev.mode !== config.mode) {

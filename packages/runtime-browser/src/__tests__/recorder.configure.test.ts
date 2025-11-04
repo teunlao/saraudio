@@ -255,7 +255,6 @@ describe('Recorder.update', () => {
     await recorder.update({
       allowFallback: false,
       mode: 'media-recorder',
-      constraints: { channelCount: 1 },
       onStream,
     });
 
@@ -263,7 +262,6 @@ describe('Recorder.update', () => {
     expect(capturedOptions).toHaveLength(2);
     expect(capturedOptions[1]?.allowFallback).toBe(false);
     expect(capturedOptions[1]?.mode).toBe('media-recorder');
-    expect(capturedOptions[1]?.constraints).toEqual({ channelCount: 1 });
     expect(capturedOptions[1]?.onStream).toBe(onStream);
 
     await recorder.stop();

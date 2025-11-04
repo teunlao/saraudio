@@ -1,10 +1,5 @@
 import type { Segment, Stage, StageController, VADScore } from '@saraudio/core';
-import type {
-  MicrophoneSourceOptions,
-  RecorderSourceOptions,
-  RuntimeMode,
-  SegmenterFactoryOptions,
-} from '@saraudio/runtime-browser';
+import type { RecorderSourceOptions, RuntimeMode, SegmenterFactoryOptions } from '@saraudio/runtime-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { withSetup } from './test-utils/withSetup';
@@ -197,27 +192,6 @@ describe('useRecorder', () => {
       expect.objectContaining({
         stages: undefined,
         segmenter: { preRollMs: 200 },
-      }),
-    );
-  });
-
-  it('updates constraints when capture options change', async () => {
-    const constraints = ref<MicrophoneSourceOptions['constraints'] | undefined>(undefined);
-
-    const [_rec, app] = withSetup(() => useRecorder({ constraints }));
-    apps.push(app);
-
-    await nextTick();
-    await Promise.resolve();
-    updateMock.mockClear();
-
-    constraints.value = { channelCount: 1 };
-    await nextTick();
-    await Promise.resolve();
-
-    expect(updateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: { channelCount: 1 },
       }),
     );
   });

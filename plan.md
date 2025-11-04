@@ -141,3 +141,9 @@ Vue Hook (`useRecorder`) · выравнивание DX
 - `useDeepgramRealtime`: функция `sendPcm16` не выполняет DSP; проверяет частоту и отправляет chunk напрямую.
 - Все затронутые пакеты прошли `typecheck → lint → test` (utils/core/runtime-browser/runtime-node/vue/nuxt-audio-recorder).
 - TODO: держим `constraints` до следующего минорного релиза (помечено комментариями `// TODO remove`), запланировать удаление после коммуникации в релиз-нотах.
+
+Исправления · 4 ноября 2025 (дополнение)
+- normalizeFrame: поле `channels` теперь всегда отражает фактическое число каналов буфера.
+  - Mono + запрос `channels: 2` → остаётся 1 (без апмикса), `channels=1` в результате.
+  - Stereo + запрос `channels: 2` → остаётся 2 (pass‑through), `channels=2`.
+- Добавлены юнит‑тесты: `packages/core/src/frame-normalizer.test.ts` (mono→2, stereo→2).

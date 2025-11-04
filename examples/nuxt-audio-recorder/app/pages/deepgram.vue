@@ -23,7 +23,7 @@ const rec = useRecorder({
       deviceId: audioInputs.selectedDeviceId.value,
     },
   },
-  format: { sampleRate: 16000, encoding: 'pcm16' },
+  format: { sampleRate: 16000, encoding: 'pcm16', channels: 2 },
   mode,
   allowFallback,
 });
@@ -49,10 +49,7 @@ onMounted(() => {
     console.log('[nuxt] recorder ready — streaming normalized frames');
   });
   frameSubscription = rec.subscribeFrames((frame) => {
-    if (!(frame.pcm instanceof Int16Array)) {
-      console.warn('[nuxt] expected Int16Array from subscribeFrames, ignoring chunk');
-      return;
-    }
+
     dg.sendPcm16(frame.pcm, frame.sampleRate);
   });
 });

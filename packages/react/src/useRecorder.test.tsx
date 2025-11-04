@@ -9,7 +9,6 @@ import { useRecorder } from './useRecorder';
 interface UpdateArgsSnapshot {
   stages?: StageController[];
   segmenter?: unknown;
-  constraints?: Record<string, unknown>;
   mode?: RuntimeMode;
   allowFallback?: boolean;
 }
@@ -156,7 +155,7 @@ describe('useRecorder', () => {
       create: () => ({ name: 'stable', setup: () => {}, handle: () => {} }),
     } as StageController;
 
-    const { rerender } = renderHook(() => useRecorder({ stages: [stage], constraints: { channelCount: 1 } }), {
+    const { rerender } = renderHook(() => useRecorder({ stages: [stage] }), {
       wrapper: BaseWrapper,
     });
 
@@ -175,7 +174,6 @@ describe('useRecorder', () => {
       ({ mode }) =>
         useRecorder({
           mode,
-          constraints: { channelCount: 1 },
         }),
       {
         wrapper: BaseWrapper,

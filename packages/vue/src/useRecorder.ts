@@ -10,7 +10,6 @@ import type {
 import type {
   BrowserRuntime,
   BrowserRuntimeOptions,
-  MicrophoneSourceOptions,
   Recorder,
   RecorderSourceOptions,
   RecorderStatus,
@@ -54,7 +53,6 @@ export interface UseRecorderOptions {
   segmenter?: MaybeRefOrGetter<SegmenterFactoryOptions | StageController | false | undefined>;
   source?: MaybeRefOrGetter<RecorderSourceOptions | undefined>;
   format?: MaybeRefOrGetter<RecorderFormatOptions | undefined>;
-  constraints?: MaybeRefOrGetter<MicrophoneSourceOptions['constraints'] | undefined>; // TODO remove legacy constraints path
   mode?: MaybeRefOrGetter<RuntimeMode | undefined>;
   allowFallback?: MaybeRefOrGetter<boolean | undefined>;
 }
@@ -145,7 +143,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       segmenter: options.segmenter ? toValue(options.segmenter) : undefined,
       source: options.source ? toValue(options.source) : undefined,
       format: options.format ? toValue(options.format) : undefined,
-      constraints: toValue(options.constraints ?? undefined), // TODO remove legacy constraints path
       mode: toValue(options.mode ?? undefined),
       allowFallback: toValue(options.allowFallback ?? undefined),
     });
@@ -188,12 +185,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       return toValue(options.format);
     };
 
-    // TODO remove legacy constraints resolver after deprecation window
-    const resolveConstraints = (): MicrophoneSourceOptions['constraints'] | undefined => {
-      if (options.constraints === undefined) return undefined;
-      return toValue(options.constraints);
-    };
-
     const resolveMode = (): RuntimeMode | undefined => {
       if (options.mode === undefined) return undefined;
       return toValue(options.mode);
@@ -210,7 +201,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
         segmenter: resolveSegmenter(),
         source: resolveSource(),
         format: resolveFormat(),
-        constraints: resolveConstraints(),
         mode: resolveMode(),
         allowFallback: resolveAllowFallback(),
       }),
@@ -220,7 +210,6 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
           segmenter: nextOptions.segmenter,
           source: nextOptions.source,
           format: nextOptions.format,
-          constraints: nextOptions.constraints,
           mode: nextOptions.mode,
           allowFallback: nextOptions.allowFallback,
         });

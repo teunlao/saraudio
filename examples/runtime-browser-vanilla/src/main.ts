@@ -13,7 +13,6 @@ const cleanedMeta = document.getElementById('cleaned-meta') as HTMLDivElement;
 const recorder = createRecorder({
   stages: [vadEnergy({ thresholdDb: -55, smoothMs: 30 }), meter()],
   segmenter: { preRollMs: 250, hangoverMs: 400 },
-  constraints: { channelCount: 1, sampleRate: 16000 },
   produce: { cleaned: true, full: true, masked: true },
 });
 

@@ -2,7 +2,7 @@ import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
 import { useAudioInputs, useRecorder } from '@saraudio/react';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
-import { buildAudioConstraints, segmentToAudioBuffer } from '@saraudio/runtime-browser';
+import { segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -150,8 +150,6 @@ export const App = () => {
 
   // device enumeration handled by hook
 
-  const audioConstraints = buildAudioConstraints({ deviceId: selectedDeviceId, sampleRate: 16000, channelCount: 1 });
-
   const segmenterOptions = useMemo(() => ({ preRollMs: 250, hangoverMs: 400 }), []);
 
   const {
@@ -167,7 +165,6 @@ export const App = () => {
   } = useRecorder({
     stages: [vadEnergy({ thresholdDb, smoothMs }), meter()],
     segmenter: segmenterOptions,
-    constraints: audioConstraints,
     mode,
     allowFallback,
   });

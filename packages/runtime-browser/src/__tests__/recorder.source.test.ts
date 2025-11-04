@@ -79,39 +79,6 @@ describe('Recorder source configuration', () => {
     recorder.dispose();
   });
 
-  it('reuses legacy constraints when no source microphone is provided', async () => {
-    const pipeline = new Pipeline({
-      now: () => 0,
-      createId: () => 'id',
-    });
-
-    const createMicrophoneSource = vi.fn<BrowserRuntime['createMicrophoneSource']>(() => ({
-      start: vi.fn(async (_onFrame: (frame: Frame) => void) => {}),
-      stop: vi.fn(async () => {}),
-    }));
-
-    const legacyConstraints: MediaTrackConstraints = { sampleRate: 44100 };
-
-    const runtime = createRuntime(pipeline, {
-      createMicrophoneSource,
-    });
-
-    const recorder = createRecorder({
-      runtime,
-      constraints: legacyConstraints,
-    });
-
-    await recorder.start();
-
-    expect(createMicrophoneSource).toHaveBeenCalledTimes(1);
-    expect(createMicrophoneSource.mock.calls[0][0]).toMatchObject({
-      constraints: legacyConstraints,
-    });
-
-    await recorder.stop();
-    recorder.dispose();
-  });
-
   it('updates deviceId constraint after update()', async () => {
     const pipeline = new Pipeline({
       now: () => 0,

@@ -91,6 +91,6 @@ export const normalizeFrame = (frame: Frame, options: NormalizeFrameOptions = {}
     pcm,
     tsMs: frame.tsMs,
     sampleRate: currentSampleRate,
-    channels: requestedChannels ?? currentChannels,
+    channels: currentChannels,
   };
 };

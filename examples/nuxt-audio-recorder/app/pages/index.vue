@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import { buildAudioConstraints, type RuntimeMode, segmentToAudioBuffer } from '@saraudio/runtime-browser';
+import { type RuntimeMode, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -63,18 +63,11 @@ watch(allowFallback, (val) => {
 
 const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
 
-const audioConstraints = computed(() =>
-  buildAudioConstraints({
-    deviceId: audioInputs.selectedDeviceId.value,
-    sampleRate: 16000,
-    channelCount: 1,
-  }),
-);
-
 const rec = useRecorder({
   stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
   segmenter: computed(() => ({ preRollMs: 300, hangoverMs: 500 })),
-  constraints: audioConstraints,
+  source: computed(() => ({ microphone: { deviceId: audioInputs.selectedDeviceId.value } })),
+  format: { sampleRate: 16000, channels: 1 },
   mode,
   allowFallback,
 });

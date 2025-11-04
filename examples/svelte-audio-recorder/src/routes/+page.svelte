@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { Segment } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
-import { buildAudioConstraints, type RuntimeMode, segmentToAudioBuffer } from '@saraudio/runtime-browser';
+import { type RuntimeMode, segmentToAudioBuffer } from '@saraudio/runtime-browser';
 import { createAudioInputs, createMeter, createRecorder } from '@saraudio/svelte';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { onMount } from 'svelte';
@@ -70,20 +70,10 @@ const audioInputs = createAudioInputs({
   rememberLast: true,
 });
 
-// Build audio constraints
-const audioConstraints = $derived(
-  buildAudioConstraints({
-    deviceId: audioInputs.selectedDeviceId,
-    sampleRate: 16000,
-    channelCount: 1,
-  }),
-);
-
 // Recorder with dynamic configuration
 const rec = createRecorder({
   stages: [vadEnergy({ thresholdDb, smoothMs }), meter()],
   segmenter: { preRollMs: 300, hangoverMs: 500 },
-  constraints: audioConstraints,
   mode,
   allowFallback,
 });
