@@ -1,3 +1,14 @@
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".

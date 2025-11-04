@@ -1,5 +1,15 @@
 import type { CoreError, Frame, Pipeline, Segment, StageController, VADScore } from '@saraudio/core';
-import { encodeWavPcm16, RecordingAssembler } from '@saraudio/core';
+import {
+  createSubscription,
+  encodeWavPcm16,
+  isStageController,
+  PipelineManager,
+  type RecorderConfigureOptions,
+  type RecorderProduceOptions,
+  type RecorderStatus,
+  RecordingAssembler,
+  type SubscribeHandle,
+} from '@saraudio/core';
 import { createBrowserRuntime } from './runtime';
 import type {
   BrowserRuntime,
@@ -10,7 +20,7 @@ import type {
   SegmenterFactoryOptions,
 } from './types';
 
-export type RecorderStatus = 'idle' | 'acquiring' | 'running' | 'stopping' | 'error';
+export type { RecorderConfigureOptions, RecorderProduceOptions, RecorderStatus, SubscribeHandle };
 
 const deriveConstraintsFromSource = (
   source: RecorderSourceOptions | undefined,
@@ -23,12 +33,6 @@ const deriveConstraintsFromSource = (
   }
   return fallback;
 };
-
-export interface RecorderProduceOptions {
-  cleaned?: boolean; // speech-only concatenated
-  full?: boolean; // raw continuous capture
-  masked?: boolean; // same length as full, silence → zeros
-}
 
 export interface RecorderOptions {
   // Pipeline config
@@ -48,12 +52,7 @@ export interface RecorderOptions {
   onStream?: (stream: MediaStream | null) => void;
 }
 
-export type RecorderConfigureOptions = Partial<Pick<RecorderOptions, 'stages' | 'segmenter'>>;
 export type RecorderUpdateOptions = Partial<Omit<RecorderOptions, 'runtime' | 'runtimeOptions'>>;
-
-export interface SubscribeHandle {
-  unsubscribe(): void;
-}
 
 export interface RecordingExports {
   getBlob(): Promise<Blob | null>;
@@ -114,56 +113,32 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       collectMasked: produceState.masked,
     });
   let assembler = createAssembler();
-  let segmentActive = false;
 
-  let listenersAttached = false;
-  let detachPipelineListeners: Array<() => void> = [];
+  // Pipeline manager for handling events
+  const pipelineManager = new PipelineManager({
+    pipeline,
+    assembler,
+    callbacks: {
+      onVad: (payload) => {
+        for (const h of vadSubs) h(payload);
+      },
+      onSegment: (segment) => {
+        for (const h of segSubs) h(segment);
+      },
+      onError: (error) => {
+        for (const h of errSubs) h(error);
+      },
+    },
+    onWarn: (message: string, context?: Record<string, unknown>): void => {
+      runtime.services.logger.warn(message, context);
+    },
+  });
 
-  const attachPipelineListeners = (): void => {
-    if (listenersAttached) return;
-    listenersAttached = true;
-    const detachVad = pipeline.events.on('vad', (payload) => {
-      for (const h of vadSubs) h(payload);
-    });
-    const detachSegStart = pipeline.events.on('speechStart', () => {
-      segmentActive = true;
-      assembler.onSpeechStart();
-    });
-    const detachSegEnd = pipeline.events.on('speechEnd', () => {
-      segmentActive = false;
-      assembler.onSpeechEnd();
-    });
-    const detachSegment = pipeline.events.on('segment', (segment) => {
-      assembler.onSegment(segment);
-      for (const h of segSubs) h(segment);
-    });
-    const detachError = pipeline.events.on('error', (error) => {
-      for (const h of errSubs) h(error);
-    });
-    detachPipelineListeners = [detachVad, detachSegStart, detachSegEnd, detachSegment, detachError];
-  };
-
-  const detachPipelineListenersIfNeeded = (): void => {
-    if (!listenersAttached) return;
-    listenersAttached = false;
-    while (detachPipelineListeners.length > 0) {
-      const detach = detachPipelineListeners.pop();
-      try {
-        detach?.();
-      } catch (error) {
-        runtime.services.logger.warn('Pipeline detach failed', { error });
-      }
-    }
-  };
-
-  attachPipelineListeners();
+  pipelineManager.attach();
 
   const setStatus = (next: RecorderStatus) => {
     status = next;
   };
-
-  const isStageControllerValue = (value: unknown): value is StageController =>
-    typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
 
   let stageSources: StageController[] = options.stages ? [...options.stages] : [];
   let segmenterSource: RecorderOptions['segmenter'] = options.segmenter;
@@ -188,14 +163,14 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     if (input === undefined) {
       return runtime.createSegmenter();
     }
-    if (isStageControllerValue(input)) {
+    if (isStageController(input)) {
       return input;
     }
     return runtime.createSegmenter(input);
   };
 
   const refreshStages = (): void => {
-    attachPipelineListeners();
+    pipelineManager.attach();
     const resolved: StageController[] = [...stageSources];
     const segmenter = resolveSegmenterInput(segmenterSource);
     if (segmenter) {
@@ -268,7 +243,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
 
   const update = async (next: RecorderUpdateOptions = {}): Promise<void> => {
     console.log('[recorder] update called');
-    attachPipelineListeners();
+    pipelineManager.attach();
     const entries = Object.entries(next) as Array<[UpdateKey, RecorderUpdateOptions[UpdateKey]]>;
     let pipelineNeedsRefresh = entries.length === 0;
 
@@ -301,7 +276,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     console.log('[recorder] update: complete', {
       status,
       reconfigured: pipelineNeedsRefresh ? currentStages.length : 0,
-      segmentActive,
+      segmentActive: pipelineManager.isSegmentActive,
     });
   };
 
@@ -342,7 +317,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
         assembler.begin(frame.tsMs);
         assembler.onFrame(frame);
         for (const h of rawSubs) h(frame);
-        if (segmentActive) {
+        if (pipelineManager.isSegmentActive) {
           for (const h of speechSubs) h(frame);
         }
         pipeline.push(frame);
@@ -361,7 +336,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
       ?.split('\n')
       .slice(1, 6)
       .map((line) => line.trim())
-      .join(' \u2192 ');
+      .join(' → ');
     console.log('[recorder] stop called', { status, hasSource: !!source, stack });
     if (status !== 'running' && status !== 'acquiring') {
       console.log('[recorder] not running/acquiring, returning');
@@ -392,7 +367,7 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   };
 
   const dispose = (): void => {
-    detachPipelineListenersIfNeeded();
+    pipelineManager.dispose();
     pipeline.dispose();
   };
 
@@ -416,15 +391,6 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     },
   });
 
-  const subscribe = <T>(set: Set<(value: T) => void>, handler: (value: T) => void): SubscribeHandle => {
-    set.add(handler);
-    return {
-      unsubscribe() {
-        set.delete(handler);
-      },
-    };
-  };
-
   return {
     get status() {
       return status;
@@ -441,11 +407,11 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     stop,
     reset,
     dispose,
-    onVad: (h) => subscribe(vadSubs, h),
-    onSegment: (h) => subscribe(segSubs, h),
-    onError: (h) => subscribe(errSubs, h),
-    subscribeRawFrames: (h) => subscribe(rawSubs, h),
-    subscribeSpeechFrames: (h) => subscribe(speechSubs, h),
+    onVad: (h) => createSubscription(vadSubs, h),
+    onSegment: (h) => createSubscription(segSubs, h),
+    onError: (h) => createSubscription(errSubs, h),
+    subscribeRawFrames: (h) => createSubscription(rawSubs, h),
+    subscribeSpeechFrames: (h) => createSubscription(speechSubs, h),
     recordings: {
       cleaned: wrapRecording(() => assembler.getCleaned()),
       full: wrapRecording(() => assembler.getFull()),

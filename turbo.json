@@ -2,11 +2,14 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": ["NODE_ENV"],
   "globalPassThroughEnv": ["CI"],
+  "ui": "tui",
+  "concurrency": "16",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
+
     "dev": {
       "cache": false,
       "persistent": true

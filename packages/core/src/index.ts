@@ -8,6 +8,20 @@ export type {
   StageInput,
 } from './pipeline';
 export { Pipeline } from './pipeline';
+export {
+  createSubscription,
+  isStageController,
+  PipelineManager,
+  type PipelineManagerCallbacks,
+  type PipelineManagerOptions,
+  type RecorderConfigureOptions,
+  type RecorderLifecycle,
+  type RecorderProduceOptions,
+  type RecorderState,
+  type RecorderStatus,
+  type RecorderSubscriptions,
+  type SubscribeHandle,
+} from './recorder';
 export { RecordingAssembler, type RecordingAssemblerOptions } from './recording/recording-assembler';
 export { encodeWavPcm16, segmentToWav } from './recording/wav-encoder';
 export {
