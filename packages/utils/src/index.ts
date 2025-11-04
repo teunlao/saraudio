@@ -1,5 +1,6 @@
 export * from './async/deferred';
 export { downmixToMono } from './dsp/downmix';
+export { frameDurationMs } from './dsp/frame-duration';
 export { createHysteresis, type HysteresisOptions, type HysteresisState } from './dsp/hysteresis';
 export { resampleLinear } from './dsp/resample';
 export { rms } from './dsp/rms';

@@ -13,6 +13,8 @@ import { encodeWavPcm16, isRetryable, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { createDeferred, createHttpLiveAggregator, type Deferred, type HttpLiveAggregator } from '@saraudio/utils';
 
+import { frameDurationMs } from './helpers/frame-duration';
+
 export interface CreateTranscriptionOptions {
   provider: TranscriptionProvider;
   recorder?: Recorder;
@@ -125,12 +127,6 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
 
   const preconnectBuffer: Array<NormalizedFrame<'pcm16'>> = [];
   let preconnectBufferedMs = 0;
-
-  const frameDurationMs = (f: NormalizedFrame<'pcm16'>): number => {
-    const samples = f.pcm.length;
-    const duration = (samples / (f.sampleRate * f.channels)) * 1000;
-    return duration;
-  };
 
   const pushPreconnect = (f: NormalizedFrame<'pcm16'>): void => {
     preconnectBuffer.push(f);
