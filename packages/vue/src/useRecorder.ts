@@ -1,4 +1,12 @@
-import type { Pipeline, Segment, StageController, VADScore } from '@saraudio/core';
+import type {
+  Frame,
+  Pipeline,
+  RecorderFormatOptions,
+  Segment,
+  StageController,
+  SubscribeHandle,
+  VADScore,
+} from '@saraudio/core';
 import type {
   BrowserRuntime,
   BrowserRuntimeOptions,
@@ -6,6 +14,7 @@ import type {
   Recorder,
   RecorderSourceOptions,
   RecorderStatus,
+  RecorderUpdateOptions,
   RuntimeMode,
   SegmenterFactoryOptions,
 } from '@saraudio/runtime-browser';
@@ -31,6 +40,11 @@ export interface UseRecorderResult {
   stop: () => Promise<void>;
   reset: () => void;
   clearSegments: () => void;
+  subscribeFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
+  subscribeRawFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
+  subscribeSpeechFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
+  onReady: (handler: () => void) => SubscribeHandle;
+  update: (options?: RecorderUpdateOptions) => Promise<void>;
 }
 
 export interface UseRecorderOptions {
@@ -39,7 +53,8 @@ export interface UseRecorderOptions {
   stages?: MaybeRefOrGetter<StageController[] | undefined>;
   segmenter?: MaybeRefOrGetter<SegmenterFactoryOptions | StageController | false | undefined>;
   source?: MaybeRefOrGetter<RecorderSourceOptions | undefined>;
-  constraints?: MaybeRefOrGetter<MicrophoneSourceOptions['constraints'] | undefined>;
+  format?: MaybeRefOrGetter<RecorderFormatOptions | undefined>;
+  constraints?: MaybeRefOrGetter<MicrophoneSourceOptions['constraints'] | undefined>; // TODO remove legacy constraints path
   mode?: MaybeRefOrGetter<RuntimeMode | undefined>;
   allowFallback?: MaybeRefOrGetter<boolean | undefined>;
 }
@@ -63,6 +78,25 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     meta: () => ({ sessionDurationMs: 0, cleanedDurationMs: 0 }),
     clear: () => {},
   });
+
+  const noopHandle: SubscribeHandle = { unsubscribe: () => {} };
+
+  const subscribeFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
+    recorder.value ? recorder.value.subscribeFrames(handler) : noopHandle;
+
+  const subscribeRawFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
+    recorder.value ? recorder.value.subscribeRawFrames(handler) : noopHandle;
+
+  const subscribeSpeechFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
+    recorder.value ? recorder.value.subscribeSpeechFrames(handler) : noopHandle;
+
+  const onReady = (handler: () => void): SubscribeHandle =>
+    recorder.value ? recorder.value.onReady(handler) : noopHandle;
+
+  const updateRecorder = async (next?: RecorderUpdateOptions): Promise<void> => {
+    if (!recorder.value) return;
+    await recorder.value.update(next);
+  };
 
   const start = async () => {
     if (!recorder.value) return;
@@ -110,7 +144,8 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       stages: options.stages ? cloneStages(toValue(options.stages)) : undefined,
       segmenter: options.segmenter ? toValue(options.segmenter) : undefined,
       source: options.source ? toValue(options.source) : undefined,
-      constraints: toValue(options.constraints ?? undefined),
+      format: options.format ? toValue(options.format) : undefined,
+      constraints: toValue(options.constraints ?? undefined), // TODO remove legacy constraints path
       mode: toValue(options.mode ?? undefined),
       allowFallback: toValue(options.allowFallback ?? undefined),
     });
@@ -148,6 +183,12 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
       return toValue(options.source);
     };
 
+    const resolveFormat = (): RecorderFormatOptions | undefined => {
+      if (options.format === undefined) return undefined;
+      return toValue(options.format);
+    };
+
+    // TODO remove legacy constraints resolver after deprecation window
     const resolveConstraints = (): MicrophoneSourceOptions['constraints'] | undefined => {
       if (options.constraints === undefined) return undefined;
       return toValue(options.constraints);
@@ -168,16 +209,17 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
         stages: resolveStages(),
         segmenter: resolveSegmenter(),
         source: resolveSource(),
+        format: resolveFormat(),
         constraints: resolveConstraints(),
         mode: resolveMode(),
         allowFallback: resolveAllowFallback(),
       }),
       async (nextOptions) => {
-        if (!recorder.value) return;
-        await recorder.value.update({
+        await updateRecorder({
           stages: nextOptions.stages,
           segmenter: nextOptions.segmenter,
           source: nextOptions.source,
+          format: nextOptions.format,
           constraints: nextOptions.constraints,
           mode: nextOptions.mode,
           allowFallback: nextOptions.allowFallback,
@@ -207,5 +249,10 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     stop,
     reset,
     clearSegments,
+    subscribeFrames,
+    subscribeRawFrames,
+    subscribeSpeechFrames,
+    onReady,
+    update: updateRecorder,
   } as UseRecorderResult;
 }

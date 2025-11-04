@@ -1,8 +1,18 @@
-import type { CoreError, Frame, Pipeline, Segment, StageController, VADScore } from '@saraudio/core';
+import type {
+  CoreError,
+  Frame,
+  Pipeline,
+  RecorderFormatOptions,
+  Segment,
+  StageController,
+  VADScore,
+} from '@saraudio/core';
 import {
+  cloneFrame,
   createSubscription,
   encodeWavPcm16,
   isStageController,
+  normalizeFrame,
   PipelineManager,
   type RecorderConfigureOptions,
   type RecorderProduceOptions,
@@ -40,6 +50,7 @@ export interface RecorderOptions {
   segmenter?: SegmenterFactoryOptions | StageController | false;
   // Capture options
   source?: RecorderSourceOptions;
+  format?: RecorderFormatOptions;
   // TODO remove legacy constraints after deprecating RecorderOptions.constraints
   constraints?: MicrophoneSourceOptions['constraints'];
   mode?: RuntimeMode;
@@ -74,8 +85,10 @@ export interface Recorder {
   onSegment(handler: (segment: Segment) => void): SubscribeHandle;
   onError(handler: (error: CoreError) => void): SubscribeHandle;
   // Live streaming
+  subscribeFrames(handler: (frame: Frame) => void): SubscribeHandle;
   subscribeRawFrames(handler: (frame: Frame) => void): SubscribeHandle;
   subscribeSpeechFrames(handler: (frame: Frame) => void): SubscribeHandle;
+  onReady(handler: () => void): SubscribeHandle;
   // Ready-made recordings
   recordings: {
     cleaned: RecordingExports;
@@ -97,6 +110,11 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   const errSubs = new Set<(payload: CoreError) => void>();
   const rawSubs = new Set<(frame: Frame) => void>();
   const speechSubs = new Set<(frame: Frame) => void>();
+  const frameSubs = new Set<(frame: Frame) => void>();
+  const readySubs = new Set<() => void>();
+  const normalizedBuffer: Frame[] = [];
+  const NORMALIZED_BUFFER_LIMIT = 5;
+  let framesReady = false;
 
   let status: RecorderStatus = 'idle';
   let lastError: Error | null = null;
@@ -145,16 +163,35 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
   let currentStages: StageController[] = [];
   const captureOptions: {
     source?: RecorderSourceOptions;
+    format?: RecorderFormatOptions;
     constraints?: MicrophoneSourceOptions['constraints'];
     mode?: RuntimeMode;
     allowFallback?: boolean;
   } = {
     source: options.source,
+    format: options.format,
     constraints: options.constraints, // TODO remove legacy constraints after deprecation window
     mode: options.mode,
     allowFallback: options.allowFallback,
   };
   let streamHandler = options.onStream;
+
+  const bufferNormalizedFrame = (frame: Frame): void => {
+    normalizedBuffer.push(cloneFrame(frame));
+    if (normalizedBuffer.length > NORMALIZED_BUFFER_LIMIT) {
+      normalizedBuffer.shift();
+    }
+  };
+
+  const markReady = (): void => {
+    if (framesReady) {
+      return;
+    }
+    framesReady = true;
+    for (const handler of readySubs) {
+      handler();
+    }
+  };
 
   const resolveSegmenterInput = (input: RecorderOptions['segmenter']): StageController | null => {
     if (input === false) {
@@ -227,6 +264,9 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     source: (value) => {
       captureOptions.source = value;
     },
+    format: (value) => {
+      captureOptions.format = value;
+    },
     constraints: (value) => {
       captureOptions.constraints = value; // TODO remove legacy constraints after deprecation window
     },
@@ -292,6 +332,8 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     }
     lastError = null;
     setStatus('acquiring');
+    normalizedBuffer.length = 0;
+    framesReady = false;
 
     try {
       // Configure pipeline with stages (controllers allow dynamic reconfig)
@@ -320,6 +362,13 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
         if (pipelineManager.isSegmentActive) {
           for (const h of speechSubs) h(frame);
         }
+        const normalized = normalizeFrame(frame, {
+          format: captureOptions.format,
+          logger: runtime.services.logger,
+        });
+        bufferNormalizedFrame(normalized);
+        for (const h of frameSubs) h(normalized);
+        markReady();
         pipeline.push(frame);
       });
 
@@ -359,11 +408,15 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     } finally {
       source = null;
       streamHandler?.(null);
+      normalizedBuffer.length = 0;
+      framesReady = false;
     }
   };
 
   const reset = (): void => {
     assembler = createAssembler();
+    normalizedBuffer.length = 0;
+    framesReady = false;
   };
 
   const dispose = (): void => {
@@ -410,8 +463,22 @@ export const createRecorder = (options: RecorderOptions = {}): Recorder => {
     onVad: (h) => createSubscription(vadSubs, h),
     onSegment: (h) => createSubscription(segSubs, h),
     onError: (h) => createSubscription(errSubs, h),
+    subscribeFrames: (handler) => {
+      if (normalizedBuffer.length > 0) {
+        for (const frame of normalizedBuffer) {
+          handler(cloneFrame(frame));
+        }
+      }
+      return createSubscription(frameSubs, handler);
+    },
     subscribeRawFrames: (h) => createSubscription(rawSubs, h),
     subscribeSpeechFrames: (h) => createSubscription(speechSubs, h),
+    onReady: (handler) => {
+      if (framesReady) {
+        handler();
+      }
+      return createSubscription(readySubs, handler);
+    },
     recordings: {
       cleaned: wrapRecording(() => assembler.getCleaned()),
       full: wrapRecording(() => assembler.getFull()),

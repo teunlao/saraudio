@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Frame } from '@saraudio/core';
+import type { SubscribeHandle } from '@saraudio/core';
 import { meter } from '@saraudio/meter';
 import type { RecorderSourceOptions, RuntimeMode } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
@@ -22,6 +22,7 @@ const rec = useRecorder({
       deviceId: audioInputs.selectedDeviceId.value,
     },
   },
+  format: { sampleRate: 16000, encoding: 'pcm16' },
   mode,
   allowFallback,
 });
@@ -29,7 +30,8 @@ const rec = useRecorder({
 const levels = useMeter({ pipeline: rec.pipeline });
 
 const dg = useDeepgramRealtime();
-let unsubscribe: { unsubscribe(): void } | null = null;
+let frameSubscription: SubscribeHandle | null = null;
+let readySubscription: SubscribeHandle | null = null;
 
 // Derived, typed values for template (avoid any and ref property access warnings)
 const wsInfo = computed(() => {
@@ -43,28 +45,26 @@ const wsLog = computed(() => {
 
 async function start() {
   dg.connect();
-  // Subscribe to raw frames and forward to Deepgram
-  unsubscribe =
-    rec.recorder.value?.subscribeRawFrames((frame: Frame) => {
-      const int16 = frame.pcm instanceof Int16Array ? frame.pcm : new Int16Array(frame.pcm.length);
-      if (!(frame.pcm instanceof Int16Array)) {
-        // simple float -> int16 conversion
-        const src = frame.pcm;
-        for (let i = 0; i < src.length; i += 1) {
-          const s = Math.max(-1, Math.min(1, src[i] ?? 0));
-          int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-        }
-      }
-      dg.sendPcm16(int16, frame.sampleRate);
-    }) ?? null;
+  readySubscription = rec.onReady(() => {
+    console.log('[nuxt] recorder ready — streaming normalized frames');
+  });
+  frameSubscription = rec.subscribeFrames((frame) => {
+    if (!(frame.pcm instanceof Int16Array)) {
+      console.warn('[nuxt] expected Int16Array from subscribeFrames, ignoring chunk');
+      return;
+    }
+    dg.sendPcm16(frame.pcm, frame.sampleRate);
+  });
   await rec.start();
 }
 
 async function stop() {
   await rec.stop();
   levels.reset();
-  unsubscribe?.unsubscribe();
-  unsubscribe = null;
+  frameSubscription?.unsubscribe();
+  readySubscription?.unsubscribe();
+  frameSubscription = null;
+  readySubscription = null;
   dg.close();
 }
 

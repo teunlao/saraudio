@@ -14,7 +14,7 @@ describe('downmixToMono', () => {
     expect(out[0]).toBeCloseTo(0.1, 6);
     expect(out[1]).toBeCloseTo(-0.2, 6);
     expect(out[2]).toBeCloseTo(0.3, 6);
-    expect(out).not.toBe(ch0); // copy, not the same reference
+    expect(out).not.toBe(ch0);
   });
 
   it('averages stereo L/R', () => {
@@ -29,7 +29,6 @@ describe('downmixToMono', () => {
     const c1 = Float32Array.from([0.6, 0.0, -0.6]);
     const c2 = Float32Array.from([0.3, -0.3, 0.3]);
     const out = downmixToMono([c0, c1, c2]);
-    // mean per index
     expect(out.length).toBe(3);
     expect(out[0]).toBeCloseTo(0.4, 6);
     expect(out[1]).toBeCloseTo(0, 6);

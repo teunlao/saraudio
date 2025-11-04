@@ -17,37 +17,6 @@ export function useDeepgramRealtime() {
   let messagesReceived = 0;
   let audioChunksSent = 0;
 
-  // Very small, CPU-cheap resampler for demo:
-  // - If src=48000 -> 16000: average each 3 samples
-  // - Otherwise: linear interpolation accumulator from src -> 16000
-  // Returns Int16Array mono @16kHz
-  function to16kMonoInt16(pcm: Int16Array, srcRate: number): Int16Array {
-    if (srcRate === 16000) return new Int16Array(pcm); // already fine
-    if (srcRate === 48000) {
-      const out = new Int16Array(Math.floor(pcm.length / 3));
-      for (let i = 0, j = 0; j < out.length; j += 1, i += 3) {
-        const a = pcm[i] ?? 0;
-        const b = pcm[i + 1] ?? 0;
-        const c = pcm[i + 2] ?? 0;
-        out[j] = (a + b + c) / 3;
-      }
-      return out;
-    }
-    // Generic linear resample
-    const ratio = 16000 / srcRate;
-    const outLen = Math.floor(pcm.length * ratio);
-    const out = new Int16Array(outLen);
-    for (let j = 0; j < outLen; j += 1) {
-      const t = j / ratio; // source index (float)
-      const i = Math.floor(t);
-      const frac = t - i;
-      const s0 = pcm[i] ?? 0;
-      const s1 = pcm[i + 1] ?? s0;
-      out[j] = s0 + (s1 - s0) * frac;
-    }
-    return out;
-  }
-
   function connect(): void {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
@@ -174,8 +143,12 @@ export function useDeepgramRealtime() {
 
   function sendPcm16(pcm: Int16Array, sampleRate: number): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const resampled = to16kMonoInt16(pcm, sampleRate);
-    const bytes = resampled.byteLength;
+    if (sampleRate !== 16000) {
+      console.warn('[deepgram] dropping frame: expected 16kHz PCM16', { sampleRate, samples: pcm.length });
+      return;
+    }
+
+    const bytes = pcm.byteLength;
     bytesSent += bytes;
     audioChunksSent += 1;
 
@@ -185,12 +158,13 @@ export function useDeepgramRealtime() {
         totalBytes: bytesSent,
         totalKB: (bytesSent / 1024).toFixed(1),
         lastChunkBytes: bytes,
-        lastChunkSamples: resampled.length,
-        durationMs: ((resampled.length / 16000) * 1000).toFixed(0),
+        lastChunkSamples: pcm.length,
+        durationMs: ((pcm.length / 16000) * 1000).toFixed(0),
       });
     }
 
-    ws.send(resampled.buffer);
+    const payload = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
+    ws.send(payload);
   }
 
   const clear = (): void => {

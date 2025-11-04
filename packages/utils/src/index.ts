@@ -1,4 +1,6 @@
+export { downmixToMono } from './dsp/downmix';
 export { createHysteresis, type HysteresisOptions, type HysteresisState } from './dsp/hysteresis';
+export { resampleLinear } from './dsp/resample';
 export { rms } from './dsp/rms';
 export type { LogContext, LogEntry, Logger, LoggerOptions, LogLevel } from './logger';
 export { createLogger, defaultOutput, noopLogger } from './logger';

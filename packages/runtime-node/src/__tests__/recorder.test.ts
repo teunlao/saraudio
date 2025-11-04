@@ -1,7 +1,9 @@
 import { Readable } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import type { Frame } from '@saraudio/core';
+import { describe, expect, it, vi } from 'vitest';
 import { createRecorder } from '../recorder';
 import { createNodeRuntime } from '../runtime';
+import type { NodeFrameSource } from '../types';
 
 describe('NodeRecorder', () => {
   const createMockStream = (durationMs = 100): Readable => {
@@ -184,5 +186,75 @@ describe('NodeRecorder', () => {
   it('disposes pipeline listeners', () => {
     const rec = createRecorder();
     expect(() => rec.dispose()).not.toThrow();
+  });
+
+  it('normalizes frames when format is provided', async () => {
+    const normalizedFrames: Frame[] = [];
+    const source = {
+      async start(onFrame: (frame: Frame) => void) {
+        const pcm = new Int16Array(480);
+        for (let i = 0; i < pcm.length; i += 1) {
+          pcm[i] = i % 2 === 0 ? 12000 : -12000;
+        }
+        onFrame({ pcm, tsMs: 0, sampleRate: 48000, channels: 1 });
+      },
+      async stop() {
+        // noop
+      },
+    } satisfies NodeFrameSource;
+
+    const rec = createRecorder({ source, format: { sampleRate: 16000, encoding: 'pcm16' } });
+    rec.subscribeFrames((frame) => {
+      normalizedFrames.push(frame);
+    });
+
+    await rec.start();
+    await rec.stop();
+
+    expect(normalizedFrames).toHaveLength(1);
+    const frame = normalizedFrames[0];
+    expect(frame.sampleRate).toBe(16000);
+    expect(frame.channels).toBe(1);
+    expect(frame.pcm).toBeInstanceOf(Int16Array);
+    expect((frame.pcm as Int16Array).length).toBe(160);
+  });
+
+  it('buffers normalized frames and emits onReady', async () => {
+    const source = {
+      async start(onFrame: (frame: Frame) => void) {
+        queueMicrotask(() => {
+          const pcm = new Int16Array(480);
+          pcm.fill(5000);
+          onFrame({ pcm, tsMs: 42, sampleRate: 48000, channels: 1 });
+        });
+      },
+      async stop() {
+        // noop
+      },
+    } satisfies NodeFrameSource;
+
+    const rec = createRecorder({ source, format: { sampleRate: 16000 } });
+    const ready = vi.fn();
+    rec.onReady(ready);
+
+    await rec.start();
+    await new Promise<void>((resolve) => {
+      queueMicrotask(() => {
+        resolve();
+      });
+    });
+
+    expect(ready).toHaveBeenCalledTimes(1);
+
+    const received: Frame[] = [];
+    rec.subscribeFrames((frame) => {
+      received.push(frame);
+    });
+
+    expect(received).toHaveLength(1);
+    expect(received[0].sampleRate).toBe(16000);
+    expect(received[0].pcm).toBeInstanceOf(Int16Array);
+
+    await rec.stop();
   });
 });

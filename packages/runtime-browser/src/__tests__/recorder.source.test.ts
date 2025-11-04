@@ -148,3 +148,112 @@ describe('Recorder source configuration', () => {
     recorder.dispose();
   });
 });
+
+describe('Recorder format normalization', () => {
+  const makePipeline = (): Pipeline =>
+    new Pipeline({
+      now: () => 0,
+      createId: () => 'id',
+    });
+
+  it('normalizes frames to requested sample rate and encoding', async () => {
+    const pipeline = makePipeline();
+    const input = new Int16Array(480);
+    for (let i = 0; i < input.length; i += 1) {
+      input[i] = (i % 2 === 0 ? 1 : -1) * 12000;
+    }
+
+    const startSpy = vi.fn(async (onFrame: (frame: Frame) => void) => {
+      onFrame({
+        pcm: input,
+        tsMs: 100,
+        sampleRate: 48000,
+        channels: 1,
+      });
+    });
+
+    const runtime = createRuntime(pipeline, {
+      createMicrophoneSource: () => ({
+        start: startSpy,
+        stop: vi.fn(async () => {}),
+      }),
+    });
+
+    const recorder = createRecorder({
+      runtime,
+      format: { sampleRate: 16000, encoding: 'pcm16' },
+    });
+
+    const received: Frame[] = [];
+    recorder.subscribeFrames((frame) => {
+      received.push(frame);
+    });
+
+    await recorder.start();
+    await recorder.stop();
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(received).toHaveLength(1);
+    const normalized = received[0];
+    expect(normalized.sampleRate).toBe(16000);
+    expect(normalized.channels).toBe(1);
+    expect(normalized.pcm).toBeInstanceOf(Int16Array);
+    expect((normalized.pcm as Int16Array).length).toBe(160);
+
+    recorder.dispose();
+  });
+
+  it('buffers normalized frames for late subscribers and emits onReady once', async () => {
+    const pipeline = makePipeline();
+    const input = new Int16Array(480);
+    input.fill(8000);
+
+    const startMock = vi.fn(async (onFrame: (frame: Frame) => void) => {
+      queueMicrotask(() => {
+        onFrame({
+          pcm: input,
+          tsMs: 0,
+          sampleRate: 48000,
+          channels: 1,
+        });
+      });
+    });
+
+    const runtime = createRuntime(pipeline, {
+      createMicrophoneSource: () => ({
+        start: startMock,
+        stop: vi.fn(async () => {}),
+      }),
+    });
+
+    const recorder = createRecorder({
+      runtime,
+      format: { sampleRate: 16000, encoding: 'pcm16' },
+    });
+
+    const ready = vi.fn();
+    recorder.onReady(ready);
+
+    await recorder.start();
+    expect(startMock).toHaveBeenCalledTimes(1);
+    await new Promise<void>((resolve) => {
+      queueMicrotask(() => {
+        resolve();
+      });
+    });
+
+    expect(ready).toHaveBeenCalledTimes(1);
+
+    const received: Frame[] = [];
+    recorder.subscribeFrames((frame) => {
+      received.push(frame);
+    });
+
+    expect(received).toHaveLength(1);
+    expect(received[0].sampleRate).toBe(16000);
+    expect(received[0].pcm).toBeInstanceOf(Int16Array);
+
+    await recorder.stop();
+    recorder.dispose();
+  });
+});

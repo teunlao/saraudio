@@ -130,3 +130,14 @@ Vue Hook (`useRecorder`) · выравнивание DX
 
 Итог для примеров
 - Меняем вызовы на `rec.subscribeFrames(...)`/`rec.subscribeRawFrames(...)` без `rec.recorder` и без `.value`.
+
+Реализация · 4 ноября 2025
+- `@saraudio/utils`: вынесены `downmixToMono`, `resampleLinear`, добавлены юнит-тесты на ресемплинг и даунмикс.
+- `@saraudio/core`: общий `cloneFrame/normalizeFrame` с опциями (`format`, `logger`), экспортирован из пакета.
+- `@saraudio/runtime-browser`: поддержка `format` в опциях/`update`, новые `subscribeFrames` (нормализованные кадры), `onReady`, стартовый буфер (5 кадров), использование core-нормализации. `subscribeRawFrames` сохранён без изменений.
+- `@saraudio/runtime-node`: зеркальные `format`, `subscribeFrames`, `onReady`, буфер и нормализация через core-хелперы.
+- `@saraudio/vue`: хук возвращает плоский API (`subscribeFrames`, `subscribeRawFrames`, `subscribeSpeechFrames`, `onReady`, `update`), принимает `format`, удалено обращение `rec.recorder` из DX.
+- Nuxt Deepgram пример: подключён `format: { sampleRate: 16000, encoding: 'pcm16' }`, переход на `subscribeFrames`, убран ручной ресемплинг/Float→Int16 конвертер из примера. WebSocket клиент теперь ожидает готовые 16 кГц кадры.
+- `useDeepgramRealtime`: функция `sendPcm16` не выполняет DSP; проверяет частоту и отправляет chunk напрямую.
+- Все затронутые пакеты прошли `typecheck → lint → test` (utils/core/runtime-browser/runtime-node/vue/nuxt-audio-recorder).
+- TODO: держим `constraints` до следующего минорного релиза (помечено комментариями `// TODO remove`), запланировать удаление после коммуникации в релиз-нотах.
