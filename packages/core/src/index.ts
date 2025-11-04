@@ -38,4 +38,7 @@ export {
   type SegmenterOptions,
   type SegmenterStage,
 } from './stages/segmenter';
+export * from './transcription/errors';
+export type * from './transcription/types';
+
 export type { CoreError, Frame, MeterPayload, Segment, VADScore } from './types';
