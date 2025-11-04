@@ -1,4 +1,5 @@
 import type {
+  NormalizedFrame,
   Recorder,
   StreamStatus,
   TranscriptionProvider,
@@ -6,8 +7,10 @@ import type {
   TranscriptResult,
   Transport,
 } from '@saraudio/core';
+import { isRetryable, RateLimitError } from '@saraudio/core';
 
 import type { Logger } from '@saraudio/utils';
+import { createDeferred, type Deferred } from '@saraudio/utils';
 
 export interface CreateTranscriptionOptions {
   provider: TranscriptionProvider;
@@ -15,6 +18,17 @@ export interface CreateTranscriptionOptions {
   logger?: Logger;
   liveTransport?: 'auto' | 'ws' | 'http';
   flushOnSegmentEnd?: boolean;
+  /** Max duration of pre-connect audio buffer to avoid losing early speech (ms). Default: 60, soft-max: 120. */
+  preconnectBufferMs?: number;
+  /** Retry policy for transient errors. */
+  retry?: {
+    enabled?: boolean;
+    maxAttempts?: number; // total attempts including the first one
+    baseDelayMs?: number; // base backoff
+    factor?: number; // exponential factor
+    maxDelayMs?: number; // cap
+    jitterRatio?: number; // 0..1, multiplicative jitter
+  };
   // httpClient?: HttpClient // YAGNI: добавим при первой HTTP интеграции
 }
 
@@ -49,7 +63,74 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
   const errorSubs = new Set<(e: Error) => void>();
   const statusSubs = new Set<(s: StreamStatus) => void>();
   let unsubscribeRecorder: (() => void) | null = null;
+  let unsubscribeSegment: (() => void) | null = null;
   let unsubscribeStream: Array<() => void> = [];
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let connectDeferred: Deferred<void> | null = null;
+  let attempts = 0;
+  const retryDefaults = {
+    enabled: true,
+    maxAttempts: 3,
+    baseDelayMs: 300,
+    factor: 2,
+    maxDelayMs: 10_000,
+    jitterRatio: 0,
+  };
+  const retryCfg = { ...retryDefaults, ...(opts.retry ?? {}) };
+
+  const computeBackoff = (attempt: number, err?: unknown): number => {
+    if (err instanceof RateLimitError && typeof err.retryAfterMs === 'number' && err.retryAfterMs > 0) {
+      return Math.min(err.retryAfterMs, retryCfg.maxDelayMs);
+    }
+    const exp = Math.min(retryCfg.baseDelayMs * retryCfg.factor ** Math.max(0, attempt - 1), retryCfg.maxDelayMs);
+    if (!retryCfg.jitterRatio) return exp;
+    const jitter = exp * retryCfg.jitterRatio * 0.5; // deterministic half-jitter
+    return Math.max(0, Math.min(retryCfg.maxDelayMs, Math.floor(exp - jitter)));
+  };
+
+  // onReady buffer: keep a small pre-connect buffer to avoid losing the beginning of speech
+  const DEFAULT_PRECONNECT_MS = 60;
+  const SOFT_MAX_PRECONNECT_MS = 120;
+  const requestedPreconnect = opts.preconnectBufferMs;
+  let maxPreconnectMs = DEFAULT_PRECONNECT_MS;
+  if (typeof requestedPreconnect === 'number') {
+    if (requestedPreconnect < 0) {
+      maxPreconnectMs = 0;
+      logger?.warn('preconnectBufferMs clamped to 0 ms (negative provided)', {
+        module: 'runtime-base',
+        provided: requestedPreconnect,
+        clampedTo: 0,
+      });
+    } else if (requestedPreconnect > SOFT_MAX_PRECONNECT_MS) {
+      maxPreconnectMs = SOFT_MAX_PRECONNECT_MS;
+      logger?.warn('preconnectBufferMs clamped to soft max', {
+        module: 'runtime-base',
+        provided: requestedPreconnect,
+        clampedTo: SOFT_MAX_PRECONNECT_MS,
+      });
+    } else {
+      maxPreconnectMs = requestedPreconnect;
+    }
+  }
+
+  const preconnectBuffer: Array<NormalizedFrame<'pcm16'>> = [];
+  let preconnectBufferedMs = 0;
+
+  const frameDurationMs = (f: NormalizedFrame<'pcm16'>): number => {
+    const samples = f.pcm.length;
+    const duration = (samples / f.sampleRate) * 1000;
+    return duration;
+  };
+
+  const pushPreconnect = (f: NormalizedFrame<'pcm16'>): void => {
+    preconnectBuffer.push(f);
+    preconnectBufferedMs += frameDurationMs(f);
+    // Trim from the head while exceeding the time budget
+    while (preconnectBufferedMs > maxPreconnectMs && preconnectBuffer.length > 1) {
+      const dropped = preconnectBuffer.shift();
+      if (dropped) preconnectBufferedMs -= frameDurationMs(dropped);
+    }
+  };
 
   const setStatus = (next: StreamStatus): void => {
     if (status === next) return;
@@ -64,39 +145,142 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     return stream;
   };
 
-  const connect = async (signal?: AbortSignal): Promise<void> => {
+  const unsubscribeStreamHandlers = (): void => {
+    if (unsubscribeStream.length > 0) {
+      for (let i = 0; i < unsubscribeStream.length; i += 1) unsubscribeStream[i]();
+      unsubscribeStream = [];
+    }
+  };
+
+  const cleanupRetry = (): void => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  };
+
+  const startRetry = (err: unknown, signal?: AbortSignal): void => {
+    if (!retryCfg.enabled) {
+      connectDeferred?.resolve();
+      connectDeferred = null;
+      setStatus('error');
+      return;
+    }
+    if (!isRetryable(err) || attempts >= Math.max(1, retryCfg.maxAttempts)) {
+      connectDeferred?.resolve();
+      connectDeferred = null;
+      setStatus('error');
+      return;
+    }
+    const delay = computeBackoff(attempts, err);
+    logger?.debug('retry scheduled', {
+      module: 'runtime-base',
+      event: 'retry',
+      attempt: attempts,
+      delayMs: delay,
+      providerId: provider.id,
+    });
+    connected = false;
+    // keep recorder subscription active to feed preconnect buffer
+    cleanupRetry();
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      // prepare new stream and re-attempt
+      stream = null;
+      void attemptConnect(signal);
+    }, delay);
+  };
+
+  const wireStream = (s: TranscriptionStream, signal?: AbortSignal): void => {
+    unsubscribeStreamHandlers();
+    unsubscribeStream.push(
+      s.onTranscript((r: TranscriptResult) => transcriptSubs.forEach((h) => h(r))),
+      s.onError((e: Error) => {
+        lastError = e;
+        errorSubs.forEach((h) => h(e));
+        startRetry(e, signal);
+      }),
+      s.onStatusChange((st: StreamStatus) => setStatus(st)),
+    );
+    if (s.onPartial) {
+      unsubscribeStream.push(s.onPartial((t: string) => partialSubs.forEach((h) => h(t))));
+    }
+  };
+
+  const attemptConnect = async (signal?: AbortSignal): Promise<void> => {
+    setStatus('connecting');
+    attempts += 1;
+    const stream = ensureStream();
+    wireStream(stream, signal);
+    // Subscribe frames before awaiting connect to avoid losing early audio
+    if (recorder && !unsubscribeRecorder) {
+      unsubscribeRecorder = recorder.subscribeFrames((frame) => {
+        if (!connected) {
+          pushPreconnect(frame);
+        } else {
+          const active = stream;
+          if (active) active.send(frame);
+        }
+      });
+    }
     try {
-      setStatus('connecting');
-      const stream = ensureStream();
-      // wire stream events
-      unsubscribeStream.push(
-        stream.onTranscript((r: TranscriptResult) => transcriptSubs.forEach((h) => h(r))),
-        stream.onError((e: Error) => {
-          lastError = e;
-          errorSubs.forEach((h) => h(e));
-          setStatus('error');
-        }),
-        stream.onStatusChange((st: StreamStatus) => setStatus(st)),
-      );
-      if (stream.onPartial) {
-        unsubscribeStream.push(stream.onPartial((t: string) => partialSubs.forEach((h) => h(t))));
-      }
       await stream.connect(signal);
-      // subscribe recorder frames
-      if (recorder) {
-        unsubscribeRecorder = recorder.subscribeFrames((frame) => stream.send(frame));
+      // Flush preconnect buffer first-in-first-out
+      if (preconnectBuffer.length > 0) {
+        for (let i = 0; i < preconnectBuffer.length; i += 1) {
+          stream.send(preconnectBuffer[i]);
+        }
+        preconnectBuffer.length = 0;
+        preconnectBufferedMs = 0;
+      }
+      // Subscribe to segment end → force endpoint when requested and supported
+      if (recorder && opts.flushOnSegmentEnd === true) {
+        if (provider.capabilities.forceEndpoint) {
+          const FORCE_COOLDOWN_MS = 200;
+          let lastForceTs = 0;
+          unsubscribeSegment = recorder.onSegment(() => {
+            const now = Date.now();
+            if (now - lastForceTs < FORCE_COOLDOWN_MS) return;
+            lastForceTs = now;
+            logger?.debug('forceEndpoint on segment end', {
+              module: 'runtime-base',
+              event: 'segment-end',
+              providerId: provider.id,
+            });
+            void stream.forceEndpoint();
+          });
+        } else {
+          logger?.debug('flushOnSegmentEnd requested but provider does not support forceEndpoint', {
+            module: 'runtime-base',
+            providerId: provider.id,
+          });
+        }
       }
       connected = true;
       setStatus('connected');
       logger?.debug('connected', { module: 'runtime-base', event: 'connect', providerId: provider.id });
+      attempts = 1; // reset window for subsequent retries if needed
+      connectDeferred?.resolve();
+      connectDeferred = null;
     } catch (e) {
       lastError = e as Error;
-      setStatus('error');
-      if (lastError) {
-        const err = lastError;
-        errorSubs.forEach((h) => h(err));
-      }
+      errorSubs.forEach((h) => h(lastError as Error));
+      startRetry(e, signal);
+      if (!connectDeferred) connectDeferred = createDeferred<void>();
     }
+  };
+
+  const connect = async (signal?: AbortSignal): Promise<void> => {
+    cleanupRetry();
+    if (connectDeferred) {
+      // already trying; wait for completion
+      await connectDeferred.promise;
+      return;
+    }
+    connectDeferred = createDeferred<void>();
+    attempts = 0;
+    await attemptConnect(signal);
+    if (connectDeferred) await connectDeferred.promise;
   };
 
   const disconnect = async (): Promise<void> => {
@@ -105,24 +289,32 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
         unsubscribeRecorder();
         unsubscribeRecorder = null;
       }
+      if (unsubscribeSegment) {
+        unsubscribeSegment();
+        unsubscribeSegment = null;
+      }
+      cleanupRetry();
+      connectDeferred?.resolve();
+      connectDeferred = null;
       if (stream) {
         await stream.disconnect();
       }
     } finally {
-      unsubscribeStream.forEach((u) => u());
-      unsubscribeStream = [];
+      unsubscribeStreamHandlers();
       connected = false;
       setStatus('disconnected');
     }
   };
 
   const forceEndpoint = async (): Promise<void> => {
-    const s = ensureStream();
-    await s.forceEndpoint();
+    const stream = ensureStream();
+    await stream.forceEndpoint();
   };
 
   const clear = (): void => {
     // Minimal stub: higher layers can reset accumulators/partials if needed
+    preconnectBuffer.length = 0;
+    preconnectBufferedMs = 0;
   };
 
   return {

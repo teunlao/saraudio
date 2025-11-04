@@ -1,3 +1,4 @@
+export * from './async/deferred';
 export { downmixToMono } from './dsp/downmix';
 export { createHysteresis, type HysteresisOptions, type HysteresisState } from './dsp/hysteresis';
 export { resampleLinear } from './dsp/resample';
