@@ -13,6 +13,7 @@
     "lint:fix": "biome check --write ."
   },
   "dependencies": {
+    "@saraudio/deepgram": "workspace:*",
     "@saraudio/core": "workspace:*",
     "@saraudio/meter": "workspace:*",
     "@saraudio/runtime-browser": "workspace:*",

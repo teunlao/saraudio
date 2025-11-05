@@ -93,7 +93,7 @@ export function createRecorderStub<E extends RecorderFrameEncoding = 'pcm16'>(
 
     // Configuration
     async configure() {},
-    async update() {},
+    async update(_options?: unknown) {},
 
     // Event subscriptions
     onVad(handler) {

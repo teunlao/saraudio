@@ -62,6 +62,9 @@ importers:
       '@saraudio/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@saraudio/deepgram':
+        specifier: workspace:*
+        version: link:../../packages/deepgram
       '@saraudio/meter':
         specifier: workspace:*
         version: link:../../packages/meter

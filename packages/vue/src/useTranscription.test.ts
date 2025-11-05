@@ -129,25 +129,20 @@ const createProvider = (transport: TransportKind = 'websocket'): TranscriptionPr
 
 const createRecorder = (): Recorder => {
   const stub = createRecorderStub();
-  const recorder = stub as unknown as Recorder;
-  recorder.update = vi.fn(async () => {});
-  recorder.recordings = {
-    cleaned: {
-      durationMs: 0,
-      getBlob: async () => null,
-    },
-    full: {
-      durationMs: 0,
-      getBlob: async () => null,
-    },
-    masked: {
-      durationMs: 0,
-      getBlob: async () => null,
-    },
-    meta: () => ({ sessionDurationMs: 0, cleanedDurationMs: 0 }),
-    clear: () => {},
-  } as Recorder['recordings'];
-  return recorder;
+  // Wrap update() to spy on it
+  const originalUpdate = stub.update;
+  stub.update = vi.fn(originalUpdate);
+  // Extend recordings with browser-specific getBlob()
+  const recordings = stub.recordings;
+  const browserRecordings = {
+    cleaned: { ...recordings.cleaned, getBlob: async () => null },
+    full: { ...recordings.full, getBlob: async () => null },
+    masked: { ...recordings.masked, getBlob: async () => null },
+    meta: recordings.meta,
+    clear: recordings.clear,
+  };
+  stub.recordings = browserRecordings as Recorder['recordings'];
+  return stub as unknown as Recorder;
 };
 
 const flushPromises = (): Promise<void> =>
