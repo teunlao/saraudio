@@ -57,7 +57,185 @@ type ReplaceInput =
     }>
   | Record<string, string>;
 
-export interface DeepgramOptions {
+const NOVA3_LANGUAGES = [
+  'multi',
+  'en',
+  'en-US',
+  'en-AU',
+  'en-GB',
+  'en-IN',
+  'en-NZ',
+  'es',
+  'es-419',
+  'fr',
+  'fr-CA',
+  'de',
+  'nl',
+  'sv',
+  'sv-SE',
+  'da',
+  'da-DK',
+  'pt',
+  'pt-BR',
+  'pt-PT',
+  'it',
+  'tr',
+  'no',
+  'id',
+  'hi',
+  'ru',
+  'ja',
+  'zh',
+  'zh-CN',
+  'zh-TW',
+  'ko',
+  'ko-KR',
+  'hu',
+  'pl',
+  'uk',
+  'fi',
+  'cs',
+  'bg',
+  'vi',
+] as const;
+
+const NOVA3_MEDICAL_LANGUAGES = ['en', 'en-US', 'en-AU', 'en-CA', 'en-GB', 'en-IE', 'en-IN', 'en-NZ'] as const;
+
+const FLUX_LANGUAGES = ['en'] as const;
+
+const NOVA2_LANGUAGES = [
+  'multi',
+  'en',
+  'en-US',
+  'en-AU',
+  'en-GB',
+  'en-NZ',
+  'en-IN',
+  'es',
+  'es-419',
+  'fr',
+  'fr-CA',
+  'de',
+  'de-CH',
+  'pt',
+  'pt-BR',
+  'pt-PT',
+  'it',
+  'id',
+  'hi',
+  'ru',
+  'ja',
+  'ko',
+  'ko-KR',
+  'da',
+  'da-DK',
+  'nl',
+  'nl-BE',
+  'sv',
+  'sv-SE',
+  'no',
+  'fi',
+  'et',
+  'lv',
+  'lt',
+  'pl',
+  'cs',
+  'sk',
+  'hu',
+  'bg',
+  'ro',
+  'uk',
+  'tr',
+  'th',
+  'th-TH',
+  'vi',
+  'ms',
+  'zh',
+  'zh-CN',
+  'zh-Hans',
+  'zh-TW',
+  'zh-Hant',
+  'zh-HK',
+  'ca',
+] as const;
+
+const ENGLISH_ONLY_LANGUAGES = ['en', 'en-US'] as const;
+
+export const DEEPGRAM_MODEL_DEFINITIONS = {
+  'nova-3': {
+    label: 'Nova-3',
+    languages: NOVA3_LANGUAGES,
+  },
+  'nova-3-general': {
+    label: 'Nova-3 General',
+    languages: NOVA3_LANGUAGES,
+  },
+  'nova-3-medical': {
+    label: 'Nova-3 Medical',
+    languages: NOVA3_MEDICAL_LANGUAGES,
+  },
+  'flux-general-en': {
+    label: 'Flux General (Conversation)',
+    languages: FLUX_LANGUAGES,
+  },
+  'nova-2': {
+    label: 'Nova-2',
+    languages: NOVA2_LANGUAGES,
+  },
+  'nova-2-general': {
+    label: 'Nova-2 General',
+    languages: NOVA2_LANGUAGES,
+  },
+  'nova-2-medical': {
+    label: 'Nova-2 Medical',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-phonecall': {
+    label: 'Nova-2 Phonecall',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-meeting': {
+    label: 'Nova-2 Meeting',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-finance': {
+    label: 'Nova-2 Finance',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-conversationalai': {
+    label: 'Nova-2 Conversational AI',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-voicemail': {
+    label: 'Nova-2 Voicemail',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-video': {
+    label: 'Nova-2 Video',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-drivethru': {
+    label: 'Nova-2 Drive Thru',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-automotive': {
+    label: 'Nova-2 Automotive',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+  'nova-2-atc': {
+    label: 'Nova-2 ATC',
+    languages: ENGLISH_ONLY_LANGUAGES,
+  },
+} as const;
+
+export type DeepgramModelId = keyof typeof DEEPGRAM_MODEL_DEFINITIONS;
+export type DeepgramModelDefinition<M extends DeepgramModelId> = (typeof DEEPGRAM_MODEL_DEFINITIONS)[M];
+export type DeepgramLanguageForModel<M extends DeepgramModelId> = DeepgramModelDefinition<M>['languages'][number];
+export type DeepgramLanguage = {
+  [M in DeepgramModelId]: DeepgramLanguageForModel<M>;
+}[DeepgramModelId];
+
+export interface DeepgramOptions<M extends DeepgramModelId = 'nova-3'> {
   /** Deepgram API key (server-side) or JWT token. */
   apiKey?: string;
   /** Pre-issued access token. When provided overrides {@link apiKey}. */
@@ -66,8 +244,8 @@ export interface DeepgramOptions {
   tokenProvider?: () => Promise<string>;
   /** Optional logger (child logger recommended). */
   logger?: Logger;
-  /** Primary model identifier (e.g. `nova-2`). */
-  model: string;
+  /** Primary model identifier (e.g. `nova-3`). */
+  model: M;
   /** Optional explicit base URL (defaults to Deepgram listen v1 endpoint). */
   baseUrl?: string;
   /** Custom URL builder. Receives populated query params and must return final URL. */
@@ -75,7 +253,7 @@ export interface DeepgramOptions {
   /** Additional subprotocols to send alongside token (if any). */
   additionalProtocols?: ReadonlyArray<string>;
   /** Language hint (BCP-47). */
-  language?: string;
+  language?: DeepgramLanguageForModel<M>;
   /** Enable automatic language detection. */
   detectLanguage?: boolean;
   /** Enable mutable partials. Defaults to `true`. */
@@ -130,7 +308,7 @@ export interface DeepgramProvider extends TranscriptionProvider {
   readonly id: 'deepgram';
 }
 
-export function deepgram(options: DeepgramOptions): DeepgramProvider {
+export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramProvider {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const queueBudgetMs = clamp(options.queueBudgetMs ?? DEFAULT_QUEUE_BUDGET_MS, QUEUE_MIN_MS, QUEUE_MAX_MS);
   const keepaliveMs = clamp(options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS, KEEPALIVE_MIN_MS, KEEPALIVE_MAX_MS);
@@ -190,7 +368,9 @@ function normalizeChannels(channels: number): 1 | 2 {
   return channels >= 2 ? 2 : 1;
 }
 
-function buildBaseParams(options: DeepgramOptions & { sampleRate: number; channels: 1 | 2 }): URLSearchParams {
+function buildBaseParams<M extends DeepgramModelId>(
+  options: DeepgramOptions<M> & { sampleRate: number; channels: 1 | 2 },
+): URLSearchParams {
   const params = new URLSearchParams();
   params.set('model', options.model);
   params.set('encoding', options.encoding ?? 'linear16');
@@ -242,6 +422,14 @@ function buildBaseParams(options: DeepgramOptions & { sampleRate: number; channe
   }
 
   return params;
+}
+
+export function isLanguageSupported<M extends DeepgramModelId>(
+  model: M,
+  language: string,
+): language is DeepgramLanguageForModel<M> {
+  const definition = DEEPGRAM_MODEL_DEFINITIONS[model];
+  return (definition.languages as readonly string[]).includes(language);
 }
 
 function appendBoolean(params: URLSearchParams, key: string, value: boolean | undefined): void {
@@ -302,7 +490,7 @@ function appendExtra(
 
 async function buildUrl(
   baseUrl: string,
-  builder: DeepgramOptions['buildUrl'],
+  builder: DeepgramOptions<DeepgramModelId>['buildUrl'],
   params: URLSearchParams,
 ): Promise<string> {
   if (builder) {
@@ -313,7 +501,7 @@ async function buildUrl(
   return query.length > 0 ? `${baseUrl}?${query}` : baseUrl;
 }
 
-async function resolveAuthToken(options: DeepgramOptions): Promise<string | null> {
+async function resolveAuthToken<M extends DeepgramModelId>(options: DeepgramOptions<M>): Promise<string | null> {
   if (options.tokenProvider) {
     const token = await options.tokenProvider();
     if (!token) {
@@ -339,7 +527,7 @@ async function resolveAuthToken(options: DeepgramOptions): Promise<string | null
   throw new AuthenticationError('Deepgram requires an apiKey, token, or tokenProvider');
 }
 
-function hasEmbeddedToken(options: DeepgramOptions): boolean {
+function hasEmbeddedToken<M extends DeepgramModelId>(options: DeepgramOptions<M>): boolean {
   const base = options.baseUrl ?? '';
   if (base.includes('token=') || base.includes('access_token=')) {
     return true;

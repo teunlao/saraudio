@@ -69,6 +69,7 @@ export interface UseTranscriptionResult {
   disconnect: () => Promise<void>;
   clear: () => void;
   forceEndpoint: () => Promise<void>;
+  reconfigure: (provider: TranscriptionProvider) => Promise<void>;
   recorder: Ref<Recorder | null>;
   start?: () => Promise<void>;
   stop?: () => Promise<void>;
@@ -91,7 +92,8 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
   const status = ref<StreamStatus>('idle');
   const error = ref<Error | null>(null);
   const isConnected = ref(false);
-  const transport = options.provider.transport;
+  let currentProvider = options.provider;
+  let transport = currentProvider.transport;
 
   const transcriptSegments: string[] = [];
 
@@ -137,8 +139,8 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
   const applyFormat = async (rec: Recorder): Promise<void> => {
     if (formatApplied) return;
     try {
-      const preferred = options.provider.getPreferredFormat();
-      const negotiated = options.provider.negotiateFormat ? options.provider.negotiateFormat(preferred) : preferred;
+      const preferred = currentProvider.getPreferredFormat();
+      const negotiated = currentProvider.negotiateFormat ? currentProvider.negotiateFormat(preferred) : preferred;
       const nextFormat = ensureFormatEncoding(negotiated);
       await rec.update({ format: nextFormat });
       formatApplied = true;
@@ -147,6 +149,14 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
       error.value = resolved;
       options.onError?.(resolved);
     }
+  };
+
+  const teardownSubscriptions = (): void => {
+    if (unsubscribes.length === 0) return;
+    for (const unsub of unsubscribes) {
+      unsub();
+    }
+    unsubscribes.length = 0;
   };
 
   const setupSubscriptions = (controller: TranscriptionController): void => {
@@ -207,7 +217,7 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     await applyFormat(recorder);
 
     const controllerOptions: CreateTranscriptionOptions = {
-      provider: options.provider,
+      provider: currentProvider,
       recorder,
       logger: options.logger,
       preconnectBufferMs: options.preconnectBufferMs,
@@ -242,6 +252,17 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     controllerRef.value?.clear();
   };
 
+  const reconfigure = async (nextProvider: TranscriptionProvider): Promise<void> => {
+    if (controllerRef.value) {
+      await controllerRef.value.disconnect();
+    }
+    teardownSubscriptions();
+    controllerRef.value = null;
+    formatApplied = false;
+    currentProvider = nextProvider;
+    transport = nextProvider.transport;
+  };
+
   const forceEndpoint = async (): Promise<void> => {
     const controller = await ensureController();
     await controller.forceEndpoint();
@@ -266,14 +287,11 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     if (controllerRef.value) {
       void controllerRef.value.disconnect();
     }
-    for (const unsub of unsubscribes) {
-      unsub();
-    }
-    unsubscribes.length = 0;
+    teardownSubscriptions();
     controllerRef.value = null;
   });
 
-  return {
+  const api: UseTranscriptionResult = {
     transcript,
     partial,
     status,
@@ -284,8 +302,15 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     disconnect,
     clear,
     forceEndpoint,
+    reconfigure,
     recorder: recorderRef,
     start: internalRecorder?.start,
     stop: internalRecorder?.stop,
   };
+
+  Object.defineProperty(api, 'transport', {
+    get: () => transport,
+  });
+
+  return api;
 }

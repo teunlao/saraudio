@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { TranscriptResult } from '@saraudio/core';
-import { deepgram } from '@saraudio/deepgram';
+import {
+  DEEPGRAM_MODEL_DEFINITIONS,
+  deepgram,
+  isLanguageSupported,
+  type DeepgramLanguage,
+  type DeepgramModelId,
+} from '@saraudio/deepgram';
 import { meter } from '@saraudio/meter';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
@@ -14,8 +20,9 @@ const SMOOTH_KEY = 'saraudio:demo:transcription:smooth';
 const FALLBACK_KEY = 'saraudio:demo:transcription:fallback';
 
 const config = useRuntimeConfig();
-const selectedModel = ref<'nova-2' | 'nova-2-conversational' | 'nova-2-phonecall'>('nova-2');
-const language = ref('en-US');
+
+const selectedModel = ref<DeepgramModelId>('nova-3');
+const selectedLanguage = ref<DeepgramLanguage>('en-US');
 
 const thresholdDb = ref(-55);
 const smoothMs = ref(25);
@@ -62,11 +69,7 @@ watch(allowFallback, (value) => {
   } catch {}
 });
 
-const audioInputs = useAudioInputs({
-  promptOnMount: true,
-  autoSelectFirst: true,
-  rememberLast: true,
-});
+const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
 
 const recorder = useRecorder({
   stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
@@ -79,19 +82,26 @@ const recorder = useRecorder({
 
 const meterLevels = useMeter({ pipeline: recorder.pipeline });
 
-const provider = deepgram({
-  model: selectedModel.value,
-  language: language.value,
-  interimResults: true,
-  punctuate: true,
-  tokenProvider: async () => {
-    const key = config.public.deepgramApiKey;
-    if (!key || typeof key !== 'string' || key.trim().length === 0) {
-      throw new Error('Missing NUXT_PUBLIC_DEEPGRAM_API_KEY for Deepgram demo');
-    }
-    return key.trim();
-  },
+const modelEntries = computed(() =>
+  (Object.keys(DEEPGRAM_MODEL_DEFINITIONS) as DeepgramModelId[]).map((id) => ({
+    id,
+    label: DEEPGRAM_MODEL_DEFINITIONS[id].label,
+  })),
+);
+
+const availableLanguages = computed(() => [...DEEPGRAM_MODEL_DEFINITIONS[selectedModel.value].languages]);
+
+watch(selectedModel, (model) => {
+  if (!isLanguageSupported(model, selectedLanguage.value)) {
+    const fallback = DEEPGRAM_MODEL_DEFINITIONS[model].languages[0] as DeepgramLanguage;
+    selectedLanguage.value = fallback;
+  }
 });
+
+const ensureLanguage = (model: DeepgramModelId, language: DeepgramLanguage): DeepgramLanguage => {
+  if (isLanguageSupported(model, language)) return language;
+  return DEEPGRAM_MODEL_DEFINITIONS[model].languages[0] as DeepgramLanguage;
+};
 
 const events = ref<string[]>([]);
 const latestResults = ref<TranscriptResult[]>([]);
@@ -103,8 +113,33 @@ const pushEvent = (message: string) => {
   if (events.value.length > MAX_EVENTS) events.value.length = MAX_EVENTS;
 };
 
+const buildProvider = (model: DeepgramModelId, language: DeepgramLanguage) =>
+  deepgram({
+    model,
+    language,
+    interimResults: true,
+    punctuate: true,
+    tokenProvider: async () => {
+      const key = config.public.deepgramApiKey;
+      if (!key || typeof key !== 'string' || key.trim().length === 0) {
+        throw new Error('Missing NUXT_PUBLIC_DEEPGRAM_API_KEY for Deepgram demo');
+      }
+      return key.trim();
+    },
+  });
+
+const synchroniseSelection = (model: DeepgramModelId, language: DeepgramLanguage) => {
+  const effectiveLanguage = ensureLanguage(model, language);
+  if (effectiveLanguage !== language) {
+    selectedLanguage.value = effectiveLanguage;
+  }
+  return { model, language: effectiveLanguage } as const;
+};
+
+let currentSelection = synchroniseSelection(selectedModel.value, selectedLanguage.value);
+
 const transcription = useTranscription({
-  provider,
+  provider: buildProvider(currentSelection.model, currentSelection.language),
   recorder,
   preconnectBufferMs: 120,
   flushOnSegmentEnd: true,
@@ -130,13 +165,43 @@ const transcription = useTranscription({
   },
 });
 
-
 watch(
   () => transcription.status.value,
   (next, prev) => {
+    if (!prev || next === prev) return;
     pushEvent(`[status] ${prev} → ${next}`);
   },
 );
+
+let configInitialized = false;
+watch([selectedModel, selectedLanguage], ([model, lang]) => {
+  const nextSelection = synchroniseSelection(model, lang);
+  if (!configInitialized) {
+    configInitialized = true;
+    currentSelection = nextSelection;
+    pushEvent(`[config] provider set to model=${nextSelection.model}, language=${nextSelection.language}`);
+    return;
+  }
+  if (nextSelection.model === currentSelection.model && nextSelection.language === currentSelection.language) {
+    return;
+  }
+  currentSelection = nextSelection;
+  void (async () => {
+    try {
+      if (transcription.isConnected.value) {
+        await transcription.disconnect();
+      }
+      await transcription.reconfigure(buildProvider(nextSelection.model, nextSelection.language));
+      transcription.clear();
+      pushEvent(
+        `[config] provider set to model=${nextSelection.model}, language=${nextSelection.language} (reinitialised)`,
+      );
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      pushEvent(`[config-error] ${error.message}`);
+    }
+  })();
+});
 
 const transcriptText = computed(() => transcription.transcript.value.trim());
 const partialText = computed(() => transcription.partial.value);
@@ -199,23 +264,21 @@ onUnmounted(() => {
             <select
               v-model="audioInputs.selectedDeviceId.value"
               :disabled="audioInputs.enumerating.value || recorderRunning"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
               <option v-for="device in audioInputs.devices.value" :key="device.deviceId" :value="device.deviceId">
                 {{ device.label || `Mic ${device.deviceId.slice(0, 6)}` }}
               </option>
             </select>
           </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm text-gray-400 mb-1">Threshold (dB): {{ thresholdDb }}</label>
-              <input type="range" min="-90" max="-5" step="1" v-model.number="thresholdDb" class="w-full" />
-            </div>
-            <div>
-              <label class="block text-sm text-gray-400 mb-1">Smoothing (ms): {{ smoothMs }}</label>
-              <input type="range" min="5" max="200" step="5" v-model.number="smoothMs" class="w-full" />
-            </div>
-          </div>
+          <button
+            type="button"
+            @click="audioInputs.refresh"
+            :disabled="audioInputs.enumerating.value || recorderRunning"
+            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition"
+          >
+            {{ audioInputs.enumerating.value ? 'Scanning…' : 'Refresh' }}
+          </button>
         </div>
 
         <div class="grid sm:grid-cols-3 gap-4">
@@ -223,23 +286,21 @@ onUnmounted(() => {
             <label class="block text-sm text-gray-400 mb-1">Model</label>
             <select
               v-model="selectedModel"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              disabled
+              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500"
             >
-              <option value="nova-2">nova-2</option>
-              <option value="nova-2-conversational">nova-2-conversational</option>
-              <option value="nova-2-phonecall">nova-2-phonecall</option>
+              <option v-for="entry in modelEntries" :key="entry.id" :value="entry.id">
+                {{ entry.label }}
+              </option>
             </select>
-            <p class="text-xs text-gray-500 mt-1">Model selection disabled in demo (static provider)</p>
           </div>
           <div>
             <label class="block text-sm text-gray-400 mb-1">Language</label>
-            <input
-              v-model="language"
-              type="text"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              disabled
-            />
+            <select
+              v-model="selectedLanguage"
+              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500"
+            >
+              <option v-for="lang in availableLanguages" :key="lang" :value="lang">{{ lang }}</option>
+            </select>
           </div>
           <div>
             <label class="block text-sm text-gray-400 mb-1">Capture Mode</label>
@@ -252,6 +313,17 @@ onUnmounted(() => {
               <option value="worklet">AudioWorklet</option>
               <option value="media-recorder">MediaRecorder</option>
             </select>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Threshold (dB): {{ thresholdDb }}</label>
+            <input type="range" min="-90" max="-5" step="1" v-model.number="thresholdDb" class="w-full" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Smoothing (ms): {{ smoothMs }}</label>
+            <input type="range" min="5" max="200" step="5" v-model.number="smoothMs" class="w-full" />
           </div>
         </div>
 
@@ -313,7 +385,7 @@ onUnmounted(() => {
             <h2 class="text-lg font-semibold">Transcript</h2>
             <button
               class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-              @click="transcription.clear"
+            @click="transcription.clear()"
               :disabled="!transcriptText && !partialText"
             >
               Clear
@@ -359,7 +431,7 @@ onUnmounted(() => {
         <div class="flex justify-between items-center">
           <h2 class="text-lg font-semibold">Event log</h2>
           <button
-            class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-40"
+            class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
             :disabled="events.length === 0"
             @click="events = []"
           >
