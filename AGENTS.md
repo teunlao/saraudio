@@ -99,3 +99,13 @@ pnpm --filter @saraudio/PACKAGE test
 # Assert no forbidden casts in your diff
 rg -n " as any|as unknown" packages/<your-package>/src || true
 ```
+
+---
+
+## Git Usage Policy (MANDATORY)
+
+- Absolutely no git operations without explicit user approval for the specific action.
+- Forbidden without prior, explicit instruction from the owner/user: `git checkout`, `git reset`, `git revert`, `git commit`, `git merge`, `git rebase`, `git push`, `git pull`, `git fetch`, `git stash`, `git tag`, `git submodule` and any other git command.
+- Do not modify, rename, or delete files with the intent of changing repository state as a substitute for git commands.
+- If a git action is needed, first state the exact command you propose to run and wait for the user to approve it.
+- This rule applies in all sessions and contexts, including tests, scripts, CI helpers, and local tooling.

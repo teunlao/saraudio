@@ -9,108 +9,24 @@ import type {
   TranscriptionProvider,
   TranscriptionStream,
   TranscriptResult,
+  Transport,
 } from '@saraudio/core';
-
 import { AuthenticationError, NetworkError, Pipeline, RateLimitError } from '@saraudio/core';
-import { createDeferred, type Deferred } from '@saraudio/utils';
+import type { HttpLiveAggregator, Logger } from '@saraudio/utils';
 import { describe, expect, test, vi } from 'vitest';
-
+import {
+  createStreamStub,
+  createUpdatableProviderStub,
+  type StreamStub,
+} from '../testing/transcription-provider-stubs';
 import { createTranscription } from './transcription-controller';
+import * as httpTransportModule from './transports/http-transport';
 
 function preferredFormat(): RecorderFormatOptions {
   return { sampleRate: 16000, channels: 1, encoding: 'pcm16' };
 }
 
 type Handler<T> = (value: T) => void;
-
-interface StreamStub extends TranscriptionStream {
-  emitTranscript(r: TranscriptResult): void;
-  emitPartial(text: string): void;
-  emitError(e: Error): void;
-  emitStatus(s: StreamStatus): void;
-  lastSentFrame: NormalizedFrame<'pcm16'> | null;
-  sentFrames: ReadonlyArray<NormalizedFrame<'pcm16'>>;
-  forceEndpointCalls: number;
-  connectDeferred?: Deferred<void>;
-}
-
-function createStreamStub(initialStatus: StreamStatus = 'idle', withDeferredConnect = false): StreamStub {
-  let status: StreamStatus = initialStatus;
-  const onTranscriptHandlers = new Set<Handler<TranscriptResult>>();
-  const onPartialHandlers = new Set<Handler<string>>();
-  const onErrorHandlers = new Set<Handler<Error>>();
-  const onStatusHandlers = new Set<Handler<StreamStatus>>();
-  let lastSentFrame: NormalizedFrame<'pcm16'> | null = null;
-  const sentFrames: NormalizedFrame<'pcm16'>[] = [];
-  let forceEndpointCalls = 0;
-  let connectDeferred: Deferred<void> | undefined;
-  if (withDeferredConnect) {
-    connectDeferred = createDeferred<void>();
-  }
-
-  const stub: StreamStub = {
-    get status() {
-      return status;
-    },
-    async connect() {
-      if (connectDeferred) {
-        await connectDeferred.promise;
-      }
-    },
-    async disconnect() {
-      // no-op
-    },
-    send(frame) {
-      lastSentFrame = frame;
-      sentFrames.push(frame);
-    },
-    async forceEndpoint() {
-      forceEndpointCalls += 1;
-    },
-    onTranscript(h) {
-      onTranscriptHandlers.add(h);
-      return () => onTranscriptHandlers.delete(h);
-    },
-    onPartial(h) {
-      onPartialHandlers.add(h);
-      return () => onPartialHandlers.delete(h);
-    },
-    onError(h) {
-      onErrorHandlers.add(h);
-      return () => onErrorHandlers.delete(h);
-    },
-    onStatusChange(h) {
-      onStatusHandlers.add(h);
-      return () => onStatusHandlers.delete(h);
-    },
-    emitTranscript(r: TranscriptResult) {
-      onTranscriptHandlers.forEach((h) => h(r));
-    },
-    emitPartial(text: string) {
-      onPartialHandlers.forEach((h) => h(text));
-    },
-    emitError(e: Error) {
-      onErrorHandlers.forEach((h) => h(e));
-    },
-    emitStatus(s: StreamStatus) {
-      status = s;
-      onStatusHandlers.forEach((h) => h(s));
-    },
-    get lastSentFrame() {
-      return lastSentFrame;
-    },
-    get forceEndpointCalls() {
-      return forceEndpointCalls;
-    },
-    get sentFrames() {
-      return sentFrames;
-    },
-    get connectDeferred() {
-      return connectDeferred;
-    },
-  };
-  return stub;
-}
 
 interface ProviderStub extends TranscriptionProvider {
   streamInstance: StreamStub;
@@ -134,6 +50,10 @@ function createProviderStub(opts?: { deferredConnect?: boolean }): ProviderStub 
     getPreferredFormat: preferredFormat,
     getSupportedFormats: () => [preferredFormat()],
     negotiateFormat: (rec) => ({ ...rec }),
+    update: () => {
+      // no-op for tests
+    },
+    onUpdate: () => () => {},
     stream: () => streamInstance,
     streamInstance,
   };
@@ -158,6 +78,10 @@ function createRetryingProviderStub(plan: Array<Error | 'ok'>): ProviderStub {
     capabilities: caps,
     getPreferredFormat: preferredFormat,
     getSupportedFormats: () => [preferredFormat()],
+    update: () => {
+      // no-op for tests
+    },
+    onUpdate: () => () => {},
     negotiateFormat: (rec) => ({ ...rec }),
     stream: () => {
       const s = createStreamStub();
@@ -505,6 +429,130 @@ describe('createTranscription controller', () => {
     expect(controller.status).toBe('error');
     expect(controller.error).toBe(boom);
     expect(errors).toEqual([boom]);
+  });
+
+  test('provider update while disconnected recreates stream on next connect', async () => {
+    type UpdateOptions = { revision: number };
+    const stub = createUpdatableProviderStub<UpdateOptions>();
+    const controller = createTranscription({ provider: stub.provider });
+
+    await controller.connect();
+    expect(stub.streams.length).toBe(1);
+    await controller.disconnect();
+
+    await stub.provider.update({ revision: 2 });
+    expect(stub.streams.length).toBe(1);
+
+    await controller.connect();
+    expect(stub.streams.length).toBe(2);
+
+    await controller.disconnect();
+  });
+
+  test('provider update while connected defers stream refresh until reconnect and logs notice', async () => {
+    type UpdateOptions = { transport: Transport };
+    const stub = createUpdatableProviderStub<UpdateOptions>({
+      applyOptions: (options, helpers) => {
+        helpers.setTransport(options.transport);
+      },
+    });
+
+    const info = vi.fn();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info,
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => logger,
+    };
+
+    const controller = createTranscription({ provider: stub.provider, logger });
+
+    await controller.connect();
+    expect(stub.streams.length).toBe(1);
+
+    await stub.provider.update({ transport: 'http' });
+    expect(stub.streams.length).toBe(1);
+    expect(info).toHaveBeenCalledWith('provider updated while connected; changes apply after reconnect', {
+      module: 'runtime-base',
+      event: 'provider.update',
+      providerId: stub.provider.id,
+    });
+
+    await controller.disconnect();
+    await controller.connect();
+    expect(stub.streams.length).toBe(2);
+
+    await controller.disconnect();
+  });
+
+  test('HTTP provider update closes aggregator and reinitialises after reconnect', async () => {
+    const createHttpTransportSpy = vi.spyOn(httpTransportModule, 'createHttpTransport');
+    const aggregators: Array<{
+      aggregator: HttpLiveAggregator<TranscriptResult>;
+      closeMock: ReturnType<typeof vi.fn>;
+    }> = [];
+    createHttpTransportSpy.mockImplementation((_options) => {
+      const closeMock = vi.fn();
+      const aggregator = {
+        push: vi.fn(),
+        forceFlush: vi.fn(),
+        close: closeMock,
+        get inFlight() {
+          return 0;
+        },
+      } as HttpLiveAggregator<TranscriptResult>;
+      aggregators.push({ aggregator, closeMock });
+      return { aggregator };
+    });
+
+    try {
+      const stub = createUpdatableProviderStub<{ model: string }>({
+        transport: 'http',
+        transcribe: async () => ({ text: 'ok' }),
+      });
+
+      const controller = createTranscription({
+        provider: stub.provider,
+        chunking: { intervalMs: 10, minDurationMs: 0 },
+      });
+
+      await controller.connect();
+      expect(aggregators.length).toBe(1);
+      expect(aggregators[0].closeMock).not.toHaveBeenCalled();
+
+      await stub.provider.update({ model: 'nova-2' });
+      expect(aggregators[0].closeMock).not.toHaveBeenCalled();
+
+      await controller.disconnect();
+      expect(aggregators[0].closeMock).toHaveBeenCalledTimes(1);
+
+      await controller.connect();
+      expect(aggregators.length).toBe(2);
+
+      await controller.disconnect();
+    } finally {
+      createHttpTransportSpy.mockRestore();
+    }
+  });
+
+  test('multiple provider updates queued before reconnect still yield single stream recreation', async () => {
+    const stub = createUpdatableProviderStub<{ toggle: boolean }>();
+
+    const controller = createTranscription({ provider: stub.provider });
+
+    await controller.connect();
+    expect(stub.streams.length).toBe(1);
+    await controller.disconnect();
+
+    await stub.provider.update({ toggle: true });
+    await stub.provider.update({ toggle: false });
+    expect(stub.streams.length).toBe(1);
+
+    await controller.connect();
+    expect(stub.streams.length).toBe(2);
+
+    await controller.disconnect();
   });
 
   test('forceEndpoint is passed through to stream', async () => {

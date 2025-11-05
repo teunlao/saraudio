@@ -1,4 +1,4 @@
-import type { TranscriptResult } from '@saraudio/core';
+import type { TranscriptionProvider, TranscriptResult } from '@saraudio/core';
 import { createRecorderStub, createTranscriptionProviderStub } from '@saraudio/core/testing';
 import { createTranscriptionControllerStub } from '@saraudio/runtime-base/testing';
 import type { CreateTranscriptionOptions, Recorder, TranscriptionController } from '@saraudio/runtime-browser';
@@ -161,6 +161,15 @@ describe('useTranscription', () => {
     const provider = createTranscriptionProviderStub({ transport: 'http' });
     const recorder = createRecorder();
 
+    createTranscriptionMock?.mockImplementationOnce(() => {
+      controllerStub = createTranscriptionControllerStub({ transport: 'http' });
+      controllerStub.connect = vi.fn(controllerStub.connect);
+      controllerStub.disconnect = vi.fn(controllerStub.disconnect);
+      controllerStub.clear = vi.fn(controllerStub.clear);
+      controllerStub.forceEndpoint = vi.fn(controllerStub.forceEndpoint);
+      return controllerStub;
+    });
+
     const [result, app] = withSetup(() => useTranscription({ provider, recorder }));
     apps.push(app);
 
@@ -181,5 +190,68 @@ describe('useTranscription', () => {
     app.unmount();
 
     expect(controllerStub?.disconnect).toHaveBeenCalled();
+  });
+
+  it('reflects provider transport changes via update events', async () => {
+    const recorder = createRecorder();
+    type UpdateOptions = { transport: 'websocket' | 'http' };
+    const listeners = new Set<(options: UpdateOptions) => void>();
+    let currentTransport: 'websocket' | 'http' = 'websocket';
+
+    const provider = {
+      id: 'dynamic-provider',
+      get transport() {
+        return currentTransport;
+      },
+      capabilities: {
+        partials: 'mutable' as const,
+        words: true,
+        diarization: 'word' as const,
+        language: 'final' as const,
+        segments: true,
+        forceEndpoint: true,
+        multichannel: false,
+      },
+      getPreferredFormat: () => ({ sampleRate: 16000, channels: 1 as const, encoding: 'pcm16' as const }),
+      getSupportedFormats: () => [{ sampleRate: 16000, channels: 1 as const, encoding: 'pcm16' as const }],
+      update: async (options: UpdateOptions) => {
+        currentTransport = options.transport;
+        listeners.forEach((listener) => listener(options));
+      },
+      onUpdate: (listener: (options: UpdateOptions) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      stream: () => ({
+        get status() {
+          return 'idle' as const;
+        },
+        async connect() {},
+        async disconnect() {},
+        send() {},
+        async forceEndpoint() {},
+        onTranscript() {
+          return () => {};
+        },
+        onPartial() {
+          return () => {};
+        },
+        onError() {
+          return () => {};
+        },
+        onStatusChange() {
+          return () => {};
+        },
+      }),
+    } satisfies TranscriptionProvider<UpdateOptions>;
+
+    const [result, app] = withSetup(() => useTranscription({ provider, recorder }));
+    apps.push(app);
+
+    expect(result.transport).toBe('websocket');
+    await provider.update({ transport: 'http' });
+    expect(result.transport).toBe('http');
+
+    app.unmount();
   });
 });

@@ -89,6 +89,9 @@ export function createTranscriptionControllerStub(
     async forceEndpoint() {
       // no-op in stub
     },
+    async updateProvider(_options: unknown) {
+      // no-op in stub
+    },
 
     // Event subscriptions
     onPartial(handler) {

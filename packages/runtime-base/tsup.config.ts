@@ -14,5 +14,5 @@ export default defineConfig({
   },
   sourcemap: true,
   clean: true,
-  target: 'es2018',
+  target: 'es2022',
 });

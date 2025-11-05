@@ -26,6 +26,8 @@ export interface TranscriptResult {
 
 export type StreamStatus = 'idle' | 'connecting' | 'ready' | 'connected' | 'error' | 'disconnected';
 
+export type ProviderUpdateListener<TOptions> = (options: TOptions) => void;
+
 export interface TranscriptionStream {
   readonly status: StreamStatus;
   connect(signal?: AbortSignal): Promise<void>;
@@ -66,12 +68,14 @@ export interface StreamOptions {
   request?: RequestedFeatures;
 }
 
-export interface TranscriptionProvider extends FormatNegotiation {
+export interface TranscriptionProvider<TOptions = unknown> extends FormatNegotiation {
   readonly id: string;
   readonly transport: Transport;
   /** Optional token provider for browser environments. */
   tokenProvider?: () => Promise<string>;
   readonly capabilities: ProviderCapabilities;
+  update(options: TOptions): Promise<void> | void;
+  onUpdate(listener: ProviderUpdateListener<TOptions>): () => void;
   stream(options?: StreamOptions): TranscriptionStream;
 }
 
@@ -83,6 +87,6 @@ export interface BatchOptions {
   diarization?: boolean;
 }
 
-export interface BatchTranscriptionProvider extends TranscriptionProvider {
+export interface BatchTranscriptionProvider<TOptions = unknown> extends TranscriptionProvider<TOptions> {
   transcribe(audio: AudioSource, options?: BatchOptions, signal?: AbortSignal): Promise<TranscriptResult>;
 }

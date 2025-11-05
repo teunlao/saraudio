@@ -1,6 +1,7 @@
 import {
   AuthenticationError,
   type ProviderCapabilities,
+  type ProviderUpdateListener,
   type RecorderFormatOptions,
   type StreamOptions,
   type TranscriptionProvider,
@@ -13,6 +14,7 @@ const DEFAULT_BASE_URL = 'wss://api.deepgram.com/v1/listen';
 const DEFAULT_SAMPLE_RATE = 16_000;
 const DEFAULT_CHANNELS: 1 | 2 = 1;
 const DEFAULT_KEEPALIVE_MS = 8_000;
+
 const KEEPALIVE_MIN_MS = 1_000;
 const KEEPALIVE_MAX_MS = 30_000;
 const DEFAULT_QUEUE_BUDGET_MS = 200;
@@ -304,25 +306,54 @@ export interface DeepgramOptions<M extends DeepgramModelId = 'nova-3'> {
   queueBudgetMs?: number;
 }
 
-export interface DeepgramProvider extends TranscriptionProvider {
+export interface DeepgramProvider extends TranscriptionProvider<DeepgramOptions<DeepgramModelId>> {
   readonly id: 'deepgram';
 }
+interface DeepgramResolvedConfig {
+  raw: DeepgramOptions<DeepgramModelId>;
+  baseUrl: string;
+  queueBudgetMs: number;
+  keepaliveMs: number;
+  sampleRate: number;
+  channels: 1 | 2;
+  baseParams: URLSearchParams;
+}
 
-export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramProvider {
+function resolveConfig<T extends DeepgramModelId>(options: DeepgramOptions<T>): DeepgramResolvedConfig {
+  if (!DEEPGRAM_MODEL_DEFINITIONS[options.model]) {
+    throw new Error(`Unsupported Deepgram model: ${options.model}`);
+  }
+  if (options.language && !isLanguageSupported(options.model, options.language)) {
+    throw new Error(`Language ${options.language} is not supported by model ${options.model}`);
+  }
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const queueBudgetMs = clamp(options.queueBudgetMs ?? DEFAULT_QUEUE_BUDGET_MS, QUEUE_MIN_MS, QUEUE_MAX_MS);
   const keepaliveMs = clamp(options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS, KEEPALIVE_MIN_MS, KEEPALIVE_MAX_MS);
-  const preferredSampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;
-  const preferredChannels: 1 | 2 = options.channels ?? (options.multichannel ? 2 : DEFAULT_CHANNELS);
-  const baseParams = buildBaseParams({ ...options, sampleRate: preferredSampleRate, channels: preferredChannels });
+  const sampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;
+  const channels: 1 | 2 = options.channels ?? (options.multichannel ? 2 : DEFAULT_CHANNELS);
+  const baseParams = buildBaseParams({ ...options, sampleRate, channels });
+  return {
+    raw: options,
+    baseUrl,
+    queueBudgetMs,
+    keepaliveMs,
+    sampleRate,
+    channels,
+    baseParams,
+  } satisfies DeepgramResolvedConfig;
+}
 
-  const logger = options.logger ? options.logger.child('provider-deepgram') : undefined;
+export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramProvider {
+  let config = resolveConfig(options);
+  let baseLogger = options.logger ?? null;
+  let providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
+  const updateListeners = new Set<ProviderUpdateListener<DeepgramOptions<DeepgramModelId>>>();
 
   const connectionFactory: DeepgramConnectionInfoFactory = async () => {
-    const params = new URLSearchParams(baseParams);
-    const finalUrl = await buildUrl(baseUrl, options.buildUrl, params);
-    const token = await resolveAuthToken(options);
-    const protocols: string[] | undefined = createProtocolList(token, options.additionalProtocols);
+    const params = new URLSearchParams(config.baseParams);
+    const finalUrl = await buildUrl(config.baseUrl, config.raw.buildUrl, params);
+    const token = await resolveAuthToken(config.raw);
+    const protocols = createProtocolList(token, config.raw.additionalProtocols);
     return { url: finalUrl, protocols };
   };
 
@@ -330,28 +361,44 @@ export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>)
     id: 'deepgram',
     transport: 'websocket',
     capabilities: CAPABILITIES,
-    tokenProvider: options.tokenProvider,
+    get tokenProvider() {
+      return config.raw.tokenProvider;
+    },
     getPreferredFormat(): RecorderFormatOptions {
-      return { sampleRate: preferredSampleRate, channels: preferredChannels, encoding: 'pcm16' };
+      return { sampleRate: config.sampleRate, channels: config.channels, encoding: 'pcm16' };
     },
     getSupportedFormats(): ReadonlyArray<RecorderFormatOptions> {
       return SUPPORTED_FORMATS;
     },
     negotiateFormat(candidate: RecorderFormatOptions): RecorderFormatOptions {
-      const negotiatedSampleRate = candidate.sampleRate ?? preferredSampleRate;
-      const negotiatedChannels = normalizeChannels(candidate.channels ?? preferredChannels);
+      const negotiatedSampleRate = candidate.sampleRate ?? config.sampleRate;
+      const negotiatedChannels = normalizeChannels(candidate.channels ?? config.channels);
       return {
         sampleRate: negotiatedSampleRate,
         channels: negotiatedChannels,
         encoding: 'pcm16',
       } satisfies RecorderFormatOptions;
     },
+    async update(nextOptions) {
+      config = resolveConfig(nextOptions);
+      if (Object.prototype.hasOwnProperty.call(nextOptions, 'logger')) {
+        baseLogger = nextOptions.logger ?? null;
+        providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
+      }
+      updateListeners.forEach((listener) => listener(config.raw));
+    },
+    onUpdate(listener) {
+      updateListeners.add(listener);
+      return () => {
+        updateListeners.delete(listener);
+      };
+    },
     stream(_opts?: StreamOptions) {
       return createDeepgramStream({
         connectionFactory,
-        logger,
-        keepaliveMs,
-        queueBudgetMs,
+        logger: providerLogger,
+        keepaliveMs: config.keepaliveMs,
+        queueBudgetMs: config.queueBudgetMs,
       });
     },
   };

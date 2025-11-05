@@ -1,11 +1,12 @@
 import type { RecorderFormatOptions } from '../format';
 import type { ProviderCapabilities, TranscriptionProvider, TranscriptionStream } from '../transcription/types';
 
-export interface TranscriptionProviderStubOptions {
+export interface TranscriptionProviderStubOptions<TOptions = unknown> {
   id?: string;
   transport?: 'websocket' | 'http';
   capabilities?: Partial<ProviderCapabilities>;
   preferredFormat?: RecorderFormatOptions;
+  onUpdate?: (options: TOptions) => void;
 }
 
 /**
@@ -21,7 +22,9 @@ export interface TranscriptionProviderStubOptions {
  * provider.stream = vi.fn(provider.stream);
  * ```
  */
-export function createTranscriptionProviderStub(options: TranscriptionProviderStubOptions = {}): TranscriptionProvider {
+export function createTranscriptionProviderStub<TOptions = unknown>(
+  options: TranscriptionProviderStubOptions<TOptions> = {},
+): TranscriptionProvider<TOptions> {
   const capabilities: ProviderCapabilities = {
     partials: options.capabilities?.partials ?? 'mutable',
     words: options.capabilities?.words ?? true,
@@ -38,12 +41,24 @@ export function createTranscriptionProviderStub(options: TranscriptionProviderSt
     encoding: 'pcm16',
   };
 
-  const provider: TranscriptionProvider = {
+  const listeners = new Set<(opts: TOptions) => void>();
+
+  const provider: TranscriptionProvider<TOptions> = {
     id: options.id ?? 'test-provider',
     transport: options.transport ?? 'websocket',
     capabilities,
     getPreferredFormat: () => preferredFormat,
     getSupportedFormats: () => [preferredFormat],
+    update: (nextOptions: TOptions) => {
+      options.onUpdate?.(nextOptions);
+      listeners.forEach((listener) => listener(nextOptions));
+    },
+    onUpdate: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     stream: (): TranscriptionStream => {
       throw new Error('stream() not implemented in stub - override this method');
     },

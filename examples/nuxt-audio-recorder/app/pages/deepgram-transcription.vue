@@ -113,20 +113,21 @@ const pushEvent = (message: string) => {
   if (events.value.length > MAX_EVENTS) events.value.length = MAX_EVENTS;
 };
 
-const buildProvider = (model: DeepgramModelId, language: DeepgramLanguage) =>
-  deepgram({
-    model,
-    language,
-    interimResults: true,
-    punctuate: true,
-    tokenProvider: async () => {
-      const key = config.public.deepgramApiKey;
-      if (!key || typeof key !== 'string' || key.trim().length === 0) {
-        throw new Error('Missing NUXT_PUBLIC_DEEPGRAM_API_KEY for Deepgram demo');
-      }
-      return key.trim();
-    },
-  });
+const resolveToken = async (): Promise<string> => {
+  const key = config.public.deepgramApiKey;
+  if (!key || typeof key !== 'string' || key.trim().length === 0) {
+    throw new Error('Missing NUXT_PUBLIC_DEEPGRAM_API_KEY for Deepgram demo');
+  }
+  return key.trim();
+};
+
+const buildProviderOptions = (model: DeepgramModelId, language: DeepgramLanguage) => ({
+  model,
+  language,
+  interimResults: true,
+  punctuate: true,
+  tokenProvider: resolveToken,
+});
 
 const synchroniseSelection = (model: DeepgramModelId, language: DeepgramLanguage) => {
   const effectiveLanguage = ensureLanguage(model, language);
@@ -137,9 +138,10 @@ const synchroniseSelection = (model: DeepgramModelId, language: DeepgramLanguage
 };
 
 let currentSelection = synchroniseSelection(selectedModel.value, selectedLanguage.value);
+let currentOptions = buildProviderOptions(currentSelection.model, currentSelection.language);
 
 const transcription = useTranscription({
-  provider: buildProvider(currentSelection.model, currentSelection.language),
+  provider: deepgram(currentOptions),
   recorder,
   preconnectBufferMs: 120,
   flushOnSegmentEnd: true,
@@ -186,15 +188,13 @@ watch([selectedModel, selectedLanguage], ([model, lang]) => {
     return;
   }
   currentSelection = nextSelection;
+  currentOptions = buildProviderOptions(nextSelection.model, nextSelection.language);
   void (async () => {
     try {
-      if (transcription.isConnected.value) {
-        await transcription.disconnect();
-      }
-      await transcription.reconfigure(buildProvider(nextSelection.model, nextSelection.language));
+      await transcription.provider.update(currentOptions);
       transcription.clear();
       pushEvent(
-        `[config] provider set to model=${nextSelection.model}, language=${nextSelection.language} (reinitialised)`,
+        `[config] provider updated: model=${nextSelection.model}, language=${nextSelection.language}`,
       );
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));

@@ -16,8 +16,10 @@ import { PreconnectBuffer } from './helpers/preconnect-buffer';
 import { createHttpTransport } from './transports/http-transport';
 import { connectWsTransport } from './transports/ws-transport';
 
-export interface CreateTranscriptionOptions {
-  provider: TranscriptionProvider;
+type ProviderUpdateOptions<P extends TranscriptionProvider> = Parameters<P['update']>[0];
+
+export interface CreateTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> {
+  provider: P;
   recorder?: Recorder;
   logger?: Logger;
   liveTransport?: 'auto' | 'ws' | 'http';
@@ -44,7 +46,7 @@ export interface CreateTranscriptionOptions {
   // httpClient?: HttpClient // YAGNI: добавим при первой HTTP интеграции
 }
 
-export interface TranscriptionController {
+export interface TranscriptionController<P extends TranscriptionProvider = TranscriptionProvider> {
   readonly status: StreamStatus;
   readonly transport: Transport;
   readonly error: Error | null;
@@ -53,6 +55,7 @@ export interface TranscriptionController {
   disconnect(): Promise<void>;
   clear(): void;
   forceEndpoint(): Promise<void>;
+  updateProvider(options: ProviderUpdateOptions<P>): Promise<void>;
   onPartial(handler: (text: string) => void): () => void;
   onTranscript(handler: (result: TranscriptResult) => void): () => void;
   onError(handler: (error: Error) => void): () => void;
@@ -63,10 +66,13 @@ export interface TranscriptionController {
   recorder?: Recorder;
 }
 
-export function createTranscription(opts: CreateTranscriptionOptions): TranscriptionController {
+export function createTranscription<P extends TranscriptionProvider>(
+  opts: CreateTranscriptionOptions<P>,
+): TranscriptionController<P> {
   const { provider, recorder, logger } = opts;
   let status: StreamStatus = 'idle';
   let stream: TranscriptionStream | null = null;
+  let streamNeedsRefresh = false;
   let lastError: Error | null = null;
   let connected = false;
 
@@ -135,6 +141,16 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     typeof (p as BatchTranscriptionProvider).transcribe === 'function';
 
   const ensureStream = (): TranscriptionStream => {
+    if (streamNeedsRefresh) {
+      if (connected) {
+        return stream as TranscriptionStream;
+      }
+      if (stream) {
+        unsubscribeStreamHandlers();
+        stream = null;
+      }
+      streamNeedsRefresh = false;
+    }
     if (!stream) {
       stream = provider.stream();
     }
@@ -154,6 +170,26 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       retryTimer = null;
     }
   };
+
+  provider.onUpdate(() => {
+    streamNeedsRefresh = true;
+    if (!connected) {
+      if (stream) {
+        unsubscribeStreamHandlers();
+        stream = null;
+      }
+      if (httpTransport) {
+        httpTransport.aggregator.close(true);
+        httpTransport = null;
+      }
+      return;
+    }
+    logger?.info('provider updated while connected; changes apply after reconnect', {
+      module: 'runtime-base',
+      event: 'provider.update',
+      providerId: provider.id,
+    });
+  });
 
   const startRetry = (err: unknown, signal?: AbortSignal): void => {
     if (!retryCfg.enabled) {
@@ -183,6 +219,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       retryTimer = null;
       // prepare new stream and re-attempt
       stream = null;
+      streamNeedsRefresh = false;
       void attemptConnect(signal);
     }, delay);
   };
@@ -336,6 +373,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
       unsubscribeStreamHandlers();
       connected = false;
       setStatus('disconnected');
+      stream = null;
     }
   };
 
@@ -360,6 +398,10 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     });
   }
 
+  const updateProvider = async (options: ProviderUpdateOptions<P>): Promise<void> => {
+    await provider.update(options);
+  };
+
   return {
     get status() {
       return status;
@@ -377,6 +419,7 @@ export function createTranscription(opts: CreateTranscriptionOptions): Transcrip
     disconnect,
     clear,
     forceEndpoint,
+    updateProvider,
     onPartial: (h) => {
       partialSubs.add(h);
       return () => partialSubs.delete(h);

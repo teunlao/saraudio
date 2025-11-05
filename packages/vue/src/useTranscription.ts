@@ -45,8 +45,8 @@ interface ConnectionOptions {
   };
 }
 
-export interface UseTranscriptionOptions {
-  provider: TranscriptionProvider;
+export interface UseTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> {
+  provider: P;
   recorder?: Recorder | UseRecorderResult;
   stages?: MaybeRefOrGetter<StageController[] | undefined>;
   autoConnect?: MaybeRefOrGetter<boolean | undefined>;
@@ -58,7 +58,7 @@ export interface UseTranscriptionOptions {
   onError?: (error: Error) => void;
 }
 
-export interface UseTranscriptionResult {
+export interface UseTranscriptionResult<P extends TranscriptionProvider = TranscriptionProvider> {
   transcript: Ref<string>;
   partial: Ref<string>;
   status: Ref<StreamStatus>;
@@ -69,7 +69,7 @@ export interface UseTranscriptionResult {
   disconnect: () => Promise<void>;
   clear: () => void;
   forceEndpoint: () => Promise<void>;
-  reconfigure: (provider: TranscriptionProvider) => Promise<void>;
+  provider: P;
   recorder: Ref<Recorder | null>;
   start?: () => Promise<void>;
   stop?: () => Promise<void>;
@@ -86,14 +86,16 @@ const isUseRecorderResult = (value: Recorder | UseRecorderResult): value is UseR
   return typeof value === 'object' && value !== null && 'recorder' in value;
 };
 
-export function useTranscription(options: UseTranscriptionOptions): UseTranscriptionResult {
+export function useTranscription<P extends TranscriptionProvider>(
+  options: UseTranscriptionOptions<P>,
+): UseTranscriptionResult<P> {
   const transcript = ref('');
   const partial = ref('');
   const status = ref<StreamStatus>('idle');
   const error = ref<Error | null>(null);
   const isConnected = ref(false);
-  let currentProvider = options.provider;
-  let transport = currentProvider.transport;
+  const provider = options.provider;
+  let transport = provider.transport;
 
   const transcriptSegments: string[] = [];
 
@@ -109,9 +111,13 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     recorderRef = ref(options.recorder) as Ref<Recorder>;
   }
 
-  const controllerRef = shallowRef<TranscriptionController | null>(null);
+  const controllerRef = shallowRef<TranscriptionController<P> | null>(null);
   const unsubscribes: Array<() => void> = [];
   let formatApplied = false;
+  const unsubscribeProviderUpdate = provider.onUpdate(() => {
+    transport = provider.transport;
+    formatApplied = false;
+  });
 
   const waitForRecorder = async (): Promise<Recorder> => {
     if (recorderRef.value) {
@@ -139,8 +145,8 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
   const applyFormat = async (rec: Recorder): Promise<void> => {
     if (formatApplied) return;
     try {
-      const preferred = currentProvider.getPreferredFormat();
-      const negotiated = currentProvider.negotiateFormat ? currentProvider.negotiateFormat(preferred) : preferred;
+      const preferred = provider.getPreferredFormat();
+      const negotiated = provider.negotiateFormat ? provider.negotiateFormat(preferred) : preferred;
       const nextFormat = ensureFormatEncoding(negotiated);
       await rec.update({ format: nextFormat });
       formatApplied = true;
@@ -159,7 +165,7 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     unsubscribes.length = 0;
   };
 
-  const setupSubscriptions = (controller: TranscriptionController): void => {
+  const setupSubscriptions = (controller: TranscriptionController<P>): void => {
     unsubscribes.push(
       controller.onTranscript((result) => {
         options.onTranscript?.(result);
@@ -205,7 +211,7 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     return Boolean(value);
   };
 
-  const ensureController = async (): Promise<TranscriptionController> => {
+  const ensureController = async (): Promise<TranscriptionController<P>> => {
     if (controllerRef.value) {
       return controllerRef.value;
     }
@@ -216,8 +222,8 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     }
     await applyFormat(recorder);
 
-    const controllerOptions: CreateTranscriptionOptions = {
-      provider: currentProvider,
+    const controllerOptions: CreateTranscriptionOptions<P> = {
+      provider,
       recorder,
       logger: options.logger,
       preconnectBufferMs: options.preconnectBufferMs,
@@ -228,6 +234,7 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
 
     const controller = createTranscription(controllerOptions);
     controllerRef.value = controller;
+    transport = controller.transport;
     status.value = controller.status;
     isConnected.value = controller.isConnected;
     setupSubscriptions(controller);
@@ -250,17 +257,6 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     transcript.value = '';
     partial.value = '';
     controllerRef.value?.clear();
-  };
-
-  const reconfigure = async (nextProvider: TranscriptionProvider): Promise<void> => {
-    if (controllerRef.value) {
-      await controllerRef.value.disconnect();
-    }
-    teardownSubscriptions();
-    controllerRef.value = null;
-    formatApplied = false;
-    currentProvider = nextProvider;
-    transport = nextProvider.transport;
   };
 
   const forceEndpoint = async (): Promise<void> => {
@@ -289,9 +285,10 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     }
     teardownSubscriptions();
     controllerRef.value = null;
+    unsubscribeProviderUpdate();
   });
 
-  const api: UseTranscriptionResult = {
+  const api: UseTranscriptionResult<P> = {
     transcript,
     partial,
     status,
@@ -302,7 +299,7 @@ export function useTranscription(options: UseTranscriptionOptions): UseTranscrip
     disconnect,
     clear,
     forceEndpoint,
-    reconfigure,
+    provider,
     recorder: recorderRef,
     start: internalRecorder?.start,
     stop: internalRecorder?.stop,

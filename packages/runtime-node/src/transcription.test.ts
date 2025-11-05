@@ -21,6 +21,8 @@ describe('runtime-node/transcription', () => {
       },
       getPreferredFormat: vi.fn(() => ({ sampleRate: 16000, encoding: 'pcm16' as const, channels: 1 as const })),
       getSupportedFormats: vi.fn(() => [{ sampleRate: 16000, encoding: 'pcm16' as const, channels: 1 as const }]),
+      update: vi.fn(async () => {}),
+      onUpdate: vi.fn(() => vi.fn()),
       stream: vi.fn(() => ({
         status: 'idle' as const,
         connect: vi.fn(async () => {}),

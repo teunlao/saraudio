@@ -1,3 +1,4 @@
+import type { TranscriptionProvider } from '@saraudio/core';
 import {
   type CreateTranscriptionOptions as BaseOptions,
   createTranscription as createTranscriptionBase,
@@ -6,11 +7,16 @@ import {
 
 import { createLogger, type Logger } from '@saraudio/utils';
 
-export type CreateTranscriptionOptions = Omit<BaseOptions, 'logger'> & {
+export type CreateTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> = Omit<
+  BaseOptions<P>,
+  'logger'
+> & {
   logger?: boolean | 'error' | 'warn' | 'info' | 'debug' | Logger;
 };
 
-export function createTranscription(options: CreateTranscriptionOptions): TranscriptionController {
+export function createTranscription<P extends TranscriptionProvider>(
+  options: CreateTranscriptionOptions<P>,
+): TranscriptionController<P> {
   const { logger: loggerOption, ...rest } = options;
 
   let logger: Logger | undefined;
@@ -22,7 +28,7 @@ export function createTranscription(options: CreateTranscriptionOptions): Transc
     logger = loggerOption;
   }
 
-  return createTranscriptionBase({
+  return createTranscriptionBase<P>({
     ...rest,
     logger,
   });

@@ -34,6 +34,8 @@ function createHttpProviderStub(): BatchTranscriptionProvider {
     },
     getPreferredFormat: () => ({ sampleRate: 16000, channels: 1, encoding: 'pcm16' }),
     getSupportedFormats: () => [{ sampleRate: 16000, channels: 1, encoding: 'pcm16' }],
+    update: () => {},
+    onUpdate: () => () => {},
     stream: (_opts?: StreamOptions): TranscriptionStream => ({
       get status(): 'ready' {
         return 'ready';
