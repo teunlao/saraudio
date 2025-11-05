@@ -21,9 +21,7 @@ export interface TranscriptionProviderStubOptions {
  * provider.stream = vi.fn(provider.stream);
  * ```
  */
-export function createTranscriptionProviderStub(
-  options: TranscriptionProviderStubOptions = {},
-): TranscriptionProvider {
+export function createTranscriptionProviderStub(options: TranscriptionProviderStubOptions = {}): TranscriptionProvider {
   const capabilities: ProviderCapabilities = {
     partials: options.capabilities?.partials ?? 'mutable',
     words: options.capabilities?.words ?? true,
