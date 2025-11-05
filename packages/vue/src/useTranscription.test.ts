@@ -254,4 +254,50 @@ describe('useTranscription', () => {
 
     app.unmount();
   });
+
+  it('does not invoke provider.update again if options unchanged', async () => {
+    const provider = createTranscriptionProviderStub({ transport: 'websocket' });
+    const recorder = createRecorder();
+
+    const updateSpy = vi.spyOn(provider, 'update');
+    const listeners = new Set<() => void>();
+    provider.onUpdate = (listener) => {
+      listeners.add(listener as () => void);
+      return () => listeners.delete(listener as () => void);
+    };
+
+    const [result, app] = withSetup(() => useTranscription({ provider, recorder }));
+    apps.push(app);
+
+    await result.connect();
+    expect(updateSpy).toHaveBeenCalledTimes(0);
+
+    await provider.update({});
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+
+    await provider.update({});
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+
+    app.unmount();
+  });
+
+  it('unsubscribes from provider updates on unmount', async () => {
+    const provider = createTranscriptionProviderStub({ transport: 'websocket' });
+    const unsubscribe = vi.fn();
+    const originalOnUpdate = provider.onUpdate.bind(provider);
+    provider.onUpdate = (listener) => {
+      const off = originalOnUpdate(listener);
+      return () => {
+        unsubscribe();
+        off();
+      };
+    };
+
+    const recorder = createRecorder();
+    const [_, app] = withSetup(() => useTranscription({ provider, recorder }));
+    apps.push(app);
+
+    app.unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
 });
