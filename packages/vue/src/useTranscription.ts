@@ -1,0 +1,291 @@
+import type {
+  RecorderFormatOptions,
+  StageController,
+  StreamStatus,
+  TranscriptionProvider,
+  TranscriptResult,
+  Transport,
+} from '@saraudio/core';
+import type { Recorder } from '@saraudio/runtime-browser';
+import {
+  type CreateTranscriptionOptions,
+  createTranscription,
+  type TranscriptionController,
+} from '@saraudio/runtime-browser';
+import type { Logger } from '@saraudio/utils';
+import type { MaybeRefOrGetter, Ref } from 'vue';
+import { onMounted, onUnmounted, ref, shallowRef, toValue, watch } from 'vue';
+
+import type { UseRecorderResult } from './useRecorder';
+import { useRecorder } from './useRecorder';
+
+interface RetryOptions {
+  enabled?: boolean;
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  factor?: number;
+  maxDelayMs?: number;
+  jitterRatio?: number;
+}
+
+interface HttpChunkingOptions {
+  intervalMs?: number;
+  minDurationMs?: number;
+  overlapMs?: number;
+  maxInFlight?: number;
+  timeoutMs?: number;
+}
+
+interface ConnectionOptions {
+  ws?: {
+    retry?: RetryOptions;
+  };
+  http?: {
+    chunking?: HttpChunkingOptions;
+  };
+}
+
+export interface UseTranscriptionOptions {
+  provider: TranscriptionProvider;
+  recorder?: Recorder | UseRecorderResult;
+  stages?: MaybeRefOrGetter<StageController[] | undefined>;
+  autoConnect?: MaybeRefOrGetter<boolean | undefined>;
+  logger?: boolean | 'error' | 'warn' | 'info' | 'debug' | Logger;
+  preconnectBufferMs?: number;
+  flushOnSegmentEnd?: boolean | { cooldownMs?: number };
+  connection?: ConnectionOptions;
+  onTranscript?: (result: TranscriptResult) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface UseTranscriptionResult {
+  transcript: Ref<string>;
+  partial: Ref<string>;
+  status: Ref<StreamStatus>;
+  error: Ref<Error | null>;
+  isConnected: Ref<boolean>;
+  transport: Transport;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  clear: () => void;
+  forceEndpoint: () => Promise<void>;
+  recorder: Ref<Recorder | null>;
+  start?: () => Promise<void>;
+  stop?: () => Promise<void>;
+}
+
+const ensureFormatEncoding = (format: RecorderFormatOptions): RecorderFormatOptions => {
+  if (format.encoding === undefined) {
+    return { ...format, encoding: 'pcm16' };
+  }
+  return format;
+};
+
+const isUseRecorderResult = (value: Recorder | UseRecorderResult): value is UseRecorderResult => {
+  return typeof value === 'object' && value !== null && 'recorder' in value;
+};
+
+export function useTranscription(options: UseTranscriptionOptions): UseTranscriptionResult {
+  const transcript = ref('');
+  const partial = ref('');
+  const status = ref<StreamStatus>('idle');
+  const error = ref<Error | null>(null);
+  const isConnected = ref(false);
+  const transport = options.provider.transport;
+
+  const transcriptSegments: string[] = [];
+
+  let internalRecorder: UseRecorderResult | null = null;
+  let recorderRef: Ref<Recorder | null>;
+
+  if (!options.recorder) {
+    internalRecorder = useRecorder({ stages: options.stages });
+    recorderRef = internalRecorder.recorder;
+  } else if (isUseRecorderResult(options.recorder)) {
+    recorderRef = options.recorder.recorder;
+  } else {
+    recorderRef = ref(options.recorder) as Ref<Recorder>;
+  }
+
+  const controllerRef = shallowRef<TranscriptionController | null>(null);
+  const unsubscribes: Array<() => void> = [];
+  let formatApplied = false;
+
+  const waitForRecorder = async (): Promise<Recorder> => {
+    if (recorderRef.value) {
+      return recorderRef.value;
+    }
+    return await new Promise<Recorder>((resolve, reject) => {
+      const stop = watch(
+        recorderRef,
+        (value) => {
+          if (value) {
+            stop();
+            resolve(value);
+          }
+        },
+        { immediate: true },
+      );
+
+      onUnmounted(() => {
+        stop();
+        reject(new Error('Recorder disposed before becoming available'));
+      });
+    });
+  };
+
+  const applyFormat = async (rec: Recorder): Promise<void> => {
+    if (formatApplied) return;
+    try {
+      const preferred = options.provider.getPreferredFormat();
+      const negotiated = options.provider.negotiateFormat ? options.provider.negotiateFormat(preferred) : preferred;
+      const nextFormat = ensureFormatEncoding(negotiated);
+      await rec.update({ format: nextFormat });
+      formatApplied = true;
+    } catch (err) {
+      const resolved = err instanceof Error ? err : new Error(String(err));
+      error.value = resolved;
+      options.onError?.(resolved);
+    }
+  };
+
+  const setupSubscriptions = (controller: TranscriptionController): void => {
+    unsubscribes.push(
+      controller.onTranscript((result) => {
+        options.onTranscript?.(result);
+        if (result.text && result.text.trim().length > 0) {
+          transcriptSegments.push(result.text.trim());
+          transcript.value = transcriptSegments.join(' ').trim();
+        }
+        partial.value = '';
+      }),
+    );
+
+    if (controller.onPartial) {
+      unsubscribes.push(
+        controller.onPartial((text) => {
+          if (transport === 'websocket') {
+            partial.value = text;
+          }
+        }),
+      );
+    }
+
+    unsubscribes.push(
+      controller.onError((err) => {
+        error.value = err;
+        options.onError?.(err);
+      }),
+    );
+
+    unsubscribes.push(
+      controller.onStatusChange((next) => {
+        status.value = next;
+        isConnected.value = next === 'connected';
+        if (next === 'disconnected') {
+          partial.value = '';
+        }
+      }),
+    );
+  };
+
+  const resolveFlushOnSegmentEnd = (): boolean => {
+    const value = options.flushOnSegmentEnd;
+    if (typeof value === 'object') return true;
+    return Boolean(value);
+  };
+
+  const ensureController = async (): Promise<TranscriptionController> => {
+    if (controllerRef.value) {
+      return controllerRef.value;
+    }
+
+    const recorder = await waitForRecorder();
+    if (controllerRef.value) {
+      return controllerRef.value;
+    }
+    await applyFormat(recorder);
+
+    const controllerOptions: CreateTranscriptionOptions = {
+      provider: options.provider,
+      recorder,
+      logger: options.logger,
+      preconnectBufferMs: options.preconnectBufferMs,
+      flushOnSegmentEnd: resolveFlushOnSegmentEnd(),
+      chunking: options.connection?.http?.chunking,
+      retry: options.connection?.ws?.retry,
+    };
+
+    const controller = createTranscription(controllerOptions);
+    controllerRef.value = controller;
+    status.value = controller.status;
+    isConnected.value = controller.isConnected;
+    setupSubscriptions(controller);
+    return controller;
+  };
+
+  const connect = async (): Promise<void> => {
+    const controller = await ensureController();
+    await controller.connect();
+  };
+
+  const disconnect = async (): Promise<void> => {
+    if (!controllerRef.value) return;
+    await controllerRef.value.disconnect();
+    partial.value = '';
+  };
+
+  const clear = (): void => {
+    transcriptSegments.length = 0;
+    transcript.value = '';
+    partial.value = '';
+    controllerRef.value?.clear();
+  };
+
+  const forceEndpoint = async (): Promise<void> => {
+    const controller = await ensureController();
+    await controller.forceEndpoint();
+  };
+
+  const autoConnectEnabled = () => Boolean(options.autoConnect && toValue(options.autoConnect));
+
+  onMounted(() => {
+    if (autoConnectEnabled()) {
+      void connect();
+      if (internalRecorder) {
+        void internalRecorder.start().catch((err) => {
+          const resolved = err instanceof Error ? err : new Error(String(err));
+          error.value = resolved;
+          options.onError?.(resolved);
+        });
+      }
+    }
+  });
+
+  onUnmounted(() => {
+    if (controllerRef.value) {
+      void controllerRef.value.disconnect();
+    }
+    for (const unsub of unsubscribes) {
+      unsub();
+    }
+    unsubscribes.length = 0;
+    controllerRef.value = null;
+  });
+
+  return {
+    transcript,
+    partial,
+    status,
+    error,
+    isConnected,
+    transport,
+    connect,
+    disconnect,
+    clear,
+    forceEndpoint,
+    recorder: recorderRef,
+    start: internalRecorder?.start,
+    stop: internalRecorder?.stop,
+  };
+}

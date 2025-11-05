@@ -6,3 +6,6 @@ export { useMeter } from './useMeter';
 
 export type { UseRecorderOptions, UseRecorderResult } from './useRecorder';
 export { useRecorder } from './useRecorder';
+
+export type { UseTranscriptionOptions, UseTranscriptionResult } from './useTranscription';
+export { useTranscription } from './useTranscription';
