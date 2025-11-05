@@ -15,8 +15,8 @@ export async function connectWsTransport(opts: WsTransportOptions, signal?: Abor
   await stream.connect(signal);
 
   const frames = preconnectBuffer.drain();
-  for (let i = 0; i < frames.length; i += 1) {
-    stream.send(frames[i]);
+  for (const frame of frames) {
+    stream.send(frame);
   }
 
   logger?.debug('connected', { module: 'runtime-base', event: 'connect', providerId });

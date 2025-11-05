@@ -11,5 +11,6 @@ export type { HttpClient, HttpRequest, HttpResponse } from './http/types';
 export type { LogContext, LogEntry, Logger, LoggerOptions, LogLevel } from './logger';
 export { createLogger, defaultOutput, noopLogger } from './logger';
 export type { CloseEventLike, MessageEventLike, SocketEventMap, SocketFactory, SocketLike } from './net/socket';
+export { getRegisteredSocketFactory, registerSocketFactory } from './net/socket-registry';
 export { float32ToInt16, int16ToFloat32 } from './pcm/float-to-int16';
 export { FloatRingBuffer } from './ringbuffer/float-ring-buffer';

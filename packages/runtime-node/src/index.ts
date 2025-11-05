@@ -13,6 +13,11 @@ export {
 export { createNodeRuntime } from './runtime';
 export { createPcm16FileSource } from './sources/pcm16-file-source';
 export { createPcm16StreamSource } from './sources/pcm16-stream-source';
+export {
+  type CreateTranscriptionOptions,
+  createTranscription,
+  type TranscriptionController,
+} from './transcription';
 export type {
   NodeFrameSource,
   NodePipelineOptions,

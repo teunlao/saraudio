@@ -1,7 +1,7 @@
 {
-  "name": "@saraudio/runtime-browser",
+  "name": "@saraudio/deepgram",
   "version": "0.0.0-alpha-20251103022458",
-  "description": "Browser runtime for SARAUDIO pipelines (AudioWorklet + MediaRecorder)",
+  "description": "Deepgram transcription provider for SARAUDIO",
   "license": "ISC",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -19,9 +19,7 @@
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:watch": "vitest"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -33,23 +31,10 @@
   },
   "dependencies": {
     "@saraudio/core": "workspace:*",
-    "@saraudio/runtime-base": "workspace:*",
     "@saraudio/utils": "workspace:*"
-  },
-  "peerDependencies": {
-    "@saraudio/vad-energy": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@saraudio/vad-energy": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@saraudio/vad-energy": "workspace:*",
-    "@vitest/coverage-v8": "catalog:",
-    "@vitest/ui": "catalog:",
-    "happy-dom": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
@@ -63,7 +48,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/teunlao/silence-aware-recorder.git",
-    "directory": "packages/runtime-browser"
+    "directory": "packages/deepgram"
   },
   "homepage": "https://github.com/teunlao/silence-aware-recorder#readme",
   "bugs": {
@@ -71,12 +56,9 @@
   },
   "keywords": [
     "audio",
-    "vad",
-    "runtime",
-    "browser",
-    "audioworklet",
-    "mediarecorder",
-    "pipeline",
+    "transcription",
+    "deepgram",
+    "speech-to-text",
     "saraudio"
   ]
 }

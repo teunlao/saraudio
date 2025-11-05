@@ -1,13 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import type {
   CoreError,
+  Recorder as CoreRecorder,
+  RecordingExports as CoreRecordingExports,
   Frame,
   NormalizedFrame,
   Pipeline,
-  Recorder as CoreRecorder,
   RecorderFormatOptions,
   RecorderFrameEncoding,
-  RecordingExports as CoreRecordingExports,
   Segment,
   StageController,
   VADScore,

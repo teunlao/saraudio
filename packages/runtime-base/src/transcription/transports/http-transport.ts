@@ -46,9 +46,8 @@ export function createHttpTransport(opts: HttpTransportOptions): HttpTransport {
   });
 
   const frames = preconnectBuffer.drain();
-  for (let i = 0; i < frames.length; i += 1) {
-    const f = frames[i];
-    aggregator.push({ pcm: f.pcm, sampleRate: f.sampleRate, channels: f.channels });
+  for (const frame of frames) {
+    aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
   }
 
   logger?.debug('connected', {

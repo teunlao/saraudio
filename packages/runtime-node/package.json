@@ -30,7 +30,9 @@
     }
   },
   "dependencies": {
-    "@saraudio/core": "workspace:*"
+    "@saraudio/core": "workspace:*",
+    "@saraudio/runtime-base": "workspace:*",
+    "@saraudio/utils": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

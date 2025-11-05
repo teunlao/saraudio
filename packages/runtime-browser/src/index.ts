@@ -15,6 +15,11 @@ export {
   type RecorderUpdateOptions,
 } from './recorder';
 export { buildStages, createBrowserRuntime } from './runtime';
+export {
+  type CreateTranscriptionOptions,
+  createTranscription,
+  type TranscriptionController,
+} from './transcription';
 export type {
   BrowserFrameSource,
   BrowserPipelineOptions,
