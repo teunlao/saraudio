@@ -1,8 +1,8 @@
 import { AuthenticationError, type TranscriptResult } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { DeepgramProvider } from '../index';
-import { deepgram } from '../index';
+import type { DeepgramProvider } from './index';
+import { deepgram } from './index';
 
 type BinaryType = 'blob' | 'arraybuffer';
 

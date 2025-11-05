@@ -1,4 +1,4 @@
-import type { StageController } from '@saraudio/core';
+import type { CoreError, Segment, StageController } from '@saraudio/core';
 import { createRecorderStub } from '@saraudio/core/testing';
 import type { BrowserRuntime, RuntimeMode } from '@saraudio/runtime-browser';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -22,8 +22,8 @@ const mocks = vi.hoisted(() => {
 
   // SHARED handlers across all stubs (for StrictMode compatibility)
   const vadHandlers = new Set<(payload: { score: number; speech: boolean; tsMs: number }) => void>();
-  const segmentHandlers = new Set<(segment: any) => void>();
-  const errorHandlers = new Set<(error: any) => void>();
+  const segmentHandlers = new Set<(segment: Segment) => void>();
+  const errorHandlers = new Set<(error: CoreError) => void>();
 
   const createRecorderMock = vi.fn(() => {
     const stub = createRecorderStub();
@@ -33,15 +33,15 @@ const mocks = vi.hoisted(() => {
     stub.dispose = disposeMock;
 
     // Override to use SHARED handlers
-    stub.onVad = (handler: any) => {
+    stub.onVad = (handler: (payload: { score: number; speech: boolean; tsMs: number }) => void) => {
       vadHandlers.add(handler);
       return () => vadHandlers.delete(handler);
     };
-    stub.onSegment = (handler: any) => {
+    stub.onSegment = (handler: (segment: Segment) => void) => {
       segmentHandlers.add(handler);
       return () => segmentHandlers.delete(handler);
     };
-    stub.onError = (handler: any) => {
+    stub.onError = (handler: (error: CoreError) => void) => {
       errorHandlers.add(handler);
       return () => errorHandlers.delete(handler);
     };
