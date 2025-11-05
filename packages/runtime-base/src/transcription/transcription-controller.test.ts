@@ -1,174 +1,15 @@
-import type {
-  NormalizedFrame,
-  ProviderCapabilities,
-  Recorder,
-  RecorderFormatOptions,
-  RecorderStatus,
-  Segment,
-  StreamStatus,
-  TranscriptionProvider,
-  TranscriptionStream,
-  TranscriptResult,
-  Transport,
-} from '@saraudio/core';
-import { AuthenticationError, NetworkError, Pipeline, RateLimitError } from '@saraudio/core';
+import type { NormalizedFrame, StreamStatus, TranscriptionStream, TranscriptResult, Transport } from '@saraudio/core';
+import { AuthenticationError, NetworkError, RateLimitError } from '@saraudio/core';
+import { createRecorderStub } from '@saraudio/core/testing';
 import type { HttpLiveAggregator, Logger } from '@saraudio/utils';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  createProviderStub,
   createStreamStub,
   createUpdatableProviderStub,
-  type StreamStub,
 } from '../testing/transcription-provider-stubs';
 import { createTranscription } from './transcription-controller';
 import * as httpTransportModule from './transports/http-transport';
-
-function preferredFormat(): RecorderFormatOptions {
-  return { sampleRate: 16000, channels: 1, encoding: 'pcm16' };
-}
-
-type Handler<T> = (value: T) => void;
-
-interface ProviderStub extends TranscriptionProvider {
-  streamInstance: StreamStub;
-}
-
-function createProviderStub(opts?: { deferredConnect?: boolean }): ProviderStub {
-  const caps: ProviderCapabilities = {
-    partials: 'mutable',
-    words: true,
-    diarization: 'word',
-    language: 'final',
-    segments: true,
-    forceEndpoint: true,
-    multichannel: false,
-  };
-  const streamInstance = createStreamStub('idle', opts?.deferredConnect === true);
-  const provider: ProviderStub = {
-    id: 'mock-provider',
-    transport: 'websocket',
-    capabilities: caps,
-    getPreferredFormat: preferredFormat,
-    getSupportedFormats: () => [preferredFormat()],
-    negotiateFormat: (rec) => ({ ...rec }),
-    update: () => {
-      // no-op for tests
-    },
-    onUpdate: () => () => {},
-    stream: () => streamInstance,
-    streamInstance,
-  };
-  return provider;
-}
-
-// Provider that fails connect N-1 times with given error(s), then succeeds
-function createRetryingProviderStub(plan: Array<Error | 'ok'>): ProviderStub {
-  const caps: ProviderCapabilities = {
-    partials: 'mutable',
-    words: true,
-    diarization: 'word',
-    language: 'final',
-    segments: true,
-    forceEndpoint: true,
-    multichannel: false,
-  };
-  let attempt = 0;
-  const provider: ProviderStub = {
-    id: 'retry-provider',
-    transport: 'websocket',
-    capabilities: caps,
-    getPreferredFormat: preferredFormat,
-    getSupportedFormats: () => [preferredFormat()],
-    update: () => {
-      // no-op for tests
-    },
-    onUpdate: () => () => {},
-    negotiateFormat: (rec) => ({ ...rec }),
-    stream: () => {
-      const s = createStreamStub();
-      const step = plan[Math.min(attempt, plan.length - 1)];
-      const originalConnect = s.connect.bind(s);
-      s.connect = async () => {
-        attempt += 1;
-        if (step === 'ok') return originalConnect();
-        throw step;
-      };
-      return s;
-    },
-    // not used directly in tests
-    streamInstance: createStreamStub(),
-  };
-  return provider;
-}
-
-function createRecorderStub(): {
-  recorder: Recorder;
-  emitFrame: (f: NormalizedFrame<'pcm16'>) => void;
-  emitSegment: (s?: Segment) => void;
-} {
-  // Trackers
-  const frameHandlers = new Set<Handler<NormalizedFrame<'pcm16'>>>();
-  const readyHandlers = new Set<() => void>();
-  const segmentHandlers = new Set<Handler<Segment>>();
-
-  const pipeline = new Pipeline({ now: () => 0, createId: () => 'id' });
-
-  const recorder: Recorder = {
-    // State
-    get status(): RecorderStatus {
-      return 'idle';
-    },
-    get error(): Error | null {
-      return null;
-    },
-    pipeline,
-    // Lifecycle
-    async start() {},
-    async stop() {},
-    reset() {},
-    dispose() {},
-    // Subscriptions
-    onVad: () => () => {},
-    onSegment: (h) => {
-      segmentHandlers.add(h);
-      return () => segmentHandlers.delete(h);
-    },
-    onError: () => () => {},
-    subscribeRawFrames: () => () => {},
-    subscribeSpeechFrames: () => () => {},
-    subscribeFrames(h) {
-      frameHandlers.add(h);
-      return () => frameHandlers.delete(h);
-    },
-    onReady(h) {
-      readyHandlers.add(h);
-      return () => readyHandlers.delete(h);
-    },
-    // Config
-    async configure() {},
-    async update() {},
-    // Recordings (not used by controller; keep minimal shape)
-    recordings: {
-      cleaned: { durationMs: 0 },
-      full: { durationMs: 0 },
-      masked: { durationMs: 0 },
-      meta() {
-        return { sessionDurationMs: 0, cleanedDurationMs: 0 };
-      },
-      clear() {},
-    },
-  };
-
-  const emitFrame = (f: NormalizedFrame<'pcm16'>) => {
-    frameHandlers.forEach((h) => h(f));
-  };
-  const emitSegment = (s?: Segment) => {
-    const payload: Segment =
-      s ?? ({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 } satisfies Segment);
-    segmentHandlers.forEach((h) => h(payload));
-  };
-
-  return { recorder, emitFrame, emitSegment };
-}
 
 function makeFrame(): NormalizedFrame<'pcm16'> {
   return {
@@ -187,28 +28,28 @@ function makeFrameWithSamples(samples: number): NormalizedFrame<'pcm16'> {
 
 describe('createTranscription controller', () => {
   test('buffers frames before connect resolves and flushes them', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder, emitFrame } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     // Start connecting but do not resolve yet
     const pending = controller.connect();
 
     // Emit a frame while stream is not yet connected
     const buffered = makeFrame();
-    emitFrame(buffered);
+    recorder.emitNormalizedFrame(buffered);
 
     // Now resolve connect and await
-    provider.streamInstance.connectDeferred?.resolve();
+    stub.streamInstance?.connectDeferred?.resolve();
     await pending;
 
     // The first frame must be flushed to the stream
-    expect(provider.streamInstance.lastSentFrame).toBe(buffered);
+    expect(stub.streamInstance?.lastSentFrame).toBe(buffered);
   });
 
   test('preconnectBufferMs clamps with warning when above soft max', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder } = createRecorderStub();
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
 
     type WarnRecord = { message: string; context?: Record<string, unknown> };
     const warnings: WarnRecord[] = [];
@@ -224,7 +65,7 @@ describe('createTranscription controller', () => {
     };
 
     // Create with an excessive buffer to trigger clamp and warning
-    createTranscription({ provider, recorder, logger, preconnectBufferMs: 500 });
+    createTranscription({ provider: stub.provider, recorder, logger, preconnectBufferMs: 500 });
 
     expect(warnings.length).toBe(1);
     expect(warnings[0]?.message).toContain('preconnectBufferMs');
@@ -242,8 +83,8 @@ describe('createTranscription controller', () => {
   });
 
   test('preconnectBufferMs clamps negative to 0 with warning', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder } = createRecorderStub();
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
     const warnings: Array<{ message: string }> = [];
     const logger = {
       debug: () => {},
@@ -252,86 +93,92 @@ describe('createTranscription controller', () => {
       error: () => {},
       child: () => logger,
     };
-    createTranscription({ provider, recorder, logger, preconnectBufferMs: -10 });
+    createTranscription({ provider: stub.provider, recorder, logger, preconnectBufferMs: -10 });
     expect(warnings.length).toBe(1);
   });
 
   test('preconnectBufferMs respected: trims to last frame when budget too small', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder, emitFrame } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, preconnectBufferMs: 1 });
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, preconnectBufferMs: 1 });
 
     const f1 = makeFrameWithSamples(320); // ~20ms
     const f2 = makeFrameWithSamples(320); // ~20ms
     const f3 = makeFrameWithSamples(320); // ~20ms
 
     const pending = controller.connect();
-    emitFrame(f1);
-    emitFrame(f2);
-    emitFrame(f3);
-    provider.streamInstance.connectDeferred?.resolve();
+    recorder.emitNormalizedFrame(f1);
+    recorder.emitNormalizedFrame(f2);
+    recorder.emitNormalizedFrame(f3);
+    stub.streamInstance?.connectDeferred?.resolve();
     await pending;
 
-    expect(provider.streamInstance.sentFrames.length).toBe(1);
-    expect(provider.streamInstance.sentFrames[0]).toBe(f3);
+    expect(stub.streamInstance?.sentFrames.length).toBe(1);
+    expect(stub.streamInstance?.sentFrames[0]).toBe(f3);
   });
 
   test('preconnectBufferMs equal to threshold keeps all frames', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder, emitFrame } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, preconnectBufferMs: 60 });
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, preconnectBufferMs: 60 });
     const f1 = makeFrameWithSamples(320); // ~20ms
     const f2 = makeFrameWithSamples(320); // ~20ms
     const f3 = makeFrameWithSamples(320); // ~20ms
     const pending = controller.connect();
-    emitFrame(f1);
-    emitFrame(f2);
-    emitFrame(f3);
-    provider.streamInstance.connectDeferred?.resolve();
+    recorder.emitNormalizedFrame(f1);
+    recorder.emitNormalizedFrame(f2);
+    recorder.emitNormalizedFrame(f3);
+    stub.streamInstance?.connectDeferred?.resolve();
     await pending;
-    expect(provider.streamInstance.sentFrames.length).toBe(3);
+    expect(stub.streamInstance?.sentFrames.length).toBe(3);
   });
 
   test('no frames forwarded after disconnect (unsubscribe works)', async () => {
-    const provider = createProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
     await controller.connect();
     const first = makeFrame();
-    emitFrame(first);
-    expect(provider.streamInstance.lastSentFrame).toBe(first);
+    recorder.emitNormalizedFrame(first);
+    expect(stub.streamInstance?.lastSentFrame).toBe(first);
     await controller.disconnect();
     const after = makeFrame();
-    emitFrame(after);
-    expect(provider.streamInstance.lastSentFrame).toBe(first);
+    recorder.emitNormalizedFrame(after);
+    expect(stub.streamInstance?.lastSentFrame).toBe(first);
   });
 
   test('connect called twice concurrently performs single stream.connect', async () => {
-    const provider = createProviderStub({ deferredConnect: true });
-    const { recorder } = createRecorderStub();
+    const stub = createProviderStub({ reuseStream: true, deferredConnect: true });
+    const recorder = createRecorderStub();
     // Wrap stream to count connect calls
     let connectCalls = 0;
-    const base = provider.streamInstance;
-    provider.stream = () =>
-      ({
-        ...base,
-        async connect() {
-          connectCalls += 1;
-          await base.connect();
-        },
-      }) as unknown as TranscriptionStream;
-    const controller = createTranscription({ provider, recorder });
+    const base = stub.streamInstance;
+    if (base) {
+      stub.provider.stream = () =>
+        ({
+          ...base,
+          async connect() {
+            connectCalls += 1;
+            await base.connect();
+          },
+        }) as unknown as TranscriptionStream;
+    }
+    const controller = createTranscription({ provider: stub.provider, recorder });
     const p1 = controller.connect();
     const p2 = controller.connect();
-    provider.streamInstance.connectDeferred?.resolve();
+    stub.streamInstance?.connectDeferred?.resolve();
     await Promise.all([p1, p2]);
     expect(connectCalls).toBe(1);
   });
 
   test('maxAttempts enforced: stops after limit', async () => {
-    const provider = createRetryingProviderStub([new NetworkError('a'), new NetworkError('b')]);
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, retry: { maxAttempts: 2, baseDelayMs: 5 } });
+    const stub = createProviderStub({ retryPlan: [new NetworkError('a'), new NetworkError('b')] });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      retry: { maxAttempts: 2, baseDelayMs: 5 },
+    });
     await controller.connect();
     expect(controller.isConnected).toBe(false);
     expect(controller.status === 'error' || controller.status === 'disconnected').toBe(true);
@@ -359,20 +206,17 @@ describe('createTranscription controller', () => {
       onError: (h) => base.onError(h),
       onStatusChange: (h) => base.onStatusChange(h),
     };
-    const provider: ProviderStub = {
-      ...createProviderStub(),
-      stream: () => streamNoPartial,
-      streamInstance: base,
-    };
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    stub.provider.stream = () => streamNoPartial;
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
     await controller.connect();
     expect(controller.isConnected).toBe(true);
   });
   test('connect/disconnect lifecycle updates status', async () => {
-    const provider = createProviderStub();
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     expect(controller.status).toBe('idle');
     await controller.connect();
@@ -385,21 +229,21 @@ describe('createTranscription controller', () => {
   });
 
   test('forwards frames from recorder to stream.send', async () => {
-    const provider = createProviderStub();
-    const { recorder, emitFrame } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     await controller.connect();
     const frame = makeFrame();
-    emitFrame(frame);
+    recorder.emitNormalizedFrame(frame);
 
-    expect(provider.streamInstance.lastSentFrame).toBe(frame);
+    expect(stub.streamInstance?.lastSentFrame).toBe(frame);
   });
 
   test('propagates transcript and partial events to subscribers', async () => {
-    const provider = createProviderStub();
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     const partials: string[] = [];
     const finals: TranscriptResult[] = [];
@@ -407,24 +251,24 @@ describe('createTranscription controller', () => {
     controller.onTranscript((r: TranscriptResult) => finals.push(r));
 
     await controller.connect();
-    provider.streamInstance.emitPartial('hel');
-    provider.streamInstance.emitTranscript({ text: 'hello' });
+    stub.streamInstance?.emitPartial('hel');
+    stub.streamInstance?.emitTranscript({ text: 'hello' });
 
     expect(partials).toEqual(['hel']);
     expect(finals).toEqual([{ text: 'hello' }]);
   });
 
   test('propagates errors and sets error status', async () => {
-    const provider = createProviderStub();
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     const errors: Error[] = [];
     controller.onError((e: Error) => errors.push(e));
 
     await controller.connect();
     const boom = new Error('boom');
-    provider.streamInstance.emitError(boom);
+    stub.streamInstance?.emitError(boom);
 
     expect(controller.status).toBe('error');
     expect(controller.error).toBe(boom);
@@ -556,88 +400,94 @@ describe('createTranscription controller', () => {
   });
 
   test('forceEndpoint is passed through to stream', async () => {
-    const provider = createProviderStub();
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     await controller.connect();
     await controller.forceEndpoint();
-    expect(provider.streamInstance.forceEndpointCalls).toBe(1);
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(1);
   });
 
   test('flushOnSegmentEnd triggers forceEndpoint when supported', async () => {
-    const provider = createProviderStub();
-    const { recorder, emitSegment } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, flushOnSegmentEnd: true });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, flushOnSegmentEnd: true });
 
     await controller.connect();
-    emitSegment();
-    expect(provider.streamInstance.forceEndpointCalls).toBe(1);
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(1);
   });
 
   test('flushOnSegmentEnd no-ops when provider lacks capability', async () => {
-    const provider = createProviderStub();
-    // mutate capability for this test case
-    provider.capabilities.forceEndpoint = false;
-    const { recorder, emitSegment } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, flushOnSegmentEnd: true });
+    const stub = createProviderStub({ reuseStream: true, capabilities: { forceEndpoint: false } });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, flushOnSegmentEnd: true });
 
     await controller.connect();
-    emitSegment();
-    expect(provider.streamInstance.forceEndpointCalls).toBe(0);
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(0);
   });
 
   test('flushOnSegmentEnd uses cooldown (200ms)', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(1000));
 
-    const provider = createProviderStub();
-    const { recorder, emitSegment } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, flushOnSegmentEnd: true });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, flushOnSegmentEnd: true });
     await controller.connect();
 
-    emitSegment(); // t=0ms
-    emitSegment(); // t=0ms again → should be ignored by cooldown
-    expect(provider.streamInstance.forceEndpointCalls).toBe(1);
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 }); // t=0ms
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 }); // t=0ms again → should be ignored by cooldown
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(1);
 
     vi.setSystemTime(new Date(1201));
-    emitSegment(); // t=201ms → passes cooldown
-    expect(provider.streamInstance.forceEndpointCalls).toBe(2);
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 }); // t=201ms → passes cooldown
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(2);
 
     vi.useRealTimers();
   });
 
   test('no force after disconnect', async () => {
-    const provider = createProviderStub();
-    const { recorder, emitSegment } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, flushOnSegmentEnd: true });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, flushOnSegmentEnd: true });
 
     await controller.connect();
     await controller.disconnect();
-    emitSegment();
-    expect(provider.streamInstance.forceEndpointCalls).toBe(0);
+    recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
+    expect(stub.streamInstance?.forceEndpointCalls).toBe(0);
   });
 
   test('retries on NetworkError and eventually connects', async () => {
-    const provider = createRetryingProviderStub([new NetworkError('net'), 'ok']);
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, retry: { baseDelayMs: 10, jitterRatio: 0 } });
+    const stub = createProviderStub({ retryPlan: [new NetworkError('net'), 'ok'] });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      retry: { baseDelayMs: 10, jitterRatio: 0 },
+    });
     await controller.connect();
     expect(controller.isConnected).toBe(true);
   });
 
   test('respects RateLimitError retryAfterMs', async () => {
-    const provider = createRetryingProviderStub([new RateLimitError('rl', 50), 'ok']);
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, retry: { baseDelayMs: 5, jitterRatio: 0 } });
+    const stub = createProviderStub({ retryPlan: [new RateLimitError('rl', 50), 'ok'] });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      retry: { baseDelayMs: 5, jitterRatio: 0 },
+    });
     await controller.connect();
     expect(controller.isConnected).toBe(true);
   });
 
   test('does not retry on AuthenticationError', async () => {
-    const provider = createRetryingProviderStub([new AuthenticationError('bad'), 'ok']);
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, retry: { baseDelayMs: 5 } });
+    const stub = createProviderStub({ retryPlan: [new AuthenticationError('bad'), 'ok'] });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, retry: { baseDelayMs: 5 } });
     void controller.connect();
     await new Promise((r) => setTimeout(r, 20));
     expect(controller.isConnected).toBe(false);
@@ -645,9 +495,9 @@ describe('createTranscription controller', () => {
 
   test('cancels retry on disconnect', async () => {
     vi.useFakeTimers();
-    const provider = createRetryingProviderStub([new NetworkError('net'), 'ok']);
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, retry: { baseDelayMs: 200 } });
+    const stub = createProviderStub({ retryPlan: [new NetworkError('net'), 'ok'] });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder, retry: { baseDelayMs: 200 } });
     void controller.connect();
     // scheduled retry at 200ms
     await controller.disconnect();
@@ -657,15 +507,15 @@ describe('createTranscription controller', () => {
   });
 
   test('status change events are forwarded', async () => {
-    const provider = createProviderStub();
-    const { recorder } = createRecorderStub();
-    const controller = createTranscription({ provider, recorder });
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({ provider: stub.provider, recorder });
 
     const statuses: StreamStatus[] = [];
     controller.onStatusChange((s) => statuses.push(s));
 
     await controller.connect();
-    provider.streamInstance.emitStatus('ready');
+    stub.streamInstance?.emitStatus('ready');
 
     expect(statuses).toContain('connecting');
     expect(statuses).toContain('connected');

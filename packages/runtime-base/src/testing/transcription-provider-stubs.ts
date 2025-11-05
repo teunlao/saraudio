@@ -1,9 +1,11 @@
 import type {
   AudioSource,
   BatchOptions,
+  BatchTranscriptionProvider,
   NormalizedFrame,
   ProviderCapabilities,
   RecorderFormatOptions,
+  StreamOptions,
   StreamStatus,
   TranscriptionProvider,
   TranscriptionStream,
@@ -21,9 +23,17 @@ export interface StreamStub extends TranscriptionStream {
   readonly sentFrames: ReadonlyArray<NormalizedFrame<'pcm16'>>;
   readonly forceEndpointCalls: number;
   readonly connectDeferred?: Deferred<void>;
+  readonly connectAttempts: number;
 }
 
-export function createStreamStub(initialStatus: StreamStatus = 'idle', withDeferredConnect = false): StreamStub {
+export interface StreamStubConfig {
+  initialStatus?: StreamStatus;
+  deferredConnect?: boolean;
+  onConnect?: () => void | Promise<void> | never;
+}
+
+export function createStreamStub(config: StreamStubConfig = {}): StreamStub {
+  const { initialStatus = 'idle', deferredConnect = false, onConnect } = config;
   let status: StreamStatus = initialStatus;
   const onTranscriptHandlers = new Set<(value: TranscriptResult) => void>();
   const onPartialHandlers = new Set<(value: string) => void>();
@@ -32,9 +42,10 @@ export function createStreamStub(initialStatus: StreamStatus = 'idle', withDefer
   let lastSentFrame: NormalizedFrame<'pcm16'> | null = null;
   const sentFrames: NormalizedFrame<'pcm16'>[] = [];
   let forceEndpointCalls = 0;
+  let connectAttempts = 0;
   let connectDeferred: Deferred<void> | undefined;
 
-  if (withDeferredConnect) {
+  if (deferredConnect) {
     connectDeferred = createDeferred<void>();
   }
 
@@ -43,6 +54,10 @@ export function createStreamStub(initialStatus: StreamStatus = 'idle', withDefer
       return status;
     },
     async connect(): Promise<void> {
+      connectAttempts += 1;
+      if (onConnect) {
+        await onConnect();
+      }
       if (connectDeferred) {
         await connectDeferred.promise;
       }
@@ -98,25 +113,10 @@ export function createStreamStub(initialStatus: StreamStatus = 'idle', withDefer
     get connectDeferred() {
       return connectDeferred;
     },
+    get connectAttempts() {
+      return connectAttempts;
+    },
   } satisfies StreamStub;
-}
-
-export interface UpdatableProviderStubConfig<TOptions> {
-  id?: string;
-  transport?: Transport;
-  capabilities?: Partial<ProviderCapabilities>;
-  preferredFormat?: RecorderFormatOptions;
-  streamFactory?: (input: { options: TOptions | null }) => StreamStub;
-  applyOptions?: (options: TOptions, helpers: { setTransport: (transport: Transport) => void }) => void | Promise<void>;
-  transcribe?: (audio: AudioSource, options?: BatchOptions, signal?: AbortSignal) => Promise<TranscriptResult>;
-}
-
-export interface UpdatableProviderStub<TOptions> {
-  provider: TranscriptionProvider<TOptions>;
-  streams: StreamStub[];
-  emitUpdate(options: TOptions): Promise<void>;
-  setTransport(transport: Transport): void;
-  readonly transport: Transport;
 }
 
 const DEFAULT_CAPABILITIES: ProviderCapabilities = {
@@ -131,58 +131,160 @@ const DEFAULT_CAPABILITIES: ProviderCapabilities = {
 
 const DEFAULT_FORMAT: RecorderFormatOptions = { sampleRate: 16000, channels: 1, encoding: 'pcm16' };
 
-export function createUpdatableProviderStub<TOptions>(
-  config: UpdatableProviderStubConfig<TOptions> = {},
-): UpdatableProviderStub<TOptions> {
-  const listeners = new Set<(options: TOptions) => void>();
-  const streams: StreamStub[] = [];
-  let currentTransport: Transport = config.transport ?? 'websocket';
+/**
+ * Universal provider stub configuration.
+ * All features are optional - configure only what you need for your test.
+ */
+export interface ProviderStubConfig<TOptions = unknown> {
+  id?: string;
+  transport?: Transport;
+  capabilities?: Partial<ProviderCapabilities>;
+  preferredFormat?: RecorderFormatOptions;
+
+  // Stream behavior
+  /** If true, reuses single stream instance. If false, creates new stream on each stream() call */
+  reuseStream?: boolean;
+  /** Pass to createStreamStub for deferred connect behavior */
+  deferredConnect?: boolean;
+  /** Custom stream factory - full control over stream creation */
+  streamFactory?: (context: { options: TOptions | null; attempt: number }) => StreamStub;
+
+  // Update/reconfigure support
+  /** Enable tracking of provider updates */
+  trackUpdates?: boolean;
+  /** Called when provider.update() is invoked */
+  onUpdate?: (options: TOptions) => void | Promise<void>;
+  /** Apply update options to provider state (e.g., change transport) */
+  applyOptions?: (options: TOptions, helpers: { setTransport: (transport: Transport) => void }) => void | Promise<void>;
+
+  // HTTP/Batch support
+  /** Batch transcription function for HTTP providers */
+  transcribe?: (audio: AudioSource, options?: BatchOptions, signal?: AbortSignal) => Promise<TranscriptResult>;
+
+  // Retry behavior
+  /** Error plan for retry tests: array of errors or 'ok'. Each stream() call consumes next item */
+  retryPlan?: Array<Error | 'ok'>;
+}
+
+export interface ProviderStub<TOptions = unknown> {
+  provider: TranscriptionProvider<TOptions> | BatchTranscriptionProvider<TOptions>;
+  /** Access single stream instance when reuseStream=true */
+  streamInstance: StreamStub | null;
+  /** All created streams when reuseStream=false or trackUpdates=true */
+  streams: StreamStub[];
+  /** Manually trigger update (same as provider.update) */
+  emitUpdate: (options: TOptions) => Promise<void>;
+  /** Change transport dynamically */
+  setTransport: (transport: Transport) => void;
+  readonly transport: Transport;
+}
+
+export function createProviderStub<TOptions = unknown>(
+  config: ProviderStubConfig<TOptions> = {},
+): ProviderStub<TOptions> {
+  const {
+    id = 'provider-stub',
+    transport: initialTransport = 'websocket',
+    capabilities: capsOverride,
+    preferredFormat = DEFAULT_FORMAT,
+    reuseStream = false,
+    deferredConnect = false,
+    streamFactory,
+    trackUpdates = false,
+    onUpdate,
+    applyOptions,
+    transcribe,
+    retryPlan,
+  } = config;
+
+  const capabilities: ProviderCapabilities = {
+    ...DEFAULT_CAPABILITIES,
+    ...(capsOverride ?? {}),
+  };
+
+  let currentTransport: Transport = initialTransport;
   let currentOptions: TOptions | null = null;
+  const updateListeners = new Set<(options: TOptions) => void>();
+  const streams: StreamStub[] = [];
+  let singleStreamInstance: StreamStub | null = null;
+  let streamAttempt = 0;
 
   const setTransport = (transport: Transport) => {
     currentTransport = transport;
   };
 
-  const capabilities: ProviderCapabilities = {
-    ...DEFAULT_CAPABILITIES,
-    ...(config.capabilities ?? {}),
+  const defaultStreamFactory = (): StreamStub => {
+    if (retryPlan) {
+      const step = retryPlan[Math.min(streamAttempt, retryPlan.length - 1)];
+      return createStreamStub({
+        deferredConnect,
+        onConnect: () => {
+          if (step !== 'ok') {
+            throw step;
+          }
+        },
+      });
+    }
+    return createStreamStub({ deferredConnect });
   };
 
-  const preferredFormat = config.preferredFormat ?? DEFAULT_FORMAT;
+  const createStream = (): StreamStub => {
+    const stream = streamFactory
+      ? streamFactory({ options: currentOptions, attempt: streamAttempt })
+      : defaultStreamFactory();
+    streamAttempt += 1;
 
-  const provider: TranscriptionProvider<TOptions> = {
-    id: config.id ?? 'updatable-provider-stub',
+    if (trackUpdates || !reuseStream) {
+      streams.push(stream);
+    }
+    return stream;
+  };
+
+  if (reuseStream) {
+    singleStreamInstance = createStream();
+  }
+
+  const baseProvider: TranscriptionProvider<TOptions> = {
+    id,
     get transport() {
       return currentTransport;
     },
     capabilities,
     getPreferredFormat: () => preferredFormat,
     getSupportedFormats: () => [preferredFormat],
-    stream: () => {
-      const stream = config.streamFactory?.({ options: currentOptions }) ?? createStreamStub();
-      streams.push(stream);
-      return stream;
-    },
+    negotiateFormat: (rec) => ({ ...rec }),
     async update(options: TOptions) {
       currentOptions = options;
-      if (config.applyOptions) {
-        await config.applyOptions(options, { setTransport });
+      if (onUpdate) {
+        await onUpdate(options);
       }
-      listeners.forEach((listener) => listener(options));
+      if (applyOptions) {
+        await applyOptions(options, { setTransport });
+      }
+      updateListeners.forEach((listener) => listener(options));
     },
     onUpdate(listener: (options: TOptions) => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      updateListeners.add(listener);
+      return () => updateListeners.delete(listener);
     },
-    ...(config.transcribe
-      ? {
-          transcribe: config.transcribe,
-        }
-      : {}),
+    stream: (_opts?: StreamOptions) => {
+      if (reuseStream && singleStreamInstance) {
+        return singleStreamInstance;
+      }
+      return createStream();
+    },
   };
+
+  const provider = transcribe
+    ? ({
+        ...baseProvider,
+        transcribe,
+      } as BatchTranscriptionProvider<TOptions>)
+    : baseProvider;
 
   return {
     provider,
+    streamInstance: singleStreamInstance,
     streams,
     emitUpdate: async (options: TOptions) => {
       await provider.update(options);
@@ -192,4 +294,13 @@ export function createUpdatableProviderStub<TOptions>(
       return currentTransport;
     },
   };
+}
+
+/**
+ * Convenience: updatable provider stub (tracks stream creation across updates)
+ */
+export function createUpdatableProviderStub<TOptions>(
+  config: Omit<ProviderStubConfig<TOptions>, 'trackUpdates'> = {},
+): ProviderStub<TOptions> {
+  return createProviderStub({ ...config, trackUpdates: true });
 }

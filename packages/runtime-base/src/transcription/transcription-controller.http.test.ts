@@ -1,13 +1,7 @@
-import type {
-  BatchTranscriptionProvider,
-  NormalizedFrame,
-  StreamOptions,
-  TranscriptionStream,
-  TranscriptResult,
-} from '@saraudio/core';
+import type { NormalizedFrame, TranscriptResult } from '@saraudio/core';
 import { createRecorderStub } from '@saraudio/core/testing';
 import { describe, expect, test } from 'vitest';
-
+import { createProviderStub } from '../testing/transcription-provider-stubs';
 import { createTranscription } from './transcription-controller';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
@@ -18,10 +12,8 @@ function makeFrame(samples = 320, rate = 16000, channels: 1 | 2 = 1): Normalized
   return { pcm, tsMs: 0, sampleRate: rate, channels };
 }
 
-function createHttpProviderStub(): BatchTranscriptionProvider {
-  const results: TranscriptResult[] = [];
-  const provider: BatchTranscriptionProvider = {
-    id: 'http-provider',
+function createHttpProviderStub() {
+  return createProviderStub({
     transport: 'http',
     capabilities: {
       partials: 'none',
@@ -32,47 +24,19 @@ function createHttpProviderStub(): BatchTranscriptionProvider {
       forceEndpoint: false,
       multichannel: false,
     },
-    getPreferredFormat: () => ({ sampleRate: 16000, channels: 1, encoding: 'pcm16' }),
-    getSupportedFormats: () => [{ sampleRate: 16000, channels: 1, encoding: 'pcm16' }],
-    update: () => {},
-    onUpdate: () => () => {},
-    stream: (_opts?: StreamOptions): TranscriptionStream => ({
-      get status(): 'ready' {
-        return 'ready';
-      },
-      async connect(_signal?: AbortSignal): Promise<void> {},
-      async disconnect(): Promise<void> {},
-      send(_frame: NormalizedFrame<'pcm16'>): void {},
-      async forceEndpoint(): Promise<void> {},
-      onTranscript(_h: (r: TranscriptResult) => void): () => void {
-        return () => {};
-      },
-      onError(_h: (e: Error) => void): () => void {
-        return () => {};
-      },
-      onStatusChange(
-        _h: (s: 'idle' | 'connecting' | 'ready' | 'connected' | 'error' | 'disconnected') => void,
-      ): () => void {
-        return () => {};
-      },
-    }),
-    async transcribe(audio) {
-      // naive: return text size by bytes length seen so far
+    transcribe: async (audio) => {
       const size = (audio as Uint8Array).byteLength;
-      const r: TranscriptResult = { text: `bytes:${size}` };
-      results.push(r);
-      return r;
+      return { text: `bytes:${size}` };
     },
-  };
-  return provider;
+  });
 }
 
 describe('transcription controller — HTTP chunking path', () => {
   test('frames go through aggregator and result is emitted', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0, maxInFlight: 1, timeoutMs: 1000 },
       flushOnSegmentEnd: true,
@@ -90,9 +54,13 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('forceEndpoint maps to aggregator.forceFlush', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, chunking: { intervalMs: 0, minDurationMs: 0 } });
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
     await controller.connect();
@@ -103,9 +71,13 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('disconnect closes aggregator and prevents further flushes', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
-    const controller = createTranscription({ provider, recorder, chunking: { intervalMs: 0, minDurationMs: 0 } });
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+    });
     let count = 0;
     controller.onTranscript(() => {
       count += 1;
@@ -121,10 +93,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug #1: preconnect frames are drained into aggregator (race condition check)', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
     });
@@ -145,10 +117,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug #1: frames during connect() are not lost', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
     });
@@ -170,10 +142,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug #2: stereo frames calculate duration correctly for preconnect buffer', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
       preconnectBufferMs: 20,
@@ -196,10 +168,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('segment flush respects cooldown period', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
       flushOnSegmentEnd: true,
@@ -225,16 +197,18 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('disconnect during in-flight flush completes gracefully', async () => {
-    const provider = createHttpProviderStub();
-    const originalTranscribe = provider.transcribe.bind(provider);
-    provider.transcribe = async (audio, opts, signal) => {
-      await new Promise((r) => setTimeout(r, 50));
-      return await originalTranscribe(audio, opts, signal);
-    };
+    const stub = createHttpProviderStub();
+    if ('transcribe' in stub.provider) {
+      const originalTranscribe = stub.provider.transcribe.bind(stub.provider);
+      stub.provider.transcribe = async (audio, opts, signal) => {
+        await new Promise((r) => setTimeout(r, 50));
+        return await originalTranscribe(audio, opts, signal);
+      };
+    }
 
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 },
     });
@@ -250,10 +224,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('multiple frames before connect are all sent', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
     });
@@ -276,10 +250,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('frames after connect go directly to aggregator', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
     });
@@ -301,10 +275,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('preconnect buffer respects max duration', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
       preconnectBufferMs: 20,
@@ -325,10 +299,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('empty preconnect buffer does not cause errors', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -338,10 +312,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('forceEndpoint without frames does not crash', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -352,10 +326,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug: frames emitted when aggregator is null are not lost', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -377,12 +351,12 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug: frames are not silently lost when aggregator is null', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     let errorCaught = false;
 
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -401,10 +375,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('After disconnect, frames are ignored (not buffered)', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -427,10 +401,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Reconnect after disconnect subscribes anew (no old frames)', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -454,10 +428,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('Bug: double await in connect does not cause issues', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
@@ -471,10 +445,10 @@ describe('transcription controller — HTTP chunking path', () => {
   });
 
   test('No double subscription across repeated connect/disconnect', async () => {
-    const provider = createHttpProviderStub();
+    const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
-      provider,
+      provider: stub.provider,
       recorder,
       chunking: { intervalMs: 0, minDurationMs: 0 },
     });
