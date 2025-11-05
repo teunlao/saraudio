@@ -613,6 +613,9 @@ importers:
         specifier: workspace:*
         version: link:../vad-energy
     devDependencies:
+      '@saraudio/runtime-base':
+        specifier: workspace:*
+        version: link:../runtime-base
       '@types/node':
         specifier: 'catalog:'
         version: 24.9.1
