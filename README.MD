@@ -2,7 +2,7 @@
 
 Modular audio processing pipeline for real-time voice applications. Capture, detect speech, and process audio with minimal latency.
 
-> ⚠️ **Active development** - v3 is in progress, APIs may change. Legacy `silence-aware-recorder` package is on the `main` branch.
+> ⚠️ **Active development** - APIs may change between releases.
 
 ## What is this?
 
