@@ -1,5 +1,14 @@
 # @saraudio/meter
 
+## 0.0.1
+
+### Patch Changes
+
+- Initial stable release of SARAUDIO audio processing stack
+- Updated dependencies
+  - @saraudio/core@0.0.1
+  - @saraudio/utils@0.0.1
+
 ## 0.0.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @saraudio/example-react-mic-visualizer
 
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @saraudio/core@0.0.1
+  - @saraudio/meter@0.0.1
+  - @saraudio/react@0.0.1
+  - @saraudio/runtime-browser@0.0.1
+  - @saraudio/vad-energy@0.0.1
+
 ## 0.0.0
 
 ### Patch Changes

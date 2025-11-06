@@ -53,6 +53,7 @@ jobs:
         with:
           version: pnpm changeset version
           publish: pnpm changeset publish
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -62,3 +63,9 @@ jobs:
         run: |
           echo "🎉 Packages published!"
           echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version)"'
+
+      - name: Create Grouped GitHub Release
+        if: steps.changesets.outputs.published == 'true'
+        run: node scripts/create-github-release.mts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
