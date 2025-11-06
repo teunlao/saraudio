@@ -1,0 +1,93 @@
+name: Release Snapshot
+
+# Manual workflow for creating snapshot releases from any branch
+# Useful for testing changes before merging to main
+#
+# Snapshot version format: 0.1.0-a1b2c3d4-20251106123456
+# (base version + short commit hash + timestamp)
+#
+# Usage:
+#   1. Go to Actions → Release Snapshot
+#   2. Click "Run workflow"
+#   3. Select branch to release from
+#   4. Choose npm dist-tag (snapshot, alpha, or beta)
+#   5. Install with: npm install @saraudio/core@snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'npm dist-tag'
+        required: true
+        default: 'snapshot'
+        type: choice
+        options:
+          - snapshot
+          - alpha
+          - beta
+
+concurrency:
+  group: 'snapshot-${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  release-snapshot:
+    name: Release Snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Version packages (snapshot)
+        run: pnpm changeset version --snapshot ${{ steps.sha.outputs.short }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Publish snapshot
+        run: pnpm changeset publish --no-git-tag --tag ${{ inputs.tag }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## 🎉 Snapshot Released!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ steps.sha.outputs.short }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Install:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "npm install @saraudio/core@${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "npm install @saraudio/react@${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

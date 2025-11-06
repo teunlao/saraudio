@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.changeset/**'  # Run only when changesets are added/modified
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 concurrency:
@@ -52,3 +55,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Release Summary
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          echo "🎉 Packages published!"
+          echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version)"'
