@@ -246,4 +246,97 @@ describe('deepgram provider', () => {
     vi.advanceTimersByTime(8_000);
     expect(socket.sent).toContain('{"type":"KeepAlive"}');
   });
+
+  test('uses custom URL builder when provided', async () => {
+    const provider = deepgram({
+      apiKey: 'test-key',
+      model: 'nova-2',
+      language: 'en-US',
+      buildUrl: (params) => `wss://example.test/listen?${params.toString()}&custom=1`,
+    });
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+    expect(socket.url.startsWith('wss://example.test/listen?')).toBe(true);
+    expect(socket.url).toContain('custom=1');
+    socket.open();
+    await promise;
+  });
+
+  test('tokenProvider supplies token via subprotocols', async () => {
+    const provider = deepgram({
+      tokenProvider: async () => 'jwt-token',
+      model: 'nova-2',
+      language: 'en-US',
+    });
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+    expect(socket.protocols).toEqual(['token', 'jwt-token']);
+    socket.open();
+    await promise;
+  });
+
+  test('keepalive is clamped to minimum interval (1000ms)', async () => {
+    vi.useFakeTimers();
+    const provider = deepgram({
+      apiKey: 'test-key',
+      model: 'nova-2',
+      language: 'en-US',
+      keepaliveMs: 500, // will clamp to 1000
+    });
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+    socket.open();
+    await promise;
+    const before = socket.sent.length;
+    vi.advanceTimersByTime(999);
+    expect(socket.sent.length).toBe(before);
+    vi.advanceTimersByTime(1);
+    expect(socket.sent).toContain('{"type":"KeepAlive"}');
+  });
+
+  test('maps 429 close reason to RateLimitError with retryAfter', async () => {
+    const provider = createProvider();
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+
+    const errors: Error[] = [];
+    stream.onError((e) => errors.push(e));
+
+    socket.open();
+    await promise;
+
+    socket.emitClose(1008, JSON.stringify({ status: 429, retry_after: '1500', err_msg: 'Too many requests' }), false);
+    expect(errors.length).toBeGreaterThan(0);
+    const err = errors[0] as { name: string; retryAfterMs?: number };
+    expect(err.name).toBe('RateLimitError');
+    expect(err.retryAfterMs).toBe(1500);
+  });
+
+  test('connect can be aborted via AbortSignal', async () => {
+    const provider = createProvider();
+    const stream = provider.stream();
+    const ac = new AbortController();
+    ac.abort();
+    await expect(stream.connect(ac.signal)).rejects.toMatchObject({ name: 'AbortedError' });
+    expect(MockWebSocket.instances.length).toBe(0);
+  });
+
+  test('close code 1006 yields NetworkError', async () => {
+    const provider = createProvider();
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+
+    const errors: Error[] = [];
+    stream.onError((e) => errors.push(e));
+
+    // close before open, not clean
+    socket.emitClose(1006, '', false);
+    await expect(promise).rejects.toBeTruthy();
+    expect(errors[0]?.name).toBe('NetworkError');
+  });
 });

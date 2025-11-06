@@ -1,16 +1,14 @@
 import type { NormalizedFrame } from '@saraudio/core';
 import {
   AbortedError,
-  AuthenticationError,
   NetworkError,
-  ProviderError,
-  RateLimitError,
   type StreamStatus,
   type TranscriptionStream,
   type TranscriptResult,
 } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { frameDurationMs } from '@saraudio/utils';
+import { type DeepgramErrorMessage, mapClose, mapError } from './errors';
 
 interface DeepgramWord {
   word?: string;
@@ -48,18 +46,7 @@ interface DeepgramResultsMessage {
   metadata?: Record<string, unknown>;
 }
 
-interface DeepgramErrorMessage {
-  type?: string;
-  message?: string;
-  error?: string;
-  err_msg?: string;
-  err_code?: number;
-  status?: number;
-  code?: number;
-  reason?: string;
-  request_id?: string;
-  retry_after?: number | string;
-}
+// DeepgramErrorMessage type is imported from ./errors
 
 export interface DeepgramConnectionInfo {
   url: string;
@@ -554,79 +541,6 @@ function buildMetadata(
     meta.sentiments = alternative.sentiments;
   }
   return Object.keys(meta).length > 0 ? meta : undefined;
-}
-
-function mapError(message: DeepgramErrorMessage): Error {
-  const raw = { ...message };
-  const errorMessage =
-    typeof message.message === 'string'
-      ? message.message
-      : typeof message.err_msg === 'string'
-        ? message.err_msg
-        : typeof message.error === 'string'
-          ? message.error
-          : 'Deepgram error';
-  const status = pickStatusCode(message);
-
-  if (status === 401 || status === 402 || status === 403) {
-    return new AuthenticationError(errorMessage, raw);
-  }
-  if (status === 429) {
-    const retryAfter = parseRetryAfter(message.retry_after);
-    return new RateLimitError(errorMessage, retryAfter, raw);
-  }
-  if (status && status >= 500) {
-    return new ProviderError(errorMessage, 'deepgram', status, status, raw);
-  }
-  return new ProviderError(errorMessage, 'deepgram', message.err_code ?? status, status, raw);
-}
-
-function mapClose(event: CloseEvent, closedByClient: boolean): Error | null {
-  const reason = typeof event.reason === 'string' ? event.reason.trim() : '';
-  if (closedByClient && event.code === 1000) {
-    return null;
-  }
-  if (reason.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(reason) as DeepgramErrorMessage;
-      return mapError(parsed);
-    } catch {
-      // fall through
-    }
-  }
-  if (!event.wasClean || event.code === 1006) {
-    return new NetworkError('Deepgram connection closed unexpectedly', true, {
-      code: event.code,
-      reason,
-    });
-  }
-  if (event.code === 1000) {
-    return null;
-  }
-  return new ProviderError(reason || 'Deepgram connection closed', 'deepgram', event.code, undefined, {
-    code: event.code,
-    reason,
-  });
-}
-
-function pickStatusCode(message: DeepgramErrorMessage): number | undefined {
-  if (typeof message.status === 'number') return message.status;
-  if (typeof message.code === 'number') return message.code;
-  if (typeof message.err_code === 'number') return message.err_code;
-  return undefined;
-}
-
-function parseRetryAfter(value: number | string | undefined): number | undefined {
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const numeric = Number(value);
-    if (!Number.isNaN(numeric)) {
-      return numeric;
-    }
-  }
-  return undefined;
 }
 
 function sliceBuffer(view: Int16Array): ArrayBuffer {
