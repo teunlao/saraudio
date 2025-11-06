@@ -1,5 +1,16 @@
 # @saraudio/runtime-browser
 
+## 0.0.1
+
+### Patch Changes
+
+- 34de43b: chore: bump to 0.0.1
+- Updated dependencies [34de43b]
+  - @saraudio/core@0.0.1
+  - @saraudio/runtime-base@0.0.1
+  - @saraudio/utils@0.0.1
+  - @saraudio/vad-energy@0.0.1
+
 ## 0.0.0
 
 ### Minor Changes
