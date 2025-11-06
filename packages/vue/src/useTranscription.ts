@@ -49,6 +49,8 @@ export interface UseTranscriptionOptions<P extends TranscriptionProvider = Trans
   provider: MaybeRefOrGetter<P>;
   recorder?: Recorder | UseRecorderResult;
   stages?: MaybeRefOrGetter<StageController[] | undefined>;
+  /** Select transport at hook level; default 'auto'. */
+  transport?: MaybeRefOrGetter<'auto' | Transport>;
   autoConnect?: MaybeRefOrGetter<boolean | undefined>;
   logger?: boolean | 'error' | 'warn' | 'info' | 'debug' | Logger;
   preconnectBufferMs?: number;
@@ -95,7 +97,11 @@ export function useTranscription<P extends TranscriptionProvider>(
   const error = ref<Error | null>(null);
   const isConnected = ref(false);
   let provider = toValue(options.provider);
-  let transport = provider.transport;
+  // resolved from controller once created; default to requested value if provided
+  let transport: Transport = ((): Transport => {
+    const t = options.transport ? toValue(options.transport) : undefined;
+    return (t && t !== 'auto' ? t : 'websocket') as Transport;
+  })();
 
   const transcriptSegments: string[] = [];
 
@@ -115,7 +121,6 @@ export function useTranscription<P extends TranscriptionProvider>(
   const unsubscribes: Array<() => void> = [];
   let formatApplied = false;
   let unsubscribeProviderUpdate = provider.onUpdate(() => {
-    transport = provider.transport;
     formatApplied = false;
   });
 
@@ -228,6 +233,10 @@ export function useTranscription<P extends TranscriptionProvider>(
       logger: options.logger,
       preconnectBufferMs: options.preconnectBufferMs,
       flushOnSegmentEnd: resolveFlushOnSegmentEnd(),
+      transport: ((): 'auto' | Transport => {
+        const t = options.transport ? toValue(options.transport) : undefined;
+        return (t ?? 'auto') as 'auto' | Transport;
+      })(),
       chunking: options.connection?.http?.chunking,
       retry: options.connection?.ws?.retry,
     };
@@ -248,10 +257,8 @@ export function useTranscription<P extends TranscriptionProvider>(
     // Unsubscribe from old provider.update events
     unsubscribeProviderUpdate();
     provider = nextProvider;
-    transport = provider.transport;
     formatApplied = false;
     unsubscribeProviderUpdate = provider.onUpdate(() => {
-      transport = provider.transport;
       formatApplied = false;
     });
 
@@ -292,6 +299,30 @@ export function useTranscription<P extends TranscriptionProvider>(
     onUnmounted(() => {
       stopWatch();
     });
+  }
+
+  // React to transport changes (if passed as ref/getter). Rebuild controller similarly to provider swap.
+  if (options.transport) {
+    const stopTransportWatch = watch(
+      () => toValue(options.transport),
+      (_next) => {
+        // if controller not created yet, just let ensureController pick it later
+        if (!controllerRef.value) return;
+        const wasConnected = isConnected.value;
+        teardownSubscriptions();
+        void controllerRef.value?.disconnect();
+        controllerRef.value = null;
+        if (wasConnected) {
+          queueMicrotask(async () => {
+            const controller = await ensureController();
+            await controller.connect();
+            transport = controller.transport;
+          });
+        }
+      },
+      { immediate: false },
+    );
+    onUnmounted(() => stopTransportWatch());
   }
 
   const connect = async (): Promise<void> => {

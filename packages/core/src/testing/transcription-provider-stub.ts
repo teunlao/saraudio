@@ -3,6 +3,12 @@ import type { ProviderCapabilities, TranscriptionProvider, TranscriptionStream }
 
 export interface TranscriptionProviderStubOptions<TOptions = unknown> {
   id?: string;
+  /**
+   * If provided, restricts which transport methods are exposed by the stub.
+   * - 'websocket' → only stream() is present
+   * - 'http' → only transcribe() is present
+   * - undefined → both methods are present
+   */
   transport?: 'websocket' | 'http';
   capabilities?: Partial<ProviderCapabilities>;
   preferredFormat?: RecorderFormatOptions;
@@ -43,9 +49,8 @@ export function createTranscriptionProviderStub<TOptions = unknown>(
 
   const listeners = new Set<(opts: TOptions) => void>();
 
-  const provider: TranscriptionProvider<TOptions> = {
+  const base: Omit<TranscriptionProvider<TOptions>, 'stream' | 'transcribe'> = {
     id: options.id ?? 'test-provider',
-    transport: options.transport ?? 'websocket',
     capabilities,
     getPreferredFormat: () => preferredFormat,
     getSupportedFormats: () => [preferredFormat],
@@ -59,10 +64,19 @@ export function createTranscriptionProviderStub<TOptions = unknown>(
         listeners.delete(listener);
       };
     },
-    stream: (): TranscriptionStream => {
-      throw new Error('stream() not implemented in stub - override this method');
-    },
   };
+
+  const provider: TranscriptionProvider<TOptions> = { ...base };
+  if (!options.transport || options.transport === 'websocket') {
+    provider.stream = (): TranscriptionStream => {
+      throw new Error('stream() not implemented in stub - override this method');
+    };
+  }
+  if (!options.transport || options.transport === 'http') {
+    provider.transcribe = async () => {
+      throw new Error('transcribe() not implemented in stub - override this method');
+    };
+  }
 
   return provider;
 }

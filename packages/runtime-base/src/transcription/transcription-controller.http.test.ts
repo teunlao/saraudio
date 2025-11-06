@@ -198,13 +198,12 @@ describe('transcription controller — HTTP chunking path', () => {
 
   test('disconnect during in-flight flush completes gracefully', async () => {
     const stub = createHttpProviderStub();
-    if ('transcribe' in stub.provider) {
-      const originalTranscribe = stub.provider.transcribe.bind(stub.provider);
-      stub.provider.transcribe = async (audio, opts, signal) => {
-        await new Promise((r) => setTimeout(r, 50));
-        return await originalTranscribe(audio, opts, signal);
-      };
-    }
+    if (!stub.provider.transcribe) throw new Error('expected HTTP-capable provider');
+    const originalTranscribe = stub.provider.transcribe.bind(stub.provider);
+    stub.provider.transcribe = async (audio, opts, signal) => {
+      await new Promise((r) => setTimeout(r, 50));
+      return await originalTranscribe(audio, opts, signal);
+    };
 
     const recorder = createRecorderStub();
     const controller = createTranscription({

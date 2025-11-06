@@ -141,7 +141,6 @@ const provider = computed(() => {
     selectedLanguage.value = language;
   }
   return deepgram({
-    transport: transportMode.value,
     model,
     language,
     interimResults: true,
@@ -152,6 +151,7 @@ const provider = computed(() => {
 
 const transcription = useTranscription({
   provider,
+  transport: transportMode,
   recorder,
   preconnectBufferMs: 120,
   flushOnSegmentEnd: true,

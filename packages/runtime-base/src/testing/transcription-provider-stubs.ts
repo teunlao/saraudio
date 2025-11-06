@@ -1,7 +1,6 @@
 import type {
   AudioSource,
   BatchOptions,
-  BatchTranscriptionProvider,
   NormalizedFrame,
   ProviderCapabilities,
   RecorderFormatOptions,
@@ -167,7 +166,7 @@ export interface ProviderStubConfig<TOptions = unknown> {
 }
 
 export interface ProviderStub<TOptions = unknown> {
-  provider: TranscriptionProvider<TOptions> | BatchTranscriptionProvider<TOptions>;
+  provider: TranscriptionProvider<TOptions>;
   /** Access single stream instance when reuseStream=true */
   streamInstance: StreamStub | null;
   /** All created streams when reuseStream=false or trackUpdates=true */
@@ -206,12 +205,15 @@ export function createProviderStub<TOptions = unknown>(
   let currentOptions: TOptions | null = null;
   const updateListeners = new Set<(options: TOptions) => void>();
   const streams: StreamStub[] = [];
-  let singleStreamInstance: StreamStub | null = null;
   let streamAttempt = 0;
-
-  const setTransport = (transport: Transport) => {
-    currentTransport = transport;
-  };
+  const createDefaultTranscript = (): TranscriptResult => ({
+    text: '',
+    metadata: undefined,
+    words: undefined,
+    language: undefined,
+    span: undefined,
+    confidence: undefined,
+  });
 
   const defaultStreamFactory = (): StreamStub => {
     if (retryPlan) {
@@ -233,58 +235,101 @@ export function createProviderStub<TOptions = unknown>(
       ? streamFactory({ options: currentOptions, attempt: streamAttempt })
       : defaultStreamFactory();
     streamAttempt += 1;
-
     if (trackUpdates || !reuseStream) {
       streams.push(stream);
     }
     return stream;
   };
 
-  if (reuseStream) {
-    singleStreamInstance = createStream();
-  }
+  let singleStreamInstance: StreamStub | null = null;
 
-  const baseProvider: TranscriptionProvider<TOptions> = {
+  const transcribeImpl = async (
+    audio: AudioSource,
+    options?: BatchOptions,
+    signal?: AbortSignal,
+  ): Promise<TranscriptResult> => {
+    if (transcribe) {
+      return await transcribe(audio, options, signal);
+    }
+    return createDefaultTranscript();
+  };
+
+  const emitUpdate = async (options: TOptions): Promise<void> => {
+    currentOptions = options;
+    if (applyOptions) {
+      await applyOptions(options, { setTransport });
+    }
+    if (onUpdate) {
+      await onUpdate(options);
+    }
+    updateListeners.forEach((listener) => listener(options));
+  };
+
+  const buildBase = () => ({
     id,
-    get transport() {
-      return currentTransport;
-    },
     capabilities,
-    getPreferredFormat: () => preferredFormat,
-    getSupportedFormats: () => [preferredFormat],
-    negotiateFormat: (rec) => ({ ...rec }),
-    async update(options: TOptions) {
-      currentOptions = options;
-      if (onUpdate) {
-        await onUpdate(options);
-      }
-      if (applyOptions) {
-        await applyOptions(options, { setTransport });
-      }
-      updateListeners.forEach((listener) => listener(options));
+    tokenProvider: undefined,
+    getPreferredFormat(): RecorderFormatOptions {
+      return preferredFormat;
     },
-    onUpdate(listener: (options: TOptions) => void) {
+    getSupportedFormats(): ReadonlyArray<RecorderFormatOptions> {
+      return [preferredFormat];
+    },
+    negotiateFormat(candidate: RecorderFormatOptions): RecorderFormatOptions {
+      return candidate;
+    },
+    async update(options: TOptions): Promise<void> {
+      await emitUpdate(options);
+    },
+    onUpdate(listener: (options: TOptions) => void): () => void {
       updateListeners.add(listener);
       return () => updateListeners.delete(listener);
     },
-    stream: (_opts?: StreamOptions) => {
-      if (reuseStream && singleStreamInstance) {
+    transcribe: transcribeImpl,
+  });
+
+  const buildHttpProvider = (): TranscriptionProvider<TOptions> => ({
+    ...buildBase(),
+  });
+
+  const buildWsProvider = (): TranscriptionProvider<TOptions> => ({
+    ...buildBase(),
+    stream(_options?: StreamOptions): TranscriptionStream {
+      if (reuseStream) {
+        if (!singleStreamInstance) {
+          singleStreamInstance = createStream();
+        }
         return singleStreamInstance;
       }
       return createStream();
     },
+  });
+
+  let provider: TranscriptionProvider<TOptions> = currentTransport === 'http' ? buildHttpProvider() : buildWsProvider();
+  if (reuseStream && currentTransport === 'websocket') {
+    singleStreamInstance = createStream();
+  }
+
+  const rebuildProvider = (): void => {
+    provider = currentTransport === 'http' ? buildHttpProvider() : buildWsProvider();
+    if (reuseStream && currentTransport === 'websocket' && !singleStreamInstance) {
+      singleStreamInstance = createStream();
+    }
+    if (currentTransport === 'http') {
+      singleStreamInstance = null;
+    }
   };
 
-  const provider = transcribe
-    ? ({
-        ...baseProvider,
-        transcribe,
-      } as BatchTranscriptionProvider<TOptions>)
-    : baseProvider;
+  const setTransport = (transport: Transport): void => {
+    currentTransport = transport;
+    rebuildProvider();
+  };
 
-  return {
+  const stub: ProviderStub<TOptions> = {
     provider,
-    streamInstance: singleStreamInstance,
+    get streamInstance() {
+      return singleStreamInstance;
+    },
     streams,
     emitUpdate: async (options: TOptions) => {
       await provider.update(options);
@@ -294,6 +339,17 @@ export function createProviderStub<TOptions = unknown>(
       return currentTransport;
     },
   };
+
+  Object.defineProperty(stub, 'provider', {
+    get() {
+      return provider;
+    },
+    set(value: TranscriptionProvider<TOptions>) {
+      provider = value;
+    },
+  });
+
+  return stub;
 }
 
 /**

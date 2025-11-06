@@ -125,6 +125,7 @@ async function getSocket(): Promise<MockWebSocket> {
 describe('deepgram provider', () => {
   test('connect builds URL and uses token protocol', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -138,6 +139,7 @@ describe('deepgram provider', () => {
 
   test('queue drops oldest frame when over budget', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const connectPromise = stream.connect();
     const socket = await getSocket();
@@ -162,6 +164,7 @@ describe('deepgram provider', () => {
 
   test('emits partial and final transcripts', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -219,6 +222,7 @@ describe('deepgram provider', () => {
 
   test('maps close reason to authentication error', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -238,6 +242,7 @@ describe('deepgram provider', () => {
   test('sends keepalive at configured interval', async () => {
     vi.useFakeTimers();
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -256,6 +261,7 @@ describe('deepgram provider', () => {
       language: 'en-US',
       buildUrl: (params) => `wss://example.test/listen?${params.toString()}&custom=1`,
     });
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -266,11 +272,8 @@ describe('deepgram provider', () => {
   });
 
   test('tokenProvider supplies token via subprotocols', async () => {
-    const provider = deepgram({
-      tokenProvider: async () => 'jwt-token',
-      model: 'nova-2',
-      language: 'en-US',
-    });
+    const provider = deepgram({ tokenProvider: async () => 'jwt-token', model: 'nova-2', language: 'en-US' });
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -281,12 +284,8 @@ describe('deepgram provider', () => {
 
   test('keepalive is clamped to minimum interval (1000ms)', async () => {
     vi.useFakeTimers();
-    const provider = deepgram({
-      apiKey: 'test-key',
-      model: 'nova-2',
-      language: 'en-US',
-      keepaliveMs: 500, // will clamp to 1000
-    });
+    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US', keepaliveMs: 500 });
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -301,6 +300,7 @@ describe('deepgram provider', () => {
 
   test('maps 429 close reason to RateLimitError with retryAfter', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -320,6 +320,7 @@ describe('deepgram provider', () => {
 
   test('connect can be aborted via AbortSignal', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const ac = new AbortController();
     ac.abort();
@@ -329,6 +330,7 @@ describe('deepgram provider', () => {
 
   test('close code 1006 yields NetworkError', async () => {
     const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
@@ -342,9 +344,38 @@ describe('deepgram provider', () => {
     expect(errors[0]?.name).toBe('NetworkError');
   });
 
-  test('transcribe is unsupported in websocket transport', async () => {
-    const provider = createProvider();
-    await expect(provider.transcribe(new Uint8Array())).rejects.toBeInstanceOf(ProviderError);
+  // Deepgram supports HTTP; transcribe should succeed when fetch responds OK.
+  test('http transcribe succeeds with mocked fetch', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(
+          JSON.stringify({
+            results: {
+              channels: [
+                {
+                  alternatives: [
+                    {
+                      transcript: 'hello http',
+                      confidence: 0.88,
+                      words: [
+                        { word: 'hello', start: 0, end: 0.5, confidence: 0.9 },
+                        { word: 'http', start: 0.5, end: 1, confidence: 0.88 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            metadata: { request_id: 'req-http' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const result = await provider.transcribe?.(new Uint8Array([0, 1, 2]));
+    expect(result?.text).toBe('hello http');
   });
 
   test('http transport transcribe succeeds', async () => {
@@ -379,7 +410,8 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    if (!provider.transcribe) throw new Error('expected http-capable provider');
     const result = await provider.transcribe(new Uint8Array([0, 1, 2]));
 
     expect(result.text).toBe('hello http');
@@ -410,8 +442,8 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ transport: 'http', apiKey: 'bad-key', model: 'nova-2', language: 'en-US' });
-    await expect(provider.transcribe(new Uint8Array([1]))).rejects.toBeInstanceOf(AuthenticationError);
+    const provider = deepgram({ apiKey: 'bad-key', model: 'nova-2', language: 'en-US' });
+    await expect(provider.transcribe?.(new Uint8Array([1]))).rejects.toBeInstanceOf(AuthenticationError);
   });
 
   test('http transport maps rate limit error', async () => {
@@ -424,8 +456,8 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
-    await expect(provider.transcribe(new Uint8Array([1]))).rejects.toSatisfy((error) => {
+    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    await expect(provider.transcribe?.(new Uint8Array([1]))).rejects.toSatisfy((error) => {
       return error instanceof RateLimitError && error.retryAfterMs === 2000;
     });
   });
@@ -441,13 +473,8 @@ describe('deepgram provider', () => {
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
     const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature';
-    const provider = deepgram({
-      transport: 'http',
-      tokenProvider: async () => jwt,
-      model: 'nova-2',
-      language: 'en-US',
-    });
-    await provider.transcribe(new Uint8Array([1]));
+    const provider = deepgram({ tokenProvider: async () => jwt, model: 'nova-2', language: 'en-US' });
+    await provider.transcribe?.(new Uint8Array([1]));
     const call = fetchMock.mock.calls[0];
     if (Array.isArray(call)) {
       const init = call[1];
@@ -458,17 +485,7 @@ describe('deepgram provider', () => {
     }
   });
 
-  test('stream is unsupported in http transport', () => {
-    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
-    expect(() => provider.stream()).toThrow(ProviderError);
-  });
-
-  test('update cannot change transport type', async () => {
-    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
-    await expect(
-      provider.update({ transport: 'websocket', apiKey: 'test-key', model: 'nova-2', language: 'en-US' }),
-    ).rejects.toBeInstanceOf(ProviderError);
-  });
+  // No transport field anymore; controller decides transport. Provider exposes both methods.
 });
 
 function isRequestInit(value: unknown): value is RequestInit {

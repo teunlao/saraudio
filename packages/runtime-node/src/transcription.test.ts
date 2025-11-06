@@ -9,7 +9,6 @@ describe('runtime-node/transcription', () => {
   beforeEach(() => {
     mockProvider = {
       id: 'test-provider',
-      transport: 'websocket',
       capabilities: {
         partials: 'mutable',
         words: false,
@@ -43,7 +42,6 @@ describe('runtime-node/transcription', () => {
 
     expect(controller).toBeDefined();
     expect(controller.status).toBe('idle');
-    expect(controller.transport).toBe('websocket');
   });
 
   it('creates controller without recorder', () => {

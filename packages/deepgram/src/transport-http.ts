@@ -1,126 +1,63 @@
-import type {
-  AudioSource,
-  BatchOptions,
-  ProviderCapabilities,
-  RecorderFormatOptions,
-  TranscriptResult,
-} from '@saraudio/core';
+import type { AudioSource, BatchOptions, TranscriptResult } from '@saraudio/core';
 import { AuthenticationError, NetworkError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { hasEmbeddedToken, resolveAuthToken } from './auth';
-import { type DeepgramResolvedConfig, normalizeChannels, resolveConfig } from './config';
-import { type DeepgramModelId, SUPPORTED_FORMATS } from './models';
-import type { HttpTransportStrategy } from './transport-strategy';
+import { type DeepgramResolvedConfig, resolveConfig } from './config';
+import type { DeepgramModelId } from './models';
 import type { DeepgramOptions } from './types';
 import { buildUrl } from './url';
 
 const DEFAULT_HTTP_BASE_URL = 'https://api.deepgram.com/v1/listen';
 
-const HTTP_CAPABILITIES: ProviderCapabilities = {
-  partials: 'none',
-  words: true,
-  diarization: 'word',
-  language: 'final',
-  segments: true,
-  forceEndpoint: false,
-  multichannel: true,
-  translation: 'none',
-};
-
-export function createHttpTransport(
-  options: DeepgramOptions<DeepgramModelId>,
-  getLogger: () => Logger | undefined,
-): HttpTransportStrategy {
-  let config: DeepgramResolvedConfig = resolveHttpConfig(options);
-
-  return {
-    kind: 'http',
-    capabilities: HTTP_CAPABILITIES,
-    getPreferredFormat(): RecorderFormatOptions {
-      return {
-        sampleRate: config.sampleRate,
-        channels: config.channels,
-        encoding: 'pcm16',
-      } satisfies RecorderFormatOptions;
-    },
-    getSupportedFormats(): ReadonlyArray<RecorderFormatOptions> {
-      return SUPPORTED_FORMATS;
-    },
-    negotiateFormat(candidate: RecorderFormatOptions): RecorderFormatOptions {
-      const negotiatedSampleRate = candidate.sampleRate ?? config.sampleRate;
-      const negotiatedChannels = normalizeChannels(candidate.channels ?? config.channels);
-      return {
-        sampleRate: negotiatedSampleRate,
-        channels: negotiatedChannels,
-        encoding: 'pcm16',
-      } satisfies RecorderFormatOptions;
-    },
-    update(nextOptions: DeepgramOptions<DeepgramModelId>) {
-      config = resolveHttpConfig(nextOptions);
-    },
-    rawOptions(): DeepgramOptions<DeepgramModelId> {
-      return config.raw;
-    },
-    tokenProvider(): (() => Promise<string>) | undefined {
-      return config.raw.tokenProvider;
-    },
-    async transcribe(audio: AudioSource, _options: BatchOptions | undefined, signal?: AbortSignal) {
-      const params = new URLSearchParams(config.baseParams);
-      params.set('interim_results', 'false');
-      const url = await buildUrl(config.baseUrl, config.raw.buildUrl, params);
-
-      const token = await resolveAuthToken(config.raw);
-      const headers: Record<string, string> = { 'Content-Type': 'audio/wav' };
-      if (!hasEmbeddedToken(config.raw) && token) {
-        headers.Authorization = chooseAuthScheme(config.raw, token);
-      }
-
-      const pcm = await toUint8Array(audio);
-      const body = toArrayBufferView(pcm);
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body,
-          signal,
-        });
-      } catch (error) {
-        const logger = getLogger();
-        logger?.error('deepgram http request failed', {
-          module: 'provider-deepgram-http',
-          event: 'fetch-error',
-          error: error instanceof Error ? error.message : String(error),
-        });
-        throw new NetworkError('Deepgram HTTP request failed', true, error);
-      }
-
-      const parsed = await parseJson(response);
-      if (!response.ok) {
-        throw mapHttpError(parsed, response.status, response.headers);
-      }
-      if (parsed === null) {
-        throw new ProviderError('Deepgram HTTP response is empty', 'deepgram', response.status, response.status);
-      }
-      return mapBatchResult(parsed);
-    },
-  };
-}
-
-function resolveHttpConfig(options: DeepgramOptions<DeepgramModelId>): DeepgramResolvedConfig {
+export function resolveHttpConfig<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramResolvedConfig {
   const resolved = resolveConfig(options);
-  const baseUrl = selectBaseUrl(options.baseUrl);
-  return {
-    ...resolved,
-    baseUrl,
-  };
+  const baseUrl =
+    typeof options.baseUrl === 'string' && options.baseUrl.length > 0 ? options.baseUrl : DEFAULT_HTTP_BASE_URL;
+  return { ...resolved, baseUrl };
 }
 
-function selectBaseUrl(custom: string | undefined): string {
-  if (typeof custom === 'string' && custom.length > 0) {
-    return custom;
+export async function transcribeHTTP(
+  options: DeepgramOptions<DeepgramModelId>,
+  audio: AudioSource,
+  batchOptions?: BatchOptions,
+  signal?: AbortSignal,
+  logger?: Logger,
+): Promise<TranscriptResult> {
+  const config = resolveHttpConfig(options);
+
+  const params = new URLSearchParams(config.baseParams);
+  if (batchOptions?.responseFormat) {
+    params.set('format', batchOptions.responseFormat);
   }
-  return DEFAULT_HTTP_BASE_URL;
+  params.set('interim_results', 'false');
+  const url = await buildUrl(config.baseUrl, config.raw.buildUrl, params);
+  const token = await resolveAuthToken(config.raw);
+  const headers: Record<string, string> = { 'Content-Type': 'audio/wav' };
+  if (!hasEmbeddedToken(config.raw) && token) {
+    headers.Authorization = chooseAuthScheme(config.raw, token);
+  }
+
+  const body = await toArrayBuffer(audio);
+  let response: Response;
+  try {
+    response = await fetch(url, { method: 'POST', headers, body, signal });
+  } catch (error) {
+    logger?.error('deepgram http request failed', {
+      module: 'provider-deepgram-http',
+      event: 'fetch-error',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new NetworkError('Deepgram HTTP request failed', true, error);
+  }
+
+  const parsed = await parseJson(response);
+  if (!response.ok) {
+    throw mapHttpError(parsed, response.status, response.headers);
+  }
+  if (!parsed) {
+    throw new ProviderError('Deepgram HTTP response is empty', 'deepgram', response.status, response.status);
+  }
+  return mapBatchResult(parsed);
 }
 
 function chooseAuthScheme(options: DeepgramOptions<DeepgramModelId>, token: string): string {
@@ -136,18 +73,17 @@ function chooseAuthScheme(options: DeepgramOptions<DeepgramModelId>, token: stri
   return `Token ${token}`;
 }
 
-async function toUint8Array(source: AudioSource): Promise<Uint8Array> {
+async function toArrayBuffer(source: AudioSource): Promise<ArrayBuffer> {
   if (source instanceof Uint8Array) {
-    return source;
+    return sliceBuffer(source);
   }
   if (source instanceof ArrayBuffer) {
-    return new Uint8Array(source);
+    return source;
   }
-  const buffer = await source.arrayBuffer();
-  return new Uint8Array(buffer);
+  return await source.arrayBuffer();
 }
 
-function toArrayBufferView(view: Uint8Array): ArrayBuffer {
+function sliceBuffer(view: Uint8Array): ArrayBuffer {
   if (view.buffer instanceof ArrayBuffer && view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
     return view.buffer;
   }
@@ -212,9 +148,7 @@ function mapWords(value: unknown): TranscriptResult['words'] {
   }
   const mapped = value
     .map((entry) => {
-      if (!isRecord(entry)) {
-        return undefined;
-      }
+      if (!isRecord(entry)) return undefined;
       const word = readString(entry.punctuated_word) ?? readString(entry.word) ?? '';
       const start = readNumber(entry.start);
       const end = readNumber(entry.end);
@@ -233,16 +167,11 @@ function mapWords(value: unknown): TranscriptResult['words'] {
 }
 
 function computeSpan(results: Record<string, unknown> | undefined): TranscriptResult['span'] {
-  if (!results) {
-    return undefined;
-  }
+  if (!results) return undefined;
   const start = readNumber(results.start);
   const end = readNumber(results.end);
   if (start !== undefined && end !== undefined) {
-    return {
-      startMs: Math.round(start * 1000),
-      endMs: Math.round(end * 1000),
-    };
+    return { startMs: Math.round(start * 1000), endMs: Math.round(end * 1000) };
   }
   return undefined;
 }
@@ -253,34 +182,22 @@ function buildMetadata(
 ): Record<string, unknown> | undefined {
   const meta: Record<string, unknown> = {};
   const requestId = readString(payload.request_id) ?? readString(getNested(payload, ['metadata', 'request_id']));
-  if (requestId) {
-    meta.requestId = requestId;
-  }
+  if (requestId) meta.requestId = requestId;
   const channelIndex = channel ? readArray(channel.channel_index) : undefined;
-  if (channelIndex) {
-    meta.channelIndex = channelIndex;
-  }
+  if (channelIndex) meta.channelIndex = channelIndex;
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
 function readArray(value: unknown): number[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const numbers = value
-    .map((entry) => (typeof entry === 'number' ? entry : undefined))
-    .filter((entry): entry is number => entry !== undefined);
+  if (!Array.isArray(value)) return undefined;
+  const numbers = value.filter((entry): entry is number => typeof entry === 'number');
   return numbers.length > 0 ? numbers : undefined;
 }
 
 function parseRetryAfter(value: string | null): number | undefined {
-  if (!value) {
-    return undefined;
-  }
+  if (!value) return undefined;
   const numeric = Number(value);
-  if (Number.isFinite(numeric)) {
-    return Math.round(numeric * 1000);
-  }
+  if (Number.isFinite(numeric)) return Math.round(numeric * 1000);
   const dateMs = Date.parse(value);
   if (!Number.isNaN(dateMs)) {
     const diff = dateMs - Date.now();
@@ -306,18 +223,16 @@ function getRecord(source: Record<string, unknown>, key: string): Record<string,
   return isRecord(value) ? value : undefined;
 }
 
-function getNested(source: Record<string, unknown>, path: ReadonlyArray<string>): unknown {
-  let current: unknown = source;
-  for (const segment of path) {
-    if (!isRecord(current)) {
-      return undefined;
-    }
-    current = current[segment];
-  }
-  return current;
-}
-
 function getRecordFromArray(list: ReadonlyArray<unknown>, index: number): Record<string, unknown> | undefined {
   const value = list[index];
   return isRecord(value) ? value : undefined;
+}
+
+function getNested(source: Record<string, unknown>, path: ReadonlyArray<string>): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    if (!isRecord(current)) return undefined;
+    current = current[segment];
+  }
+  return current;
 }

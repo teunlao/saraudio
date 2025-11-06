@@ -1,5 +1,4 @@
 import type {
-  BatchTranscriptionProvider,
   Recorder,
   StreamStatus,
   TranscriptionProvider,
@@ -22,7 +21,8 @@ export interface CreateTranscriptionOptions<P extends TranscriptionProvider = Tr
   provider: P;
   recorder?: Recorder;
   logger?: Logger;
-  liveTransport?: 'auto' | 'ws' | 'http';
+  /** Select transport at controller level. Default 'auto'. */
+  transport?: 'auto' | 'websocket' | 'http';
   flushOnSegmentEnd?: boolean;
   /** Max duration of pre-connect audio buffer to avoid losing early speech (ms). Default: 60, soft-max: 120. */
   preconnectBufferMs?: number;
@@ -75,6 +75,8 @@ export function createTranscription<P extends TranscriptionProvider>(
   let streamNeedsRefresh = false;
   let lastError: Error | null = null;
   let connected = false;
+  // Selected transport for this controller instance. Calculated at first connect if 'auto'.
+  let selectedTransport: Transport | null = null;
 
   const partialSubs = new Set<(t: string) => void>();
   const transcriptSubs = new Set<(r: TranscriptResult) => void>();
@@ -137,13 +139,24 @@ export function createTranscription<P extends TranscriptionProvider>(
     statusSubs.forEach((h) => h(status));
   };
 
-  const isBatchProvider = (p: TranscriptionProvider): p is BatchTranscriptionProvider =>
-    typeof (p as BatchTranscriptionProvider).transcribe === 'function';
+  const isHttpCapable = (
+    p: TranscriptionProvider,
+  ): p is TranscriptionProvider & Required<Pick<TranscriptionProvider, 'transcribe'>> =>
+    typeof p.transcribe === 'function';
+  const isWsCapable = (
+    p: TranscriptionProvider,
+  ): p is TranscriptionProvider & Required<Pick<TranscriptionProvider, 'stream'>> => typeof p.stream === 'function';
 
   const ensureStream = (): TranscriptionStream => {
+    if (selectedTransport !== 'websocket') {
+      throw new Error('Stream is only available for WebSocket providers');
+    }
     if (streamNeedsRefresh) {
       if (connected) {
-        return stream as TranscriptionStream;
+        if (stream) {
+          return stream;
+        }
+        throw new Error('Stream requested while connected but not initialized');
       }
       if (stream) {
         unsubscribeStreamHandlers();
@@ -152,7 +165,13 @@ export function createTranscription<P extends TranscriptionProvider>(
       streamNeedsRefresh = false;
     }
     if (!stream) {
+      if (!isWsCapable(provider)) {
+        throw new Error('Provider does not support WebSocket streaming');
+      }
       stream = provider.stream();
+    }
+    if (!stream) {
+      throw new Error('Provider returned null stream');
     }
     return stream;
   };
@@ -244,7 +263,17 @@ export function createTranscription<P extends TranscriptionProvider>(
     setStatus('connecting');
     attempts += 1;
 
-    if (provider.transport === 'http' && isBatchProvider(provider)) {
+    // Resolve selected transport
+    if (!selectedTransport) {
+      const requested = opts.transport ?? 'auto';
+      if (requested === 'websocket') selectedTransport = 'websocket';
+      else if (requested === 'http') selectedTransport = 'http';
+      else {
+        selectedTransport = isWsCapable(provider) ? 'websocket' : isHttpCapable(provider) ? 'http' : 'websocket';
+      }
+    }
+
+    if (selectedTransport === 'http') {
       if (!httpTransport) {
         httpTransport = createHttpTransport({
           provider,
@@ -267,13 +296,16 @@ export function createTranscription<P extends TranscriptionProvider>(
       return;
     }
 
-    const stream = ensureStream();
-    wireStream(stream, signal);
+    if (!isWsCapable(provider)) {
+      throw new Error('Provider does not support WebSocket streaming');
+    }
+    const streamRef = ensureStream();
+    wireStream(streamRef, signal);
     try {
       await connectWsTransport(
         {
           logger,
-          stream,
+          stream: streamRef,
           preconnectBuffer,
           providerId: provider.id,
         },
@@ -378,12 +410,12 @@ export function createTranscription<P extends TranscriptionProvider>(
   };
 
   const forceEndpoint = async (): Promise<void> => {
-    if (provider.transport === 'http' && httpTransport) {
+    if (selectedTransport === 'http' && httpTransport) {
       httpTransport.aggregator.forceFlush();
       return;
     }
-    const stream = ensureStream();
-    await stream.forceEndpoint();
+    const streamRef = ensureStream();
+    await streamRef.forceEndpoint();
   };
 
   const clear = (): void => {
@@ -407,7 +439,7 @@ export function createTranscription<P extends TranscriptionProvider>(
       return status;
     },
     get transport() {
-      return provider.transport;
+      return (selectedTransport ?? (opts.transport === 'http' ? 'http' : 'websocket')) as Transport;
     },
     get error() {
       return lastError;

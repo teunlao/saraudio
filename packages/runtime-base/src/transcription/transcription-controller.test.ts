@@ -154,14 +154,16 @@ describe('createTranscription controller', () => {
     let connectCalls = 0;
     const base = stub.streamInstance;
     if (base) {
-      stub.provider.stream = () =>
-        ({
-          ...base,
-          async connect() {
-            connectCalls += 1;
-            await base.connect();
-          },
-        }) as unknown as TranscriptionStream;
+      if (!stub.provider.stream) {
+        throw new Error('Expected websocket-capable provider in test');
+      }
+      stub.provider.stream = () => ({
+        ...base,
+        async connect() {
+          connectCalls += 1;
+          await base.connect();
+        },
+      });
     }
     const controller = createTranscription({ provider: stub.provider, recorder });
     const p1 = controller.connect();
@@ -207,6 +209,9 @@ describe('createTranscription controller', () => {
       onStatusChange: (h) => base.onStatusChange(h),
     };
     const stub = createProviderStub({ reuseStream: true });
+    if (!stub.provider.stream) {
+      throw new Error('Expected websocket-capable provider in test');
+    }
     stub.provider.stream = () => streamNoPartial;
     const recorder = createRecorderStub();
     const controller = createTranscription({ provider: stub.provider, recorder });

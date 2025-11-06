@@ -1,80 +1,49 @@
-import type { ProviderUpdateListener, RecorderFormatOptions, StreamOptions } from '@saraudio/core';
-import { ProviderError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
-import type { DeepgramModelId } from './models';
-import { createHttpTransport } from './transport-http';
-import type { TransportStrategy } from './transport-strategy';
-import { createWsTransport } from './transport-ws';
+
+import { CAPABILITIES } from './capabilities';
+import { normalizeChannels, resolveConfig } from './config';
+import { type DeepgramModelId, SUPPORTED_FORMATS } from './models';
+import { transcribeHTTP } from './transport-http';
+import { createWsStream } from './transport-ws';
 import type { DeepgramOptions, DeepgramProvider } from './types';
 
 export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramProvider {
-  const updateListeners = new Set<ProviderUpdateListener<DeepgramOptions<DeepgramModelId>>>();
-  let baseLogger: Logger | null = options.logger ?? null;
-  let providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
+  const logger: Logger | undefined = options.logger ? options.logger.child('provider-deepgram') : undefined;
+  let config = resolveConfig(options);
+  const listeners = new Set<(opts: DeepgramOptions<M>) => void>();
 
-  const transportChoice = options.transport ?? 'websocket';
-  const getLogger = (): Logger | undefined => providerLogger;
-  const transportStrategy: TransportStrategy =
-    transportChoice === 'http' ? createHttpTransport(options, getLogger) : createWsTransport(options, getLogger);
-
-  const provider: DeepgramProvider = {
+  return {
     id: 'deepgram',
-    get transport() {
-      return transportStrategy.kind;
-    },
-    get capabilities() {
-      return transportStrategy.capabilities;
-    },
+    capabilities: CAPABILITIES,
     get tokenProvider() {
-      return transportStrategy.tokenProvider();
+      return config.raw.tokenProvider;
     },
-    getPreferredFormat(): RecorderFormatOptions {
-      return transportStrategy.getPreferredFormat();
+    getPreferredFormat() {
+      return { sampleRate: config.sampleRate, channels: config.channels, encoding: 'pcm16' } as const;
     },
-    getSupportedFormats(): ReadonlyArray<RecorderFormatOptions> {
-      return transportStrategy.getSupportedFormats();
+    getSupportedFormats() {
+      return SUPPORTED_FORMATS;
     },
-    negotiateFormat(candidate: RecorderFormatOptions): RecorderFormatOptions {
-      return transportStrategy.negotiateFormat(candidate);
+    negotiateFormat(candidate) {
+      const sampleRate = candidate.sampleRate ?? config.sampleRate;
+      const channels = normalizeChannels(candidate.channels ?? config.channels);
+      return { sampleRate, channels, encoding: 'pcm16' } as const;
     },
-    async update(nextOptions) {
-      const requestedTransport = nextOptions.transport ?? transportStrategy.kind;
-      if (requestedTransport !== transportStrategy.kind) {
-        throw new ProviderError(
-          'Transport cannot be changed via update(); create a new provider with desired transport',
-          'deepgram',
-        );
-      }
-      if (hasOwn(nextOptions, 'logger')) {
-        baseLogger = nextOptions.logger ?? null;
-        providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
-      }
-      transportStrategy.update({ ...nextOptions, transport: transportStrategy.kind });
-      updateListeners.forEach((listener) => listener(transportStrategy.rawOptions()));
+    async update(next: DeepgramOptions<M>) {
+      config = resolveConfig(next);
+      listeners.forEach((l) => l(next));
     },
     onUpdate(listener) {
-      updateListeners.add(listener);
-      return () => {
-        updateListeners.delete(listener);
-      };
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
-    stream(options?: StreamOptions) {
-      if (transportStrategy.kind !== 'websocket') {
-        throw new ProviderError('Stream is only available for WebSocket transport', 'deepgram');
-      }
-      return transportStrategy.stream(options);
+    // WebSocket live stream
+    stream() {
+      return createWsStream(config, logger);
     },
+    // HTTP batch transcription
     async transcribe(audio, batchOptions, signal) {
-      if (transportStrategy.kind !== 'http') {
-        throw new ProviderError('Transcribe is only available for HTTP transport', 'deepgram');
-      }
-      return transportStrategy.transcribe(audio, batchOptions, signal);
+      return await transcribeHTTP(config.raw, audio, batchOptions, signal, logger);
     },
-  };
-
-  return provider;
-}
-
-function hasOwn(object: DeepgramOptions<DeepgramModelId>, key: string): boolean {
-  return Object.hasOwn(object, key);
+  } satisfies DeepgramProvider;
 }
