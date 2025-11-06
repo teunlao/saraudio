@@ -1,4 +1,4 @@
-import { AuthenticationError, type TranscriptResult } from '@saraudio/core';
+import { AuthenticationError, ProviderError, RateLimitError, type TranscriptResult } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { DeepgramProvider } from './index';
@@ -77,6 +77,7 @@ type MutableGlobal = typeof globalThis & { WebSocket: typeof WebSocket };
 
 const mutableGlobal = globalThis as MutableGlobal;
 const originalWebSocket = mutableGlobal.WebSocket;
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   MockWebSocket.instances = [];
@@ -85,6 +86,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mutableGlobal.WebSocket = originalWebSocket;
+  globalThis.fetch = originalFetch;
   vi.useRealTimers();
 });
 
@@ -339,4 +341,162 @@ describe('deepgram provider', () => {
     await expect(promise).rejects.toBeTruthy();
     expect(errors[0]?.name).toBe('NetworkError');
   });
+
+  test('transcribe is unsupported in websocket transport', async () => {
+    const provider = createProvider();
+    await expect(provider.transcribe(new Uint8Array())).rejects.toBeInstanceOf(ProviderError);
+  });
+
+  test('http transport transcribe succeeds', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(
+          JSON.stringify({
+            request_id: 'req-123',
+            results: {
+              channels: [
+                {
+                  channel_index: [0],
+                  alternatives: [
+                    {
+                      transcript: 'hello http',
+                      confidence: 0.9,
+                      language: 'en-US',
+                      words: [
+                        { word: 'hello', start: 0, end: 0.5, confidence: 0.9 },
+                        { word: 'http', start: 0.5, end: 1, confidence: 0.88 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              start: 0,
+              end: 1,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const result = await provider.transcribe(new Uint8Array([0, 1, 2]));
+
+    expect(result.text).toBe('hello http');
+    expect(result.metadata && typeof result.metadata === 'object').toBe(true);
+
+    const call = fetchMock.mock.calls[0];
+    expect(Array.isArray(call)).toBe(true);
+    if (Array.isArray(call)) {
+      const first = call[0];
+      expect(typeof first === 'string' && first.startsWith('https://')).toBe(true);
+      const init = call[1];
+      if (isRequestInit(init)) {
+        const auth = readAuthorization(init.headers);
+        expect(auth).toBe('Token test-key');
+      } else {
+        throw new Error('Request init is missing');
+      }
+    }
+  });
+
+  test('http transport maps authentication error', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const provider = deepgram({ transport: 'http', apiKey: 'bad-key', model: 'nova-2', language: 'en-US' });
+    await expect(provider.transcribe(new Uint8Array([1]))).rejects.toBeInstanceOf(AuthenticationError);
+  });
+
+  test('http transport maps rate limit error', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+          status: 429,
+          headers: { 'retry-after': '2' },
+        }),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    await expect(provider.transcribe(new Uint8Array([1]))).rejects.toSatisfy((error) => {
+      return error instanceof RateLimitError && error.retryAfterMs === 2000;
+    });
+  });
+
+  test('http transport uses Bearer when tokenProvider returns JWT', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(JSON.stringify({ results: { channels: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature';
+    const provider = deepgram({
+      transport: 'http',
+      tokenProvider: async () => jwt,
+      model: 'nova-2',
+      language: 'en-US',
+    });
+    await provider.transcribe(new Uint8Array([1]));
+    const call = fetchMock.mock.calls[0];
+    if (Array.isArray(call)) {
+      const init = call[1];
+      if (isRequestInit(init)) {
+        const auth = readAuthorization(init.headers);
+        expect(auth).toBe(`Bearer ${jwt}`);
+      }
+    }
+  });
+
+  test('stream is unsupported in http transport', () => {
+    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    expect(() => provider.stream()).toThrow(ProviderError);
+  });
+
+  test('update cannot change transport type', async () => {
+    const provider = deepgram({ transport: 'http', apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    await expect(
+      provider.update({ transport: 'websocket', apiKey: 'test-key', model: 'nova-2', language: 'en-US' }),
+    ).rejects.toBeInstanceOf(ProviderError);
+  });
 });
+
+function isRequestInit(value: unknown): value is RequestInit {
+  return typeof value === 'object' && value !== null;
+}
+
+function readAuthorization(headers: HeadersInit | undefined): string | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  if (headers instanceof Headers) {
+    return headers.get('authorization') ?? headers.get('Authorization') ?? undefined;
+  }
+  if (Array.isArray(headers)) {
+    for (const entry of headers) {
+      if (Array.isArray(entry) && entry.length >= 2 && entry[0].toLowerCase() === 'authorization') {
+        const value = entry[1];
+        return typeof value === 'string' ? value : undefined;
+      }
+    }
+    return undefined;
+  }
+  if (typeof headers === 'object') {
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() === 'authorization' && typeof value === 'string') {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}

@@ -1,4 +1,4 @@
-import type { TranscriptionProvider } from '@saraudio/core';
+import type { BatchTranscriptionProvider } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import type { DeepgramLanguageForModel, DeepgramModelId } from './models';
 import type { KeywordInput, ReplaceInput } from './url';
@@ -8,6 +8,8 @@ import type { KeywordInput, ReplaceInput } from './url';
  * All fields are typed to match listen v1. Safe defaults and clamps are applied in resolveConfig.
  */
 export interface DeepgramOptions<M extends DeepgramModelId = 'nova-3'> {
+  /** Transport to use: realtime WebSocket (default) or HTTP chunking. */
+  transport?: 'websocket' | 'http';
   /** Deepgram API key (server side). One of `apiKey|token|tokenProvider` is required. */
   apiKey?: string;
   /** Pre‑issued access token. Overrides `apiKey` when provided. */
@@ -77,7 +79,7 @@ export interface DeepgramOptions<M extends DeepgramModelId = 'nova-3'> {
 }
 
 /** Public Deepgram provider contract for SARAUDIO. */
-export interface DeepgramProvider extends TranscriptionProvider<DeepgramOptions<DeepgramModelId>> {
+export interface DeepgramProvider extends BatchTranscriptionProvider<DeepgramOptions<DeepgramModelId>> {
   /** Provider identifier. */
   readonly id: 'deepgram';
 }

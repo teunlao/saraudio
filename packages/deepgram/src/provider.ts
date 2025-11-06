@@ -1,56 +1,56 @@
 import type { ProviderUpdateListener, RecorderFormatOptions, StreamOptions } from '@saraudio/core';
+import { ProviderError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
-import { createProtocolList, resolveAuthToken } from './auth';
-import { CAPABILITIES } from './capabilities';
-import { type DeepgramResolvedConfig, normalizeChannels, resolveConfig } from './config';
-import { type DeepgramModelId, SUPPORTED_FORMATS } from './models';
-import { createDeepgramStream, type DeepgramConnectionInfoFactory } from './stream';
+import type { DeepgramModelId } from './models';
+import { createHttpTransport } from './transport-http';
+import type { TransportStrategy } from './transport-strategy';
+import { createWsTransport } from './transport-ws';
 import type { DeepgramOptions, DeepgramProvider } from './types';
-import { buildUrl } from './url';
 
 export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramProvider {
-  let config: DeepgramResolvedConfig = resolveConfig(options);
+  const updateListeners = new Set<ProviderUpdateListener<DeepgramOptions<DeepgramModelId>>>();
   let baseLogger: Logger | null = options.logger ?? null;
   let providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
-  const updateListeners = new Set<ProviderUpdateListener<DeepgramOptions<DeepgramModelId>>>();
 
-  const connectionFactory: DeepgramConnectionInfoFactory = async () => {
-    const params = new URLSearchParams(config.baseParams);
-    const finalUrl = await buildUrl(config.baseUrl, config.raw.buildUrl, params);
-    const token = await resolveAuthToken(config.raw);
-    const protocols = createProtocolList(token, config.raw.additionalProtocols);
-    return { url: finalUrl, protocols };
-  };
+  const transportChoice = options.transport ?? 'websocket';
+  const getLogger = (): Logger | undefined => providerLogger;
+  const transportStrategy: TransportStrategy =
+    transportChoice === 'http' ? createHttpTransport(options, getLogger) : createWsTransport(options, getLogger);
 
   const provider: DeepgramProvider = {
     id: 'deepgram',
-    transport: 'websocket',
-    capabilities: CAPABILITIES,
+    get transport() {
+      return transportStrategy.kind;
+    },
+    get capabilities() {
+      return transportStrategy.capabilities;
+    },
     get tokenProvider() {
-      return config.raw.tokenProvider;
+      return transportStrategy.tokenProvider();
     },
     getPreferredFormat(): RecorderFormatOptions {
-      return { sampleRate: config.sampleRate, channels: config.channels, encoding: 'pcm16' };
+      return transportStrategy.getPreferredFormat();
     },
     getSupportedFormats(): ReadonlyArray<RecorderFormatOptions> {
-      return SUPPORTED_FORMATS;
+      return transportStrategy.getSupportedFormats();
     },
     negotiateFormat(candidate: RecorderFormatOptions): RecorderFormatOptions {
-      const negotiatedSampleRate = candidate.sampleRate ?? config.sampleRate;
-      const negotiatedChannels = normalizeChannels(candidate.channels ?? config.channels);
-      return {
-        sampleRate: negotiatedSampleRate,
-        channels: negotiatedChannels,
-        encoding: 'pcm16',
-      } satisfies RecorderFormatOptions;
+      return transportStrategy.negotiateFormat(candidate);
     },
     async update(nextOptions) {
-      config = resolveConfig(nextOptions);
-      if (Object.hasOwn(nextOptions, 'logger')) {
+      const requestedTransport = nextOptions.transport ?? transportStrategy.kind;
+      if (requestedTransport !== transportStrategy.kind) {
+        throw new ProviderError(
+          'Transport cannot be changed via update(); create a new provider with desired transport',
+          'deepgram',
+        );
+      }
+      if (hasOwn(nextOptions, 'logger')) {
         baseLogger = nextOptions.logger ?? null;
         providerLogger = baseLogger ? baseLogger.child('provider-deepgram') : undefined;
       }
-      updateListeners.forEach((listener) => listener(config.raw));
+      transportStrategy.update({ ...nextOptions, transport: transportStrategy.kind });
+      updateListeners.forEach((listener) => listener(transportStrategy.rawOptions()));
     },
     onUpdate(listener) {
       updateListeners.add(listener);
@@ -58,15 +58,23 @@ export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>)
         updateListeners.delete(listener);
       };
     },
-    stream(_opts?: StreamOptions) {
-      return createDeepgramStream({
-        connectionFactory,
-        logger: providerLogger,
-        keepaliveMs: config.keepaliveMs,
-        queueBudgetMs: config.queueBudgetMs,
-      });
+    stream(options?: StreamOptions) {
+      if (transportStrategy.kind !== 'websocket') {
+        throw new ProviderError('Stream is only available for WebSocket transport', 'deepgram');
+      }
+      return transportStrategy.stream(options);
+    },
+    async transcribe(audio, batchOptions, signal) {
+      if (transportStrategy.kind !== 'http') {
+        throw new ProviderError('Transcribe is only available for HTTP transport', 'deepgram');
+      }
+      return transportStrategy.transcribe(audio, batchOptions, signal);
     },
   };
 
   return provider;
+}
+
+function hasOwn(object: DeepgramOptions<DeepgramModelId>, key: string): boolean {
+  return Object.hasOwn(object, key);
 }

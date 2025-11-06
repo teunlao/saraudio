@@ -18,6 +18,7 @@ const MODE_KEY = 'saraudio:demo:transcription:mode';
 const THRESHOLD_KEY = 'saraudio:demo:transcription:threshold';
 const SMOOTH_KEY = 'saraudio:demo:transcription:smooth';
 const FALLBACK_KEY = 'saraudio:demo:transcription:fallback';
+const TRANSPORT_KEY = 'saraudio:demo:transcription:transport';
 
 const config = useRuntimeConfig();
 
@@ -28,6 +29,7 @@ const thresholdDb = ref(-55);
 const smoothMs = ref(25);
 const mode = ref<RuntimeMode>('auto');
 const allowFallback = ref(true);
+const transportMode = ref<'websocket' | 'http'>('websocket');
 
 if (typeof window !== 'undefined') {
   try {
@@ -41,6 +43,10 @@ if (typeof window !== 'undefined') {
     if (savedSmooth) smoothMs.value = Number(savedSmooth);
     const savedFallback = window.localStorage.getItem(FALLBACK_KEY);
     if (savedFallback) allowFallback.value = savedFallback !== '0';
+    const savedTransport = window.localStorage.getItem(TRANSPORT_KEY);
+    if (savedTransport === 'websocket' || savedTransport === 'http') {
+      transportMode.value = savedTransport;
+    }
   } catch {}
 }
 
@@ -66,6 +72,12 @@ watch(allowFallback, (value) => {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(FALLBACK_KEY, value ? '1' : '0');
+  } catch {}
+});
+watch(transportMode, (value) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TRANSPORT_KEY, value);
   } catch {}
 });
 
@@ -129,6 +141,7 @@ const provider = computed(() => {
     selectedLanguage.value = language;
   }
   return deepgram({
+    transport: transportMode.value,
     model,
     language,
     interimResults: true,
@@ -153,6 +166,15 @@ const transcription = useTranscription({
         jitterRatio: 0.2,
       },
     },
+    http: {
+      chunking: {
+        intervalMs: 2500,
+        minDurationMs: 1000,
+        overlapMs: 300,
+        maxInFlight: 1,
+        timeoutMs: 15000,
+      },
+    },
   },
   onTranscript: (result) => {
     latestResults.value.unshift(result);
@@ -173,17 +195,28 @@ watch(
 );
 
 // Emit config logs 1:1 with the imperative demo (no manual update)
-let lastSelection: { model: DeepgramModelId; language: DeepgramLanguage } | null = null;
-watch([selectedModel, selectedLanguage], ([model, lang]) => {
+let lastSelection: { model: DeepgramModelId; language: DeepgramLanguage; transport: 'websocket' | 'http' } | null = null;
+watch([selectedModel, selectedLanguage, transportMode], ([model, lang, transport]) => {
   const effectiveLanguage = ensureLanguage(model, lang);
   if (!lastSelection) {
-    lastSelection = { model, language: effectiveLanguage };
-    pushEvent(`[config] provider set to model=${model}, language=${effectiveLanguage}`);
+    lastSelection = { model, language: effectiveLanguage, transport };
+    pushEvent(`[config] provider set to model=${model}, language=${effectiveLanguage}, transport=${transport}`);
     return;
   }
-  if (lastSelection.model === model && lastSelection.language === effectiveLanguage) return;
-  lastSelection = { model, language: effectiveLanguage };
-  pushEvent(`[config] provider updated: model=${model}, language=${effectiveLanguage}`);
+  if (
+    lastSelection.model === model &&
+    lastSelection.language === effectiveLanguage &&
+    lastSelection.transport === transport
+  ) {
+    return;
+  }
+  const previousTransport = lastSelection.transport;
+  lastSelection = { model, language: effectiveLanguage, transport };
+  pushEvent(`[config] provider updated: model=${model}, language=${effectiveLanguage}, transport=${transport}`);
+  if (transport !== previousTransport) {
+    latestResults.value.length = 0;
+    transcription.clear();
+  }
 });
 
 const transcriptText = computed(() => transcription.transcript.value.trim());
@@ -195,6 +228,15 @@ const missingApiKey = computed(() => {
   const key = config.public.deepgramApiKey;
   return !key || typeof key !== 'string' || key.trim().length === 0;
 });
+const transportLabel = computed(() =>
+  transcription.transport === 'http' ? 'HTTP (chunked)' : 'WebSocket (realtime)',
+);
+const transportDescription = computed(() =>
+  transcription.transport === 'http'
+    ? 'Chunked HTTP mode · buffered flushes · no partials'
+    : 'WebSocket realtime · mutable partials · retry/backoff',
+);
+const isHttpMode = computed(() => transportMode.value === 'http');
 
 const start = async () => {
   try {
@@ -264,7 +306,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div class="grid sm:grid-cols-3 gap-4">
+        <div class="grid sm:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm text-gray-400 mb-1">Model</label>
             <select
@@ -295,6 +337,17 @@ onUnmounted(() => {
               <option value="auto">Auto</option>
               <option value="worklet">AudioWorklet</option>
               <option value="media-recorder">MediaRecorder</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Transport</label>
+            <select
+              v-model="transportMode"
+              :disabled="recorderRunning || isConnected"
+              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              <option value="websocket">WebSocket · realtime</option>
+              <option value="http">HTTP · chunked</option>
             </select>
           </div>
         </div>
@@ -357,8 +410,8 @@ onUnmounted(() => {
         </div>
         <div class="p-4 bg-gray-800 rounded space-y-2">
           <h2 class="text-lg font-semibold">Transport</h2>
-          <div class="font-mono text-sm">{{ transcription.transport }}</div>
-          <div class="text-xs text-gray-400">Retry/backoff enabled with bounded queue.</div>
+          <div class="font-mono text-sm">{{ transportLabel }}</div>
+          <div class="text-xs text-gray-400">{{ transportDescription }}</div>
         </div>
       </section>
 
@@ -374,6 +427,9 @@ onUnmounted(() => {
               Clear
             </button>
           </div>
+          <p v-if="isHttpMode" class="text-xs text-amber-300">
+            HTTP chunked mode buffers audio (~2.5&nbsp;s) and delivers only final transcripts.
+          </p>
           <div class="min-h-48 max-h-72 overflow-y-auto bg-gray-900 border border-gray-700 rounded p-4 space-y-4">
             <div v-if="!transcriptText && !partialText" class="text-sm text-gray-500 text-center py-6">
               Waiting for speech…
