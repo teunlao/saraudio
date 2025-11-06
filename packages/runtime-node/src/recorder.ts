@@ -67,7 +67,8 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   const segSubs = new Set<(payload: Segment) => void>();
   const errSubs = new Set<(payload: CoreError) => void>();
   const rawSubs = new Set<(frame: Frame) => void>();
-  const speechSubs = new Set<(frame: Frame) => void>();
+  const speechRawSubs = new Set<(frame: Frame) => void>();
+  const speechSubs = new Set<(frame: NormalizedFrame<E>) => void>();
   const frameSubs = new Set<(frame: NormalizedFrame<E>) => void>();
   const readySubs = new Set<() => void>();
   const normalizedBuffer: Frame[] = [];
@@ -252,7 +253,7 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
         assembler.onFrame(frame);
         for (const h of rawSubs) h(frame);
         if (pipelineManager.isSegmentActive) {
-          for (const h of speechSubs) h(frame);
+          for (const h of speechRawSubs) h(frame);
         }
         const normalized = normalizeFrame(frame, {
           format: formatOptions,
@@ -261,6 +262,9 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
         bufferNormalizedFrame(normalized);
         const n = normalized as NormalizedFrame<E>;
         for (const h of frameSubs) h(n);
+        if (pipelineManager.isSegmentActive) {
+          for (const h of speechSubs) h(n);
+        }
         markReady();
         pipeline.push(frame);
       });
@@ -362,6 +366,7 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
       return createSubscription(frameSubs, handler);
     },
     subscribeRawFrames: (h) => createSubscription(rawSubs, h),
+    subscribeSpeechRawFrames: (h) => createSubscription(speechRawSubs, h),
     subscribeSpeechFrames: (h) => createSubscription(speechSubs, h),
     onReady: (handler) => {
       if (framesReady) {

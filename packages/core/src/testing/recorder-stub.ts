@@ -14,7 +14,8 @@ export interface RecorderStub<E extends RecorderFrameEncoding = 'pcm16'> extends
   emitSegment(segment: Segment): void;
   emitError(error: CoreError): void;
   emitRawFrame(frame: Frame): void;
-  emitSpeechFrame(frame: Frame): void;
+  emitSpeechFrame(frame: NormalizedFrame<E>): void;
+  emitSpeechRawFrame?(frame: Frame): void;
   emitNormalizedFrame(frame: NormalizedFrame<E>): void;
   emitReady(): void;
   // Access to handlers for verification
@@ -22,7 +23,8 @@ export interface RecorderStub<E extends RecorderFrameEncoding = 'pcm16'> extends
   segmentHandlers: Set<(segment: Segment) => void>;
   errorHandlers: Set<(error: CoreError) => void>;
   rawFrameHandlers: Set<(frame: Frame) => void>;
-  speechFrameHandlers: Set<(frame: Frame) => void>;
+  speechRawHandlers: Set<(frame: Frame) => void>;
+  speechFrameHandlers: Set<(frame: NormalizedFrame<E>) => void>;
   normalizedFrameHandlers: Set<(frame: NormalizedFrame<E>) => void>;
   readyHandlers: Set<() => void>;
   // Mutable state for testing
@@ -61,7 +63,8 @@ export function createRecorderStub<E extends RecorderFrameEncoding = 'pcm16'>(
   const segmentHandlers = new Set<(segment: Segment) => void>();
   const errorHandlers = new Set<(error: CoreError) => void>();
   const rawFrameHandlers = new Set<(frame: Frame) => void>();
-  const speechFrameHandlers = new Set<(frame: Frame) => void>();
+  const speechRawHandlers = new Set<(frame: Frame) => void>();
+  const speechFrameHandlers = new Set<(frame: NormalizedFrame<E>) => void>();
   const normalizedFrameHandlers = new Set<(frame: NormalizedFrame<E>) => void>();
   const readyHandlers = new Set<() => void>();
 
@@ -113,8 +116,12 @@ export function createRecorderStub<E extends RecorderFrameEncoding = 'pcm16'>(
       return () => rawFrameHandlers.delete(handler);
     },
     subscribeSpeechFrames(handler) {
-      speechFrameHandlers.add(handler);
-      return () => speechFrameHandlers.delete(handler);
+      speechFrameHandlers.add(handler as (frame: NormalizedFrame<E>) => void);
+      return () => speechFrameHandlers.delete(handler as (frame: NormalizedFrame<E>) => void);
+    },
+    subscribeSpeechRawFrames(handler) {
+      speechRawHandlers.add(handler);
+      return () => speechRawHandlers.delete(handler);
     },
     subscribeFrames(handler) {
       normalizedFrameHandlers.add(handler);
@@ -152,6 +159,9 @@ export function createRecorderStub<E extends RecorderFrameEncoding = 'pcm16'>(
     emitSpeechFrame(frame) {
       speechFrameHandlers.forEach((h) => h(frame));
     },
+    emitSpeechRawFrame(frame) {
+      speechRawHandlers.forEach((h) => h(frame));
+    },
     emitNormalizedFrame(frame) {
       normalizedFrameHandlers.forEach((h) => h(frame));
     },
@@ -164,6 +174,7 @@ export function createRecorderStub<E extends RecorderFrameEncoding = 'pcm16'>(
     segmentHandlers,
     errorHandlers,
     rawFrameHandlers,
+    speechRawHandlers,
     speechFrameHandlers,
     normalizedFrameHandlers,
     readyHandlers,

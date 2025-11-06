@@ -275,6 +275,25 @@ export function createTranscription<P extends TranscriptionProvider>(
 
     if (selectedTransport === 'http') {
       if (!httpTransport) {
+        // If user wants segment-driven semantics, default intervalMs to 0 (no timer) unless explicitly provided.
+        const userInterval = opts.chunking?.intervalMs;
+        const effectiveInterval = userInterval === undefined && opts.flushOnSegmentEnd === true ? 0 : userInterval;
+
+        if ((effectiveInterval ?? 0) <= 0 && opts.flushOnSegmentEnd !== true) {
+          logger?.warn(
+            'HTTP intervalMs=0 without flushOnSegmentEnd: no automatic flush; call forceEndpoint() or disconnect()',
+            {
+              module: 'runtime-base',
+              event: 'http.config.warn',
+            },
+          );
+        } else if ((effectiveInterval ?? 0) <= 0 && opts.flushOnSegmentEnd === true) {
+          logger?.debug('HTTP segment-only mode (intervalMs=0, flushOnSegmentEnd=true)', {
+            module: 'runtime-base',
+            event: 'http.config',
+          });
+        }
+
         httpTransport = createHttpTransport({
           provider,
           logger,
@@ -285,7 +304,7 @@ export function createTranscription<P extends TranscriptionProvider>(
             errorSubs.forEach((h) => h(err));
             setStatus('error');
           },
-          chunking: opts.chunking,
+          chunking: { ...opts.chunking, intervalMs: effectiveInterval },
         });
       }
       connected = true;
@@ -335,6 +354,7 @@ export function createTranscription<P extends TranscriptionProvider>(
       if (unsubscribeRecorder) {
         unsubscribeRecorder();
       }
+      // Start with all frames; after transport is resolved, we'll re-subscribe if HTTP+segment-only.
       unsubscribeRecorder = recorder.subscribeFrames((frame) => {
         if (!connected) {
           preconnectBuffer.push(frame);
@@ -378,6 +398,19 @@ export function createTranscription<P extends TranscriptionProvider>(
     attempts = 0;
     await attemptConnect(signal);
     if (connectDeferred) await connectDeferred.promise;
+    // After connect, if we are on HTTP and segment-only is enabled, switch to speech-gated subscription.
+    if (recorder && selectedTransport === 'http' && opts.flushOnSegmentEnd === true) {
+      if (unsubscribeRecorder) {
+        unsubscribeRecorder();
+      }
+      unsubscribeRecorder = recorder.subscribeSpeechFrames((frame) => {
+        if (!connected) {
+          preconnectBuffer.push(frame);
+        } else if (httpTransport) {
+          httpTransport.aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
+        }
+      });
+    }
   };
 
   const disconnect = async (): Promise<void> => {

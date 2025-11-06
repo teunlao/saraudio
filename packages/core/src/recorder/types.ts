@@ -44,7 +44,13 @@ export interface RecorderSubscriptions {
   onSegment(handler: (segment: Segment) => void): SubscribeHandle;
   onError(handler: (error: CoreError) => void): SubscribeHandle;
   subscribeRawFrames(handler: (frame: Frame) => void): SubscribeHandle;
-  subscribeSpeechFrames(handler: (frame: Frame) => void): SubscribeHandle;
+  /**
+   * Normalized speech frames only (during active speech), in the recorder's configured format.
+   * Use this stream for provider HTTP/WS sending — format matches subscribeFrames.
+   */
+  subscribeSpeechFrames(handler: (frame: NormalizedFrame<RecorderFrameEncoding>) => void): SubscribeHandle;
+  /** Raw speech frames (pre-normalization). Reserved for low-level DSP or diagnostics. */
+  subscribeSpeechRawFrames(handler: (frame: Frame) => void): SubscribeHandle;
 }
 
 export interface RecorderState {

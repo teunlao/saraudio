@@ -42,7 +42,8 @@ export interface UseRecorderResult {
   clearSegments: () => void;
   subscribeFrames: (handler: (frame: NormalizedFrame<'pcm16'>) => void) => SubscribeHandle;
   subscribeRawFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
-  subscribeSpeechFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
+  subscribeSpeechFrames: (handler: (frame: NormalizedFrame<'pcm16'>) => void) => SubscribeHandle;
+  subscribeSpeechRawFrames: (handler: (frame: Frame) => void) => SubscribeHandle;
   onReady: (handler: () => void) => SubscribeHandle;
   update: (options?: RecorderUpdateOptions) => Promise<void>;
 }
@@ -86,8 +87,11 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
   const subscribeRawFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
     recorder.value ? recorder.value.subscribeRawFrames(handler) : noopHandle;
 
-  const subscribeSpeechFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
+  const subscribeSpeechFrames = (handler: (frame: NormalizedFrame<'pcm16'>) => void): SubscribeHandle =>
     recorder.value ? recorder.value.subscribeSpeechFrames(handler) : noopHandle;
+
+  const subscribeSpeechRawFrames = (handler: (frame: Frame) => void): SubscribeHandle =>
+    recorder.value ? recorder.value.subscribeSpeechRawFrames(handler) : noopHandle;
 
   const onReady = (handler: () => void): SubscribeHandle =>
     recorder.value ? recorder.value.onReady(handler) : noopHandle;
@@ -243,6 +247,7 @@ export function useRecorder(options: UseRecorderOptions = {}): UseRecorderResult
     subscribeFrames,
     subscribeRawFrames,
     subscribeSpeechFrames,
+    subscribeSpeechRawFrames,
     onReady,
     update: updateRecorder,
   } as UseRecorderResult;

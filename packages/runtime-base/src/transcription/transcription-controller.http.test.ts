@@ -32,7 +32,7 @@ function createHttpProviderStub() {
 }
 
 describe('transcription controller — HTTP chunking path', () => {
-  test('frames go through aggregator and result is emitted', async () => {
+  test('frames go through aggregator and result is emitted (speech-gated)', async () => {
     const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
@@ -46,7 +46,8 @@ describe('transcription controller — HTTP chunking path', () => {
     controller.onTranscript((r) => finals.push(r));
 
     await controller.connect();
-    recorder.emitNormalizedFrame(makeFrame(320));
+    // With flushOnSegmentEnd=true controller subscribes to speech frames in HTTP mode
+    recorder.emitSpeechFrame(makeFrame(320));
     recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
     expect(finals.length).toBe(1);
@@ -167,7 +168,7 @@ describe('transcription controller — HTTP chunking path', () => {
     expect(size).toBeGreaterThan(0);
   });
 
-  test('segment flush respects cooldown period', async () => {
+  test('segment flush respects cooldown period (speech-gated)', async () => {
     const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
@@ -183,7 +184,8 @@ describe('transcription controller — HTTP chunking path', () => {
     });
 
     await controller.connect();
-    recorder.emitNormalizedFrame(makeFrame(160));
+    // Speech-gated path
+    recorder.emitSpeechFrame(makeFrame(160));
 
     recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
@@ -194,6 +196,32 @@ describe('transcription controller — HTTP chunking path', () => {
     await flushPromises();
 
     expect(flushCount).toBe(afterFirst);
+  });
+
+  test('HTTP + VAD: silence only does not send (interval=0, segment-only)', async () => {
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    // Emit only non-speech frames — controller subscribed to speech frames, so aggregator gets nothing
+    recorder.emitNormalizedFrame(makeFrame(320));
+    // No segment end → nothing should flush
+    await flushPromises();
+    expect(finals.length).toBe(0);
+
+    // Even forceEndpoint (maps to aggregator.forceFlush) should not yield results if no speech frames were pushed
+    await controller.forceEndpoint();
+    await flushPromises();
+    expect(finals.length).toBe(0);
   });
 
   test('disconnect during in-flight flush completes gracefully', async () => {
@@ -460,5 +488,231 @@ describe('transcription controller — HTTP chunking path', () => {
 
     expect(subscribersAfterFirstConnect).toBe(1);
     expect(subscribersAfterReconnect).toBe(1);
+  });
+
+  test('HTTP + VAD: periodic flush during long speech when interval>0', async () => {
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 5, minDurationMs: 0 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    recorder.emitSpeechFrame(makeFrame(160));
+    // Wait for timer-driven flush
+    await new Promise((r) => setTimeout(r, 15));
+    expect(finals.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('HTTP + VAD: 7s speech (scaled) → two timer flushes + one final by segment end', async () => {
+    // Scale: 1 "sec" == 1 ms of audio, sampleRate=1000 Hz ⇒ 1 ms = 1000 samples
+    // intervalMs=5 (≈ 3s ticks → 5ms), minDurationMs=5 (need 5ms of audio to allow timer flush)
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 5, minDurationMs: 5 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+
+    // Helper: emit "1s" of speech (1 ms scaled) as one frame with 1000 samples
+    const oneSecondSpeech = () => {
+      const pcm = new Int16Array(1000);
+      recorder.emitSpeechFrame({ tsMs: 0, pcm, sampleRate: 1000, channels: 1 });
+    };
+
+    // First 3 "seconds" (3 frames): should flush on the next 5ms tick
+    oneSecondSpeech();
+    oneSecondSpeech();
+    oneSecondSpeech();
+    await new Promise((r) => setTimeout(r, 7)); // > interval to allow timer to fire
+    expect(finals.length).toBe(1);
+
+    // Next 3 "seconds": second timer flush
+    oneSecondSpeech();
+    oneSecondSpeech();
+    oneSecondSpeech();
+    await new Promise((r) => setTimeout(r, 7));
+    expect(finals.length).toBe(2);
+
+    // Last 1 "second": below minDuration, timer не флашит; сегмент заканчивается → финальный flush
+    oneSecondSpeech();
+    recorder.emitSegment({ id: 'seg-final', startMs: 0, endMs: 7000, durationMs: 7000, sampleRate: 1000, channels: 1 });
+    await flushPromises();
+    expect(finals.length).toBe(3);
+  });
+
+  test('HTTP + VAD + interval=0: speech without segment end does not flush until forceEndpoint', async () => {
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    // Emit speech frames but no segment end
+    recorder.emitSpeechFrame(makeFrame(320));
+    recorder.emitSpeechFrame(makeFrame(320));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(finals.length).toBe(0);
+
+    await controller.forceEndpoint();
+    await flushPromises();
+    expect(finals.length).toBe(1);
+  });
+
+  test('HTTP + VAD: timer + minDuration gating (no timer flush when speech < minDuration)', async () => {
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 10, minDurationMs: 50 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    // Emit short speech < minDurationMs (simulate ~40ms total)
+    for (let i = 0; i < 2; i += 1) recorder.emitSpeechFrame(makeFrame(320));
+    await new Promise((r) => setTimeout(r, 25)); // several timer ticks, still < minDuration
+    expect(finals.length).toBe(0);
+
+    // End segment → one final flush
+    recorder.emitSegment({ id: 'short', startMs: 0, endMs: 30, durationMs: 30, sampleRate: 16000, channels: 1 });
+    await flushPromises();
+    expect(finals.length).toBe(1);
+  });
+
+  test('HTTP: forceEndpoint queues finalFlushPending during in-flight flush', async () => {
+    const stub = createHttpProviderStub();
+    if (!stub.provider.transcribe) throw new Error('expected HTTP-capable provider');
+    // Delay transcribe to force in-flight overlap
+    const original = stub.provider.transcribe.bind(stub.provider);
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    stub.provider.transcribe = async (audio, opts, signal) => {
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      await new Promise((r) => setTimeout(r, 20));
+      const res = await original(audio, opts, signal);
+      concurrent -= 1;
+      return res;
+    };
+
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+    recorder.emitSpeechFrame(makeFrame(640));
+    // Kick off first flush
+    void controller.forceEndpoint();
+    // While first flush in-flight, request another flush
+    recorder.emitSpeechFrame(makeFrame(640));
+    void controller.forceEndpoint();
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(finals.length).toBe(2);
+    expect(maxConcurrent).toBe(1); // inFlight limit respected
+  });
+
+  test('HTTP warn: interval=0 without flushOnSegmentEnd emits config warning', async () => {
+    const stub = createHttpProviderStub();
+    // Simple logger spy
+    const warns: string[] = [];
+    const logger = {
+      debug() {},
+      info() {},
+      warn(message: string) {
+        warns.push(message);
+      },
+      error() {},
+      child() {
+        return this;
+      },
+    };
+
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      logger,
+      chunking: { intervalMs: 0, minDurationMs: 0 },
+      // flushOnSegmentEnd is intentionally omitted
+    });
+    await controller.connect();
+    expect(warns.some((m) => m.includes('intervalMs=0'))).toBe(true);
+  });
+
+  test('HTTP + VAD: after final flush, new phrase first timer flush occurs only after minDuration and on nearest tick', async () => {
+    const stub = createHttpProviderStub();
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      // Tick every 10ms; require at least 3000ms of audio (scaled) before timer flush
+      chunking: { intervalMs: 10, minDurationMs: 3000 },
+      flushOnSegmentEnd: true,
+    });
+
+    const finals: TranscriptResult[] = [];
+    controller.onTranscript((r) => finals.push(r));
+
+    await controller.connect();
+
+    // Helper: 1 "second" of audio at 1000 Hz (1000 samples)
+    const oneSecSpeech = () => {
+      const pcm = new Int16Array(1000);
+      recorder.emitSpeechFrame({ tsMs: 0, pcm, sampleRate: 1000, channels: 1 });
+    };
+
+    // Close a previous phrase to simulate boundary
+    oneSecSpeech();
+    recorder.emitSegment({ id: 'prev', startMs: 0, endMs: 1000, durationMs: 1000, sampleRate: 1000, channels: 1 });
+    await flushPromises();
+    expect(finals.length).toBe(1);
+
+    // New phrase starts: 2000ms of audio → below minDuration=3000, даже после нескольких тиков
+    oneSecSpeech();
+    oneSecSpeech();
+    await new Promise((r) => setTimeout(r, 25));
+    expect(finals.length).toBe(1); // ничего не ушло
+
+    // Пересекаем minDuration аудио
+    oneSecSpeech();
+    // До ближайшего тика таймера ничего не уйдёт
+    await new Promise((r) => setTimeout(r, 2));
+    expect(finals.length).toBe(1);
+    // На ближайшем тике получаем первый порционный флаш новой фразы
+    await new Promise((r) => setTimeout(r, 12));
+    expect(finals.length).toBe(2);
   });
 });
