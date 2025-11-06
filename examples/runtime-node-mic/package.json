@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/example-runtime-node-mic",
-  "version": "0.0.0-alpha-20251103022458",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
