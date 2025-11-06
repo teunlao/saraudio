@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/utils",
-  "version": "0.0.0-alpha-20251103022458",
+  "version": "0.0.0",
   "description": "Low-level utilities for SARAudio (DSP, ring buffers, PCM converters)",
   "license": "ISC",
   "sideEffects": false,
