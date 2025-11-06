@@ -56,6 +56,8 @@ export interface ProviderCapabilities {
   forceEndpoint: boolean;
   multichannel: boolean;
   translation?: 'none' | 'one_way' | 'two_way';
+  /** Transport support flags: declare whether HTTP and/or WebSocket are supported. */
+  transports: { http: boolean; websocket: boolean };
 }
 
 export interface RequestedFeatures {

@@ -1,6 +1,4 @@
 // Barrel file: export public API only, no implementation here.
-
-export { CAPABILITIES } from './capabilities';
 export type {
   DeepgramLanguage,
   DeepgramLanguageForModel,

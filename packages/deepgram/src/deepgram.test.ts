@@ -1,4 +1,4 @@
-import { AuthenticationError, ProviderError, RateLimitError, type TranscriptResult } from '@saraudio/core';
+import { AuthenticationError, RateLimitError, type TranscriptResult } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { DeepgramProvider } from './index';

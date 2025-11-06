@@ -39,6 +39,7 @@ export function createTranscriptionProviderStub<TOptions = unknown>(
     segments: options.capabilities?.segments ?? true,
     forceEndpoint: options.capabilities?.forceEndpoint ?? false,
     multichannel: options.capabilities?.multichannel ?? true,
+    transports: options.capabilities?.transports ?? { http: true, websocket: true },
   };
 
   const preferredFormat: RecorderFormatOptions = options.preferredFormat ?? {

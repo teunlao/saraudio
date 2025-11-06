@@ -126,6 +126,7 @@ const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   segments: true,
   forceEndpoint: true,
   multichannel: false,
+  transports: { http: true, websocket: true },
 };
 
 const DEFAULT_FORMAT: RecorderFormatOptions = { sampleRate: 16000, channels: 1, encoding: 'pcm16' };

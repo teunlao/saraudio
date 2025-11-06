@@ -81,6 +81,8 @@ const recorder = useRecorder({
 });
 
 const meterLevels = useMeter({ pipeline: recorder.pipeline });
+const devicesList = computed(() => audioInputs.devices.value);
+const vadState = computed(() => recorder.vad.value);
 
 const modelEntries = computed(() =>
   (Object.keys(DEEPGRAM_MODEL_DEFINITIONS) as DeepgramModelId[]).map((id) => ({
@@ -162,7 +164,7 @@ const transcription = useTranscription({
     if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
     pushEvent(`[transcript] ${result.text}`);
   },
-  onError: (err) => {
+  onError: (err: Error) => {
     pushEvent(`[error] ${err.message}`);
   },
 });

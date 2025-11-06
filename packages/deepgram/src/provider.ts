@@ -1,6 +1,6 @@
+import { defineProvider } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 
-import { CAPABILITIES } from './capabilities';
 import { normalizeChannels, resolveConfig } from './config';
 import { type DeepgramModelId, SUPPORTED_FORMATS } from './models';
 import { transcribeHTTP } from './transport-http';
@@ -12,9 +12,19 @@ export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>)
   let config = resolveConfig(options);
   const listeners = new Set<(opts: DeepgramOptions<M>) => void>();
 
-  return {
+  return defineProvider({
     id: 'deepgram',
-    capabilities: CAPABILITIES,
+    capabilities: {
+      partials: 'mutable',
+      words: true,
+      diarization: 'word',
+      language: 'final',
+      segments: true,
+      forceEndpoint: false,
+      multichannel: true,
+      translation: 'none',
+      transports: { http: true, websocket: true },
+    },
     get tokenProvider() {
       return config.raw.tokenProvider;
     },
@@ -45,5 +55,5 @@ export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>)
     async transcribe(audio, batchOptions, signal) {
       return await transcribeHTTP(config.raw, audio, batchOptions, signal, logger);
     },
-  } satisfies DeepgramProvider;
+  });
 }

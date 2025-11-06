@@ -41,6 +41,7 @@ export {
   type SegmenterOptions,
   type SegmenterStage,
 } from './stages/segmenter';
+export { defineProvider, hasHttp, hasWebSocket, type Transports } from './transcription/define-provider';
 export * from './transcription/errors';
 export type * from './transcription/types';
 

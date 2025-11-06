@@ -17,6 +17,7 @@ describe('runtime-node/transcription', () => {
         segments: false,
         forceEndpoint: true,
         multichannel: false,
+        transports: { http: true, websocket: true },
       },
       getPreferredFormat: vi.fn(() => ({ sampleRate: 16000, encoding: 'pcm16' as const, channels: 1 as const })),
       getSupportedFormats: vi.fn(() => [{ sampleRate: 16000, encoding: 'pcm16' as const, channels: 1 as const }]),
