@@ -46,7 +46,7 @@ interface ConnectionOptions {
 }
 
 export interface UseTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> {
-  provider: P;
+  provider: MaybeRefOrGetter<P>;
   recorder?: Recorder | UseRecorderResult;
   stages?: MaybeRefOrGetter<StageController[] | undefined>;
   autoConnect?: MaybeRefOrGetter<boolean | undefined>;
@@ -94,7 +94,7 @@ export function useTranscription<P extends TranscriptionProvider>(
   const status = ref<StreamStatus>('idle');
   const error = ref<Error | null>(null);
   const isConnected = ref(false);
-  const provider = options.provider;
+  let provider = toValue(options.provider);
   let transport = provider.transport;
 
   const transcriptSegments: string[] = [];
@@ -114,7 +114,7 @@ export function useTranscription<P extends TranscriptionProvider>(
   const controllerRef = shallowRef<TranscriptionController<P> | null>(null);
   const unsubscribes: Array<() => void> = [];
   let formatApplied = false;
-  const unsubscribeProviderUpdate = provider.onUpdate(() => {
+  let unsubscribeProviderUpdate = provider.onUpdate(() => {
     transport = provider.transport;
     formatApplied = false;
   });
@@ -240,6 +240,59 @@ export function useTranscription<P extends TranscriptionProvider>(
     setupSubscriptions(controller);
     return controller;
   };
+
+  // React to provider instance changes (ref/getter). We micro-batch to avoid churn.
+  let providerSwapScheduled = false;
+  let pendingProvider: P | null = null;
+  const swapProvider = async (nextProvider: P): Promise<void> => {
+    // Unsubscribe from old provider.update events
+    unsubscribeProviderUpdate();
+    provider = nextProvider;
+    transport = provider.transport;
+    formatApplied = false;
+    unsubscribeProviderUpdate = provider.onUpdate(() => {
+      transport = provider.transport;
+      formatApplied = false;
+    });
+
+    // If there is an active controller, rebuild it for the new provider.
+    const wasConnected = isConnected.value;
+    const hadController = controllerRef.value !== null;
+    if (hadController) {
+      teardownSubscriptions();
+      // best-effort disconnect; controller handles HTTP final flush internally
+      await controllerRef.value?.disconnect();
+      controllerRef.value = null;
+    }
+    if (wasConnected) {
+      const controller = await ensureController();
+      await controller.connect();
+    }
+  };
+
+  if (typeof options.provider === 'function' || (typeof options.provider === 'object' && options.provider !== null)) {
+    const stopWatch = watch(
+      () => toValue(options.provider),
+      (next) => {
+        pendingProvider = next as P;
+        if (!providerSwapScheduled) {
+          providerSwapScheduled = true;
+          queueMicrotask(() => {
+            providerSwapScheduled = false;
+            const target = pendingProvider ?? (next as P);
+            pendingProvider = null;
+            if (target !== provider) {
+              void swapProvider(target);
+            }
+          });
+        }
+      },
+      { immediate: false },
+    );
+    onUnmounted(() => {
+      stopWatch();
+    });
+  }
 
   const connect = async (): Promise<void> => {
     const controller = await ensureController();

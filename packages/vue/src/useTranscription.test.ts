@@ -4,7 +4,7 @@ import { createTranscriptionControllerStub } from '@saraudio/runtime-base/testin
 import type { CreateTranscriptionOptions, Recorder, TranscriptionController } from '@saraudio/runtime-browser';
 import * as runtimeBrowser from '@saraudio/runtime-browser';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 
 import { withSetup } from './test-utils/withSetup';
 import { useTranscription } from './useTranscription';
@@ -299,5 +299,141 @@ describe('useTranscription', () => {
 
     app.unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('recreates controller and reconnects when provider computed changes while connected', async () => {
+    const recorder = createRecorder();
+    const t = ref<'ws' | 'http'>('ws');
+
+    const providerWS = createTranscriptionProviderStub({ transport: 'websocket' });
+    const providerHTTP = createTranscriptionProviderStub({ transport: 'http' });
+
+    const reactiveProvider = () => (t.value === 'ws' ? providerWS : providerHTTP);
+
+    // Capture two controller stubs to assert disconnect/connect across swap
+    const created: Array<ReturnType<typeof createTranscriptionControllerStub>> = [];
+    createTranscriptionMock?.mockImplementationOnce(() => {
+      const s = createTranscriptionControllerStub();
+      s.connect = vi.fn(s.connect);
+      s.disconnect = vi.fn(s.disconnect);
+      created.push(s);
+      controllerStub = s;
+      return s;
+    });
+    createTranscriptionMock?.mockImplementationOnce(() => {
+      const s = createTranscriptionControllerStub();
+      s.connect = vi.fn(s.connect);
+      s.disconnect = vi.fn(s.disconnect);
+      created.push(s);
+      controllerStub = s;
+      return s;
+    });
+
+    const [result, app] = withSetup(() => useTranscription({ provider: reactiveProvider, recorder }));
+    apps.push(app);
+
+    await result.connect();
+    expect(created.length).toBe(1);
+
+    // flip provider to HTTP
+    t.value = 'http';
+    await nextTick();
+    await flushPromises();
+
+    // should disconnect old controller and create a new one, then reconnect
+    expect(created[0].disconnect).toHaveBeenCalled();
+    expect(created.length).toBe(2);
+    expect(created[1].connect).toHaveBeenCalled();
+
+    app.unmount();
+  });
+
+  it('does not auto-connect on provider change if not connected; creates new controller on next connect', async () => {
+    const recorder = createRecorder();
+    const mode = ref<'A' | 'B'>('A');
+    const providerA = createTranscriptionProviderStub({ transport: 'websocket' });
+    const providerB = createTranscriptionProviderStub({ transport: 'websocket' });
+    const provider = () => (mode.value === 'A' ? providerA : providerB);
+
+    const [result, app] = withSetup(() => useTranscription({ provider, recorder }));
+    apps.push(app);
+
+    // change provider before first connect
+    mode.value = 'B';
+    await nextTick();
+    await flushPromises();
+    expect(createTranscriptionMock?.mock.calls.length ?? 0).toBe(0);
+
+    await result.connect();
+    expect(createTranscriptionMock?.mock.calls.length ?? 0).toBe(1);
+
+    app.unmount();
+  });
+
+  it('coalesces multiple provider changes in one tick; if last equals current, skips rebuild', async () => {
+    const recorder = createRecorder();
+    const t = ref<'ws' | 'http'>('ws');
+
+    const providerWS = createTranscriptionProviderStub({ transport: 'websocket' });
+    const providerHTTP = createTranscriptionProviderStub({ transport: 'http' });
+    const reactiveProvider = () => (t.value === 'ws' ? providerWS : providerHTTP);
+
+    const created: Array<ReturnType<typeof createTranscriptionControllerStub>> = [];
+    createTranscriptionMock?.mockImplementation(() => {
+      const s = createTranscriptionControllerStub({ transport: t.value === 'ws' ? 'websocket' : 'http' });
+      s.connect = vi.fn(s.connect);
+      s.disconnect = vi.fn(s.disconnect);
+      created.push(s);
+      controllerStub = s;
+      return s;
+    });
+
+    const [result, app] = withSetup(() => useTranscription({ provider: reactiveProvider, recorder }));
+    apps.push(app);
+
+    await result.connect();
+    expect(created.length).toBe(1);
+
+    // Rapidly flip provider twice within same tick
+    t.value = 'http';
+    t.value = 'ws';
+    await nextTick();
+    await flushPromises();
+
+    // Net effect: back to initial 'ws' — no rebuild should happen
+    expect(created.length).toBe(1);
+    expect(created[0].disconnect).not.toHaveBeenCalled();
+
+    app.unmount();
+  });
+
+  it('cancels scheduled provider swap on unmount (no extra controller created)', async () => {
+    const recorder = createRecorder();
+    const t = ref<'ws' | 'http'>('ws');
+    const providerWS = createTranscriptionProviderStub({ transport: 'websocket' });
+    const providerHTTP = createTranscriptionProviderStub({ transport: 'http' });
+    const provider = () => (t.value === 'ws' ? providerWS : providerHTTP);
+
+    const created: Array<ReturnType<typeof createTranscriptionControllerStub>> = [];
+    createTranscriptionMock?.mockImplementation(() => {
+      const s = createTranscriptionControllerStub({ transport: t.value === 'ws' ? 'websocket' : 'http' });
+      created.push(s);
+      controllerStub = s;
+      return s;
+    });
+
+    const [result, app] = withSetup(() => useTranscription({ provider, recorder }));
+    apps.push(app);
+    await result.connect();
+    expect(created.length).toBe(1);
+
+    // Schedule a swap and immediately unmount before microtask runs
+    t.value = 'http';
+    app.unmount();
+    await nextTick();
+    await flushPromises();
+
+    // No new controller must be created post-unmount
+    expect(created.length).toBe(1);
   });
 });
