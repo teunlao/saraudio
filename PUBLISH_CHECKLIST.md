@@ -1,86 +1,79 @@
-# SARAUDIO v3.0.0-alpha.1 Publishing Checklist
+# SARAUDIO Publishing Checklist
 
-## Pre-flight Checks ✅
+This checklist is for automated releases via GitHub Actions.
 
-- [x] All packages build successfully
-- [x] Tests pass
-- [x] TypeScript checks pass
-- [x] Changesets applied
-- [x] Version bumped to alpha
-- [x] CHANGELOG updated
-- [x] README updated
-- [x] GitHub workflows configured
-- [x] .npmignore files in place
+## Before Creating Changeset ✅
 
-## Publishing Steps 📦
+- [ ] All packages build successfully (`pnpm build`)
+- [ ] Tests pass (`pnpm test`)
+- [ ] TypeScript checks pass (`pnpm typecheck`)
+- [ ] Lint passes (`pnpm lint`)
 
-### 1. Authenticate with npm
+## Creating Changeset 📝
+
 ```bash
-npm login
-# or if you have a token:
-# npm config set //registry.npmjs.org/:_authToken=YOUR_TOKEN
+# 1. Create changeset describing your changes
+pnpm changeset
+
+# 2. Select affected packages (or use defaults for linked versioning)
+# 3. Choose bump type: patch/minor/major
+# 4. Write clear changeset message
+
+# 5. Commit changeset
+git add .changeset/
+git commit -m "chore: add changeset for [feature/fix]"
+git push origin main
 ```
 
-### 2. Verify you're logged in
+## After Pushing to Main 🤖
+
+GitHub Actions will automatically:
+
+1. ✅ Run tests and checks
+2. ✅ Create/update "Version Packages" PR
+3. ⏸️ Wait for you to review and merge PR
+4. ✅ Publish to npm with `latest` tag
+5. ✅ Create grouped GitHub release with commit tables
+6. ✅ Push git tags
+
+## Review "Version Packages" PR 🔍
+
+Before merging, check:
+
+- [ ] Version bumps are correct in all package.json files
+- [ ] CHANGELOGs have proper entries
+- [ ] CI checks pass (build, test, lint, typecheck)
+
+## Post-publish Verification 📦
+
+After PR is merged, verify:
+
 ```bash
-npm whoami
-```
+# Check npm packages are published
+npm view @saraudio/core
+npm view @saraudio/react
+npm view @saraudio/runtime-browser
 
-### 3. Dry run (optional but recommended)
-```bash
-pnpm publish --dry-run --no-git-checks
-```
+# Check GitHub release created
+gh release view v[VERSION]
 
-### 4. Publish alpha release
-```bash
-pnpm changeset publish --tag alpha
-```
-
-### 5. Create and push git tag
-```bash
-git tag v3.0.0-alpha.1
-git push origin v3
-git push origin v3.0.0-alpha.1
-```
-
-### 6. Create GitHub Release
-Go to https://github.com/teunlao/silence-aware-recorder/releases/new
-- Tag: v3.0.0-alpha.1
-- Title: SARAUDIO v3.0.0-alpha.1
-- Mark as pre-release
-- Add release notes from CHANGELOG.md
-
-## Post-publish Verification 🔍
-
-### Check npm packages:
-```bash
-npm view @saraudio/core@alpha
-npm view @saraudio/runtime-browser@alpha
-npm view @saraudio/react@alpha
-# ... check other packages
-```
-
-### Test installation:
-```bash
-mkdir test-install
-cd test-install
+# Test installation
+mkdir test-install && cd test-install
 npm init -y
-npm install @saraudio/react@alpha @saraudio/vad-energy@alpha
+npm install @saraudio/react @saraudio/vad-energy
 ```
 
-## Announcement Template 📢
+## Manual Publishing (Emergency) 🚨
 
-```
-🎉 SARAUDIO v3.0.0-alpha.1 is now available!
+If automation fails:
 
-This is a complete rewrite with:
-- 🚀 10ms latency with AudioWorklet
-- 📦 Modular architecture
-- 🔧 Framework bindings (React, Vue, Svelte, Solid)
-- 🎯 Smart segmentation with VAD
-- 📉 6x smaller bundle size
+```bash
+# 1. Publish to npm
+pnpm changeset publish
 
-Install: npm install @saraudio/react@alpha
+# 2. Create GitHub release
+node scripts/create-github-release.mts
 
-Docs & examples: https://github.com/teunlao/silence-aware-recorder/tree/v3
+# 3. Push tags
+git push --follow-tags
 ```
