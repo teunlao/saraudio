@@ -152,12 +152,16 @@ function getPackages(): PackageInfo[] {
     // Special case: if all packages were filtered out (first release with common commits)
     // Show commits in the first package (core) as representative
     if (filteredPackages.length === 0 && packages.length > 0) {
-      const corePackage = packages.find(p => p.name === 'core') || packages[0];
-      // Restore original commits for this package
-      const originalCore = packages.find(p => p.name === corePackage.name);
-      if (originalCore) {
-        return [originalCore].sort((a, b) => a.name.localeCompare(b.name));
-      }
+      // Re-parse core package to get original commits (before filtering)
+      const corePackageData = packagesList.find(p => p.name === `${SCOPE}/core`) || packagesList[0];
+      const changelogPath = join(corePackageData.path, 'CHANGELOG.md');
+      const commits = parseChangelog(changelogPath);
+
+      return [{
+        name: corePackageData.name.replace(`${SCOPE}/`, ''),
+        version: corePackageData.version,
+        commits
+      }];
     }
 
     return filteredPackages.sort((a, b) => a.name.localeCompare(b.name));
@@ -215,8 +219,9 @@ function generateReleaseBody(packages: PackageInfo[]): string {
 
 // Main
 async function main() {
+  const dryRun = process.argv.includes('--dry-run');
   const version = getVersion();
-  console.log(`Creating grouped release for v${version}...`);
+  console.log(`${dryRun ? '[DRY RUN] ' : ''}Creating grouped release for v${version}...`);
 
   const packages = getPackages();
 
@@ -228,6 +233,16 @@ async function main() {
   const releaseBody = generateReleaseBody(packages);
   const releaseTag = `v${version}`;
   const releaseTitle = `${version}`;
+
+  if (dryRun) {
+    console.log('\n=== RELEASE BODY ===');
+    console.log(releaseBody);
+    console.log('=== END ===\n');
+    console.log(`Would create release: ${releaseTag}`);
+    console.log(`  Title: ${releaseTitle}`);
+    console.log(`  Packages: ${packages.map(p => p.name).join(', ')}`);
+    return;
+  }
 
   // Write body to temp file to avoid shell escaping issues
   const tmpFile = `/tmp/release-body-${Date.now()}.md`;
