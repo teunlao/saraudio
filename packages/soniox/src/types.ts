@@ -1,8 +1,9 @@
 import type { BaseProviderOptions, TranscriptionProvider } from '@saraudio/core';
+import type { SonioxModelId } from './models';
 
 export interface SonioxOptions extends BaseProviderOptions {
-  /** Realtime model id, e.g. 'stt-rt-v3' or 'stt-rt-preview'. */
-  model: string;
+  /** Model id. Realtime: 'stt-rt-v3'. Async (batch REST): 'stt-async-v3'. Aliases supported. */
+  model: SonioxModelId;
   /** Preferred sample rate; sent when using raw PCM. Default 16000. */
   sampleRate?: number;
   /** Channel count (1|2). Default 1. */

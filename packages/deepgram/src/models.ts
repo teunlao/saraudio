@@ -175,7 +175,6 @@ export type DeepgramModelId = keyof typeof DEEPGRAM_MODEL_DEFINITIONS;
 export type DeepgramModelDefinition<M extends DeepgramModelId> = (typeof DEEPGRAM_MODEL_DEFINITIONS)[M];
 export type DeepgramLanguageForModel<M extends DeepgramModelId> = DeepgramModelDefinition<M>['languages'][number];
 export type DeepgramLanguage = { [M in DeepgramModelId]: DeepgramLanguageForModel<M> }[DeepgramModelId];
-
 export const SUPPORTED_FORMATS: ReadonlyArray<RecorderFormatOptions> = [
   { sampleRate: 8_000, channels: 1, encoding: 'pcm16' },
   { sampleRate: 8_000, channels: 2, encoding: 'pcm16' },

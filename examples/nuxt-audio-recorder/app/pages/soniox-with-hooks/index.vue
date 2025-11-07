@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TranscriptResult } from '@saraudio/core';
-import { soniox } from '@saraudio/soniox';
+import { soniox, SONIOX_REALTIME_MODELS, SONIOX_ASYNC_MODELS } from '@saraudio/soniox';
 import { meter } from '@saraudio/meter';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
@@ -21,11 +21,11 @@ import DeepgramEventLog from '../../components/deepgram/EventLog.vue';
 
 const config = useRuntimeConfig();
 
-// Soniox realtime models (examples)
-const SONIOX_MODELS = [
-  { id: 'stt-rt-v3', label: 'stt-rt-v3' },
-  { id: 'stt-rt-preview', label: 'stt-rt-preview' },
-] as const;
+// Soniox модели (из пакета, без дублей в UI): используем сырые имена
+const SONIOX_MODELS = ([...SONIOX_REALTIME_MODELS, ...SONIOX_ASYNC_MODELS] as const).map((id) => ({
+  id,
+  label: id,
+}))
 
 // Language hints (two-letter codes recommended by Soniox; extend as needed)
 const SONIOX_LANGS = ['en', 'es', 'de', 'fr', 'it', 'pt', 'ru', 'ja', 'ko', 'zh'] as const;

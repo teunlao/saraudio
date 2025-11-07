@@ -171,36 +171,34 @@ describe('soniox provider', () => {
     });
   });
 
-  test('http uses baseUrl builder and merges headers', async () => {
-    const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({ text: 'ok', tokens: [] }),
-      } as unknown as Response),
-    );
-    globalThis.fetch = ((...args: Parameters<typeof fetch>) => fetchMock(...args)) as typeof fetch;
-    const provider = soniox({
-      auth: { apiKey: 'key' },
-      model: 'stt-rt-v3',
-      baseUrl: ({ defaultBaseUrl, params }) => `${defaultBaseUrl}?custom=1&${params.toString()}`,
-      headers: { 'X-Trace-Id': 't-1' },
-      languageHints: ['en'],
+  test('http batch flow uploads and creates job (Files API path)', async () => {
+    const seq: Array<{ url: string; method: string }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      seq.push({ url, method: init?.method ?? 'GET' });
+      if (url.endsWith('/files'))
+        return new Response(JSON.stringify({ id: 'f1', filename: 'a.wav', size: 2, created_at: 'now' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (url.endsWith('/transcriptions') && (init?.method ?? 'GET') === 'POST')
+        return new Response(
+          JSON.stringify({ id: 't1', status: 'completed', created_at: 'now', model: 'm', audio_url: null, file_id: 'f1', language_hints: null, context: null, enable_speaker_diarization: false, enable_language_identification: false }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      if (url.endsWith('/transcriptions/t1/transcript'))
+        return new Response(JSON.stringify({ id: 't1', text: 'ok', tokens: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      return new Response('not found', { status: 404 });
     });
-    await provider.transcribe?.(new Uint8Array([1, 2]));
-    const call = fetchMock.mock.calls[0];
-    if (Array.isArray(call)) {
-      const url = call[0];
-      expect(typeof url === 'string' && url.includes('custom=1')).toBe(true);
-      const init = call[1] as RequestInit;
-      const headers = init.headers as HeadersInit;
-      // Authorization generated from auth
-      if (headers instanceof Headers) {
-        expect(headers.get('authorization')).toBe('Bearer key');
-        expect(headers.get('x-trace-id')).toBe('t-1');
-      }
-    }
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init) as Promise<Response>) as unknown as typeof fetch;
+    const provider = soniox({ auth: { apiKey: 'key' }, model: 'stt-rt-v3' });
+    const result = await provider.transcribe?.(new Uint8Array([1, 2]));
+    expect(result?.text).toBe('ok');
+    expect(seq.some((e) => e.url.endsWith('/files') && e.method === 'POST')).toBe(true);
+    expect(seq.some((e) => e.url.endsWith('/transcriptions') && e.method === 'POST')).toBe(true);
   });
 
   test('ws uses baseUrl builder for final URL', async () => {
