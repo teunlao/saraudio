@@ -13,12 +13,17 @@ import { vadEnergy } from '@saraudio/vad-energy';
 import { useAudioInputs, useMeter, useRecorder, useTranscription } from '@saraudio/vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRuntimeConfig } from '#app';
-
-const MODE_KEY = 'saraudio:demo:transcription:mode';
-const THRESHOLD_KEY = 'saraudio:demo:transcription:threshold';
-const SMOOTH_KEY = 'saraudio:demo:transcription:smooth';
-const FALLBACK_KEY = 'saraudio:demo:transcription:fallback';
-const TRANSPORT_KEY = 'saraudio:demo:transcription:transport';
+import { useLocalStorageSettings } from '../../composables/useLocalStorageSettings';
+import PageShell from '../components/demo/PageShell.vue';
+import SectionCard from '../components/demo/SectionCard.vue';
+import DeepgramDeviceSelect from '../components/deepgram/DeviceSelect.vue';
+import DeepgramProviderControls from '../components/deepgram/ProviderControls.vue';
+import DeepgramVadControls from '../components/deepgram/VadControls.vue';
+import DeepgramRecorderActions from '../components/deepgram/RecorderActions.vue';
+import DeepgramStatsRow from '../components/deepgram/StatsRow.vue';
+import DeepgramTranscriptPanel from '../components/deepgram/TranscriptPanel.vue';
+import DeepgramRecentResults from '../components/deepgram/RecentResults.vue';
+import DeepgramEventLog from '../components/deepgram/EventLog.vue';
 
 const config = useRuntimeConfig();
 
@@ -31,55 +36,7 @@ const mode = ref<RuntimeMode>('auto');
 const allowFallback = ref(true);
 const transportMode = ref<'websocket' | 'http'>('websocket');
 
-if (typeof window !== 'undefined') {
-  try {
-    const savedMode = window.localStorage.getItem(MODE_KEY);
-    if (savedMode === 'auto' || savedMode === 'worklet' || savedMode === 'media-recorder') {
-      mode.value = savedMode;
-    }
-    const savedThreshold = window.localStorage.getItem(THRESHOLD_KEY);
-    if (savedThreshold) thresholdDb.value = Number(savedThreshold);
-    const savedSmooth = window.localStorage.getItem(SMOOTH_KEY);
-    if (savedSmooth) smoothMs.value = Number(savedSmooth);
-    const savedFallback = window.localStorage.getItem(FALLBACK_KEY);
-    if (savedFallback) allowFallback.value = savedFallback !== '0';
-    const savedTransport = window.localStorage.getItem(TRANSPORT_KEY);
-    if (savedTransport === 'websocket' || savedTransport === 'http') {
-      transportMode.value = savedTransport;
-    }
-  } catch {}
-}
-
-watch(mode, (value) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(MODE_KEY, value);
-  } catch {}
-});
-watch(thresholdDb, (value) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(THRESHOLD_KEY, String(value));
-  } catch {}
-});
-watch(smoothMs, (value) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(SMOOTH_KEY, String(value));
-  } catch {}
-});
-watch(allowFallback, (value) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(FALLBACK_KEY, value ? '1' : '0');
-  } catch {}
-});
-watch(transportMode, (value) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(TRANSPORT_KEY, value);
-  } catch {}
-});
+useLocalStorageSettings({ mode, thresholdDb, smoothMs, allowFallback, transportMode });
 
 const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
 
@@ -93,6 +50,14 @@ const recorder = useRecorder({
 });
 
 const meterLevels = useMeter({ pipeline: recorder.pipeline });
+const devicesList = computed(() => audioInputs.devices.value ?? []);
+const selectedDeviceId = computed({
+  get: () => audioInputs.selectedDeviceId.value,
+  set: (value: string) => {
+    audioInputs.selectedDeviceId.value = value;
+  },
+});
+const vadState = computed(() => recorder.vad.value);
 
 const modelEntries = computed(() =>
   (Object.keys(DEEPGRAM_MODEL_DEFINITIONS) as DeepgramModelId[]).map((id) => ({
@@ -133,7 +98,6 @@ const resolveToken = async (): Promise<string> => {
   return key.trim();
 };
 
-// Reactive provider (hook will rebuild stream on change)
 const provider = computed(() => {
   const model = selectedModel.value;
   const language = ensureLanguage(model, selectedLanguage.value);
@@ -194,7 +158,6 @@ watch(
   },
 );
 
-// Emit config logs 1:1 with the imperative demo (no manual update)
 let lastSelection: { model: DeepgramModelId; language: DeepgramLanguage; transport: 'websocket' | 'http' } | null = null;
 watch([selectedModel, selectedLanguage, transportMode], ([model, lang, transport]) => {
   const effectiveLanguage = ensureLanguage(model, lang);
@@ -228,14 +191,6 @@ const missingApiKey = computed(() => {
   const key = config.public.deepgramApiKey;
   return !key || typeof key !== 'string' || key.trim().length === 0;
 });
-const transportLabel = computed(() =>
-  transcription.transport === 'http' ? 'HTTP (chunked)' : 'WebSocket (realtime)',
-);
-const transportDescription = computed(() =>
-  transcription.transport === 'http'
-    ? 'Chunked HTTP mode · buffered flushes · no partials'
-    : 'WebSocket realtime · mutable partials · retry/backoff',
-);
 const isHttpMode = computed(() => transportMode.value === 'http');
 
 const start = async () => {
@@ -263,227 +218,82 @@ const forceEndpoint = async () => {
   pushEvent('[action] force endpoint');
 };
 
+const clearTranscript = () => {
+  transcription.clear();
+};
+
+const clearEvents = () => {
+  events.value = [];
+};
+
 onUnmounted(() => {
   void stop();
 });
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900 text-white p-8">
-    <div class="max-w-6xl mx-auto space-y-8">
-      <header class="space-y-2">
-        <h1 class="text-3xl font-bold">Deepgram · useTranscription Demo</h1>
-        <p class="text-gray-400">
-          Real-time transcription using the SARAUDIO Vue hook, Deepgram provider, and the shared recorder pipeline.
-        </p>
-        <div v-if="missingApiKey" class="p-4 rounded bg-red-900/40 border border-red-700 text-sm">
-          <p class="font-semibold">Missing API key</p>
-          <p>Set <code>NUXT_PUBLIC_DEEPGRAM_API_KEY</code> in <code>.env</code> before using this demo.</p>
-        </div>
-      </header>
+  <PageShell
+    title="Deepgram · useTranscription Demo"
+    description="Real-time transcription using the SARAUDIO Vue hook, Deepgram provider, and the shared recorder pipeline."
+  >
+    <template #alert>
+      <div v-if="missingApiKey" class="p-4 rounded bg-red-900/40 border border-red-700 text-sm">
+        <p class="font-semibold">Missing API key</p>
+        <p>Set <code>NUXT_PUBLIC_DEEPGRAM_API_KEY</code> in <code>.env</code> before using this demo.</p>
+      </div>
+    </template>
 
-      <section class="p-6 bg-gray-800 rounded space-y-4">
-        <div class="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Input Device</label>
-            <select
-              v-model="audioInputs.selectedDeviceId.value"
-              :disabled="audioInputs.enumerating.value || recorderRunning"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option v-for="device in audioInputs.devices.value" :key="device.deviceId" :value="device.deviceId">
-                {{ device.label || `Mic ${device.deviceId.slice(0, 6)}` }}
-              </option>
-            </select>
-          </div>
-          <button
-            type="button"
-            @click="audioInputs.refresh"
-            :disabled="audioInputs.enumerating.value || recorderRunning"
-            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition"
-          >
-            {{ audioInputs.enumerating.value ? 'Scanning…' : 'Refresh' }}
-          </button>
-        </div>
+    <SectionCard>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <DeepgramDeviceSelect
+          v-model="selectedDeviceId"
+          :devices="devicesList"
+          :enumerating="audioInputs.enumerating.value"
+          :disabled="recorderRunning"
+          show-refresh
+          @refresh="audioInputs.refresh"
+        />
 
-        <div class="grid sm:grid-cols-4 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Model</label>
-            <select
-              v-model="selectedModel"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500"
-            >
-              <option v-for="entry in modelEntries" :key="entry.id" :value="entry.id">
-                {{ entry.label }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Language</label>
-            <select
-              v-model="selectedLanguage"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500"
-            >
-              <option v-for="lang in availableLanguages" :key="lang" :value="lang">{{ lang }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Capture Mode</label>
-            <select
-              v-model="mode"
-              :disabled="recorderRunning"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="auto">Auto</option>
-              <option value="worklet">AudioWorklet</option>
-              <option value="media-recorder">MediaRecorder</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Transport</label>
-            <select
-              v-model="transportMode"
-              :disabled="recorderRunning || isConnected"
-              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="websocket">WebSocket · realtime</option>
-              <option value="http">HTTP · chunked</option>
-            </select>
-          </div>
-        </div>
+        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" :disabled="recorderRunning" />
+      </div>
 
-        <div class="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Threshold (dB): {{ thresholdDb }}</label>
-            <input type="range" min="-90" max="-5" step="1" v-model.number="thresholdDb" class="w-full" />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Smoothing (ms): {{ smoothMs }}</label>
-            <input type="range" min="5" max="200" step="5" v-model.number="smoothMs" class="w-full" />
-          </div>
-        </div>
+      <DeepgramProviderControls
+        v-model:model="selectedModel"
+        v-model:language="selectedLanguage"
+        v-model:mode="mode"
+        v-model:transport="transportMode"
+        :models="modelEntries"
+        :languages="availableLanguages"
+        :mode-disabled="recorderRunning"
+        :transport-disabled="recorderRunning"
+      />
 
-        <div class="flex items-center gap-4">
-          <button
-            @click="start"
-            :disabled="recorderRunning || missingApiKey"
-            class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-          >
-            Start
-          </button>
-          <button
-            @click="stop"
-            :disabled="!recorderRunning && !isConnected"
-            class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-          >
-            Stop
-          </button>
-          <button
-            @click="forceEndpoint"
-            :disabled="!isConnected"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-          >
-            Force Endpoint
-          </button>
-          <span class="px-3 py-1 bg-gray-700 rounded text-sm">
-            Status: {{ controllerStatus }} · Connected: {{ isConnected ? 'yes' : 'no' }}
-          </span>
-        </div>
-      </section>
+      <DeepgramRecorderActions
+        :start-disabled="recorderRunning || missingApiKey"
+        :stop-disabled="!recorderRunning && !isConnected"
+        :force-disabled="!isConnected"
+        :show-force="!isHttpMode"
+        :status="controllerStatus"
+        :is-connected="isConnected"
+        @start="start"
+        @stop="stop"
+        @force="forceEndpoint"
+      />
+    </SectionCard>
 
-      <section class="grid lg:grid-cols-3 gap-6">
-        <div class="p-4 bg-gray-800 rounded space-y-2">
-          <h2 class="text-lg font-semibold">VAD</h2>
-          <div class="flex items-center gap-3">
-            <div :class="['w-4 h-4 rounded-full', recorder.vad.value?.speech ? 'bg-green-500' : 'bg-gray-600']"></div>
-            <span class="font-mono">{{ recorder.vad.value?.score.toFixed(2) ?? '0.00' }}</span>
-          </div>
-        </div>
-        <div class="p-4 bg-gray-800 rounded space-y-2">
-          <h2 class="text-lg font-semibold">RMS</h2>
-          <div class="h-2 bg-gray-700 rounded overflow-hidden">
-            <div class="h-full bg-blue-500 transition-all" :style="`width:${Math.min(meterLevels.rms.value * 100, 100)}%`" />
-          </div>
-          <div class="text-sm text-gray-400">
-            {{ meterLevels.db.value === -Infinity ? '-∞' : meterLevels.db.value.toFixed(1) }} dB
-          </div>
-        </div>
-        <div class="p-4 bg-gray-800 rounded space-y-2">
-          <h2 class="text-lg font-semibold">Transport</h2>
-          <div class="font-mono text-sm">{{ transportLabel }}</div>
-          <div class="text-xs text-gray-400">{{ transportDescription }}</div>
-        </div>
-      </section>
+    <DeepgramStatsRow
+      :vad-speech="vadState?.speech ?? false"
+      :vad-score="vadState?.score ?? null"
+      :rms="meterLevels.rms.value"
+      :db="meterLevels.db.value"
+      :transport="transcription.transport"
+    />
 
-      <section class="grid lg:grid-cols-2 gap-6">
-        <div class="p-6 bg-gray-800 rounded space-y-4">
-          <div class="flex justify-between items-center">
-            <h2 class="text-lg font-semibold">Transcript</h2>
-            <button
-              class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-            @click="transcription.clear()"
-              :disabled="!transcriptText && !partialText"
-            >
-              Clear
-            </button>
-          </div>
-          <p v-if="isHttpMode" class="text-xs text-amber-300">
-            HTTP chunked mode buffers audio (~2.5&nbsp;s) and delivers only final transcripts.
-          </p>
-          <div class="min-h-48 max-h-72 overflow-y-auto bg-gray-900 border border-gray-700 rounded p-4 space-y-4">
-            <div v-if="!transcriptText && !partialText" class="text-sm text-gray-500 text-center py-6">
-              Waiting for speech…
-            </div>
-            <div v-else>
-              <p v-if="transcriptText" class="text-gray-100 whitespace-pre-wrap leading-relaxed">
-                {{ transcriptText }}
-              </p>
-              <p v-if="partialText" class="text-gray-400 italic whitespace-pre-wrap leading-relaxed">
-                {{ partialText }}
-              </p>
-            </div>
-          </div>
-        </div>
+    <section class="grid lg:grid-cols-2 gap-6">
+      <DeepgramTranscriptPanel :transcript="transcriptText" :partial="partialText" @clear="clearTranscript" />
+      <DeepgramRecentResults :results="latestResults" />
+    </section>
 
-        <div class="p-6 bg-gray-800 rounded space-y-4">
-          <div class="flex justify-between items-center">
-            <h2 class="text-lg font-semibold">Recent results</h2>
-            <span class="text-xs text-gray-400">{{ latestResults.length }} shown</span>
-          </div>
-          <div class="max-h-72 overflow-y-auto space-y-3">
-            <div
-              v-for="(result, index) in latestResults"
-              :key="index"
-              class="bg-gray-900 border border-gray-700 rounded p-3 space-y-1"
-            >
-              <div class="text-sm text-gray-400">
-                {{ result.language ?? '-' }} · confidence:
-                {{ result.confidence !== undefined ? result.confidence.toFixed(2) : '—' }}
-              </div>
-              <div class="text-gray-100 whitespace-pre-wrap leading-snug">{{ result.text }}</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="p-6 bg-gray-800 rounded space-y-3">
-        <div class="flex justify-between items-center">
-          <h2 class="text-lg font-semibold">Event log</h2>
-          <button
-            class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition"
-            :disabled="events.length === 0"
-            @click="events = []"
-          >
-            Clear Log
-          </button>
-        </div>
-        <div class="max-h-64 overflow-y-auto font-mono text-xs bg-gray-900 border border-gray-700 rounded p-3 space-y-1">
-          <p v-if="events.length === 0" class="text-gray-500 text-center py-4">No events yet…</p>
-          <p v-for="(entry, index) in events" :key="index" class="text-gray-300 whitespace-pre-wrap">
-            {{ entry }}
-          </p>
-        </div>
-      </section>
-    </div>
-  </div>
+    <DeepgramEventLog :events="events" @clear="clearEvents" />
+  </PageShell>
 </template>

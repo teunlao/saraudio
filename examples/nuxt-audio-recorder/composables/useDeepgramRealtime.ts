@@ -8,9 +8,11 @@ export function useDeepgramRealtime() {
   const partial = ref<string>('');
   const transcript = ref<string>('');
   const model = ref<string>('nova-2');
+  const language = ref<string>('en-US');
   // Debug/state: expose last close details and a small rolling log to surface issues in UI
   const lastClose = ref<{ code: number; reason: string; wasClean: boolean } | null>(null);
   const log = ref<string[]>([]); // keep short list of last 50 events
+  const segments = ref<string[]>([]);
 
   let ws: WebSocket | null = null;
   let bytesSent = 0;
@@ -38,6 +40,7 @@ export function useDeepgramRealtime() {
       channels: '1',
       punctuate: 'true',
       interim_results: 'true',
+      language: language.value,
     });
     const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
 
@@ -51,6 +54,7 @@ export function useDeepgramRealtime() {
     audioChunksSent = 0;
     log.value.unshift(`[ws] connecting to ${url}`);
     if (log.value.length > 50) log.value.length = 50;
+    segments.value = [];
 
     // Attempt protocol auth first, then fallback to query token if needed.
     try {
@@ -112,6 +116,8 @@ export function useDeepgramRealtime() {
             const trimmed = text.trim();
             if (trimmed.length > 0) {
               transcript.value = transcript.value ? `${transcript.value} ${trimmed}` : trimmed;
+              segments.value.unshift(trimmed);
+              if (segments.value.length > 20) segments.value.length = 20;
               console.log('[deepgram] final transcript updated:', trimmed);
             }
             partial.value = '';
@@ -170,6 +176,11 @@ export function useDeepgramRealtime() {
   const clear = (): void => {
     partial.value = '';
     transcript.value = '';
+    segments.value = [];
+  };
+
+  const clearLog = (): void => {
+    log.value = [];
   };
 
   return {
@@ -178,11 +189,20 @@ export function useDeepgramRealtime() {
     partial,
     transcript,
     model,
+    language,
     lastClose,
     log,
+    segments,
     connect,
     close,
     clear,
+    clearLog,
+    setModel(modelId: string) {
+      model.value = modelId;
+    },
+    setLanguage(lang: string) {
+      language.value = lang;
+    },
     sendPcm16,
   };
 }

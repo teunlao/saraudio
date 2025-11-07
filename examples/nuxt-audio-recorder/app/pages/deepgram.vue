@@ -1,34 +1,59 @@
 <script setup lang="ts">
-import type { SubscribeHandle } from '@saraudio/core';
+import type { SubscribeHandle, TranscriptResult } from '@saraudio/core';
+import {
+  DEEPGRAM_MODEL_DEFINITIONS,
+  isLanguageSupported,
+  type DeepgramLanguage,
+  type DeepgramModelId,
+} from '@saraudio/deepgram';
 import { meter } from '@saraudio/meter';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRuntimeConfig } from '#app';
 import { useDeepgramRealtime } from '../../composables/useDeepgramRealtime';
+import PageShell from '../components/demo/PageShell.vue';
+import SectionCard from '../components/demo/SectionCard.vue';
+import DeepgramDeviceSelect from '../components/deepgram/DeviceSelect.vue';
+import DeepgramProviderControls from '../components/deepgram/ProviderControls.vue';
+import DeepgramVadControls from '../components/deepgram/VadControls.vue';
+import DeepgramRecorderActions from '../components/deepgram/RecorderActions.vue';
+import DeepgramStatsRow from '../components/deepgram/StatsRow.vue';
+import DeepgramTranscriptPanel from '../components/deepgram/TranscriptPanel.vue';
+import DeepgramRecentResults from '../components/deepgram/RecentResults.vue';
+import DeepgramEventLog from '../components/deepgram/EventLog.vue';
 
 const mode = ref<RuntimeMode>('auto');
 const allowFallback = ref(true);
 const thresholdDb = ref(-50);
 const smoothMs = ref(30);
+const transportMode = ref<'websocket' | 'http'>('websocket');
+const selectedModel = ref<DeepgramModelId>('nova-3');
+const selectedLanguage = ref<DeepgramLanguage>('en-US');
+
+const config = useRuntimeConfig();
 
 const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
-const devices = computed(() => audioInputs.devices.value);
+const devicesList = computed(() => audioInputs.devices.value ?? []);
+const selectedDeviceId = computed({
+  get: () => audioInputs.selectedDeviceId.value,
+  set: (value: string) => {
+    audioInputs.selectedDeviceId.value = value;
+  },
+});
 
 const rec = useRecorder({
   stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
   segmenter: { preRollMs: 120, hangoverMs: 250 },
-  source: {
-    microphone: {
-      deviceId: audioInputs.selectedDeviceId.value,
-    },
-  },
+  source: computed(() => ({ microphone: { deviceId: audioInputs.selectedDeviceId.value } })),
   format: { sampleRate: 16000 },
   mode,
   allowFallback,
 });
 
 const levels = useMeter({ pipeline: rec.pipeline });
+const vadState = computed(() => rec.vad.value);
 
 const dg = useDeepgramRealtime();
 let frameSubscription: SubscribeHandle | null = null;
@@ -39,10 +64,17 @@ const wsInfo = computed(() => {
   const c = dg.lastClose.value;
   return c ? { code: c.code, reason: c.reason, clean: c.wasClean } : null;
 });
-const wsLog = computed(() => {
-  const lines = dg.log.value;
-  return Array.isArray(lines) ? lines.join('\n') : '';
+const transcriptText = computed(() => dg.transcript.value.trim());
+const partialText = computed(() => dg.partial.value);
+const latestResults = computed<TranscriptResult[]>(() =>
+  dg.segments.value.map((text): TranscriptResult => ({ text, language: selectedLanguage.value })),
+);
+const missingApiKey = computed(() => {
+  const key = config.public.deepgramApiKey;
+  return !key || typeof key !== 'string' || key.trim().length === 0;
 });
+const events = computed(() => dg.log.value);
+const isConnected = computed(() => dg.status.value === 'open');
 
 onMounted(() => {
   readySubscription = rec.onReady(() => {
@@ -65,7 +97,45 @@ async function stop() {
   dg.close();
 }
 
+const clearTranscript = () => {
+  dg.clear();
+};
+
+const clearEvents = () => {
+  dg.clearLog();
+};
+
+const forceEndpoint = () => {
+  dg.log.value.unshift('[action] force endpoint not available (manual WS demo)');
+  if (dg.log.value.length > 60) dg.log.value.length = 60;
+};
+
 const isRunning = computed(() => rec.status.value === 'running' || rec.status.value === 'acquiring');
+
+const modelEntries = computed(() =>
+  (Object.keys(DEEPGRAM_MODEL_DEFINITIONS) as DeepgramModelId[]).map((id) => ({
+    id,
+    label: DEEPGRAM_MODEL_DEFINITIONS[id].label,
+  })),
+);
+
+const availableLanguages = computed(() => [...DEEPGRAM_MODEL_DEFINITIONS[selectedModel.value].languages]);
+
+dg.model.value = selectedModel.value;
+dg.language.value = selectedLanguage.value;
+
+watch(selectedModel, (modelId) => {
+  dg.model.value = modelId;
+  if (!isLanguageSupported(modelId, selectedLanguage.value)) {
+    const fallback = DEEPGRAM_MODEL_DEFINITIONS[modelId].languages[0] as DeepgramLanguage;
+    selectedLanguage.value = fallback;
+    dg.language.value = fallback;
+  }
+});
+
+watch(selectedLanguage, (lang) => {
+  dg.language.value = lang;
+});
 
 onUnmounted(() => {
   readySubscription?.()
@@ -75,91 +145,68 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900 text-white p-8">
-    <div class="max-w-5xl mx-auto space-y-8">
-      <header>
-        <h1 class="text-3xl font-bold">Deepgram Realtime · Nuxt + SARAUDIO</h1>
-        <p class="text-gray-400 mt-2">Live transcription using AudioWorklet/MediaRecorder pipeline</p>
-      </header>
+  <PageShell
+    title="Deepgram Realtime · Nuxt + SARAUDIO"
+    description="Live transcription using AudioWorklet/MediaRecorder pipeline"
+  >
+    <template #alert>
+      <div v-if="missingApiKey" class="p-4 rounded bg-red-900/40 border border-red-700 text-sm">
+        <p class="font-semibold">Missing API key</p>
+        <p>Set <code>NUXT_PUBLIC_DEEPGRAM_API_KEY</code> in <code>.env</code> before using this demo.</p>
+      </div>
+    </template>
 
-      <section class="p-6 bg-gray-800 rounded-lg space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-2">Input Device</label>
-            <select v-model="audioInputs.selectedDeviceId.value" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
-              <option v-for="d in devices" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Mic ${d.deviceId.slice(0,6)}` }}</option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm text-gray-400 mb-2">Threshold (dB): {{ thresholdDb }}</label>
-              <input type="range" min="-90" max="-5" step="1" v-model.number="thresholdDb" class="w-full" />
-            </div>
-            <div>
-              <label class="block text-sm text-gray-400 mb-2">Smoothing (ms): {{ smoothMs }}</label>
-              <input type="range" min="5" max="200" step="5" v-model.number="smoothMs" class="w-full" />
-            </div>
-          </div>
-        </div>
+    <SectionCard>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <DeepgramDeviceSelect
+          v-model="selectedDeviceId"
+          :devices="devicesList"
+          :disabled="isRunning"
+          show-refresh
+          :enumerating="audioInputs.enumerating.value"
+          @refresh="audioInputs.refresh"
+        />
+        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" :disabled="isRunning" />
+      </div>
 
-        <div class="flex gap-4 items-center">
-          <button @click="start" :disabled="isRunning" class="px-4 py-2 bg-green-600 rounded-lg disabled:opacity-50">Start</button>
-          <button @click="stop" :disabled="!isRunning" class="px-4 py-2 bg-red-600 rounded-lg disabled:opacity-50">Stop</button>
-          <div class="px-3 py-2 bg-gray-700 rounded">
-            WS: <span class="font-mono">{{ dg.status }}</span>
-            <span v-if="wsInfo" class="ml-2 text-xs text-gray-400">(code {{ wsInfo!.code }}, {{ wsInfo!.reason || '-' }})</span>
-            <template v-if="dg.error"> <span class="ml-2 text-xs text-red-400">{{ dg.error }}</span> </template>
-          </div>
-        </div>
-      </section>
+      <DeepgramProviderControls
+        v-model:model="selectedModel"
+        v-model:language="selectedLanguage"
+        v-model:mode="mode"
+        v-model:transport="transportMode"
+        :models="modelEntries"
+        :languages="availableLanguages"
+        :mode-disabled="isRunning"
+        :transport-disabled="true"
+      />
 
-      <section class="grid grid-cols-3 gap-6">
-        <div class="p-4 bg-gray-800 rounded">
-          <div class="text-sm text-gray-400">VAD</div>
-          <div class="mt-2 flex items-center gap-3">
-            <div :class="['w-4 h-4 rounded-full', rec.vad.value?.speech ? 'bg-green-500' : 'bg-gray-600']"></div>
-            <div class="font-mono">{{ rec.vad.value?.score.toFixed(2) ?? '0.00' }}</div>
-          </div>
-        </div>
-        <div class="p-4 bg-gray-800 rounded">
-          <div class="text-sm text-gray-400">RMS</div>
-          <div class="mt-2 h-2 bg-gray-700 rounded overflow-hidden">
-            <div class="h-full bg-blue-500" :style="`width:${Math.min(levels.rms.value*100,100)}%`"></div>
-          </div>
-          <div class="mt-2 text-sm text-gray-400">dB: {{ levels.db.value === -Infinity ? '-∞' : levels.db.value.toFixed(1) }}</div>
-        </div>
-        <div class="p-4 bg-gray-800 rounded">
-          <div class="text-sm text-gray-400">Mode</div>
-          <div class="mt-2 font-mono">{{ mode }}</div>
-        </div>
-      </section>
+      <DeepgramRecorderActions
+        :start-disabled="isRunning || missingApiKey"
+        :stop-disabled="!isRunning"
+        :force-disabled="true"
+        :show-force="true"
+        :status="dg.status.value"
+        :is-connected="isConnected"
+        @start="start"
+        @stop="stop"
+        @force="forceEndpoint"
+      />
+    </SectionCard>
 
-      <section class="p-6 bg-gray-800 rounded-lg">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-semibold">Transcript</h2>
-          <button
-            @click="dg.clear"
-            :disabled="!dg.transcript.value && !dg.partial.value"
-            class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Clear
-          </button>
-        </div>
-        <div class="min-h-48 max-h-96 overflow-y-auto p-4 bg-gray-900 rounded border border-gray-700">
-          <div v-if="!dg.transcript.value && !dg.partial.value" class="text-gray-500 text-center py-8">
-            Start recording to see live transcription...
-          </div>
-          <div v-else class="space-y-2 whitespace-pre-wrap">
-            <p v-if="dg.transcript.value" class="text-gray-200 leading-relaxed">{{ dg.transcript.value }}</p>
-            <p v-if="dg.partial.value" class="text-gray-400 italic">{{ dg.partial.value }}</p>
-          </div>
-        </div>
-      </section>
+    <DeepgramStatsRow
+      :vad-speech="vadState?.speech ?? false"
+      :vad-score="vadState?.score ?? null"
+      :rms="levels.rms.value"
+      :db="levels.db.value"
+      transport="websocket"
+      :manual-ws="true"
+    />
 
-      <section class="p-4 bg-gray-800 rounded">
-        <h2 class="text-lg font-semibold mb-2">WS Debug</h2>
-        <pre class="text-xs text-gray-300 whitespace-pre-wrap">{{ wsLog }}</pre>
-      </section>
-    </div>
-  </div>
+    <section class="grid lg:grid-cols-2 gap-6">
+      <DeepgramTranscriptPanel :transcript="transcriptText" :partial="partialText" @clear="clearTranscript" />
+      <DeepgramRecentResults :results="latestResults" />
+    </section>
+
+    <DeepgramEventLog :events="events" @clear="clearEvents" />
+  </PageShell>
 </template>
