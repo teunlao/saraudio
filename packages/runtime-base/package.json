@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/runtime-base",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Platform-agnostic transcription orchestrator for SARAUDIO (stream-first)",
   "license": "ISC",
   "sideEffects": false,

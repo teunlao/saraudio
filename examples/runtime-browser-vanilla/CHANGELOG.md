@@ -1,5 +1,14 @@
 # @saraudio/example-runtime-browser-vanilla
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [0c61aa8]
+  - @saraudio/runtime-browser@1.0.0
+  - @saraudio/meter@1.0.0
+  - @saraudio/vad-energy@1.0.0
+
 ## 0.0.1
 
 ### Patch Changes
