@@ -103,29 +103,68 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
       return;
     }
     if (!msg) return;
+    // Helper: filter out Soniox control markers like "<fin>"
+    const isMarker = (value: unknown): boolean => {
+      if (typeof value !== 'string') return false;
+      const s = value.trim();
+      return s.startsWith('<') && s.endsWith('>');
+    };
+
     if (msg.tokens && msg.tokens.length > 0) {
       const partialText = msg.tokens
-        .filter((t) => !t.is_final)
+        .filter((t) => !t.is_final && !isMarker(t.text))
         .map((t) => t.text ?? '')
-        .join(' ')
+        // Soniox may emit space tokens explicitly, so concatenate verbatim.
+        .join('')
+        .replace(/\s+/g, (m) => (m.length > 1 ? ' ' : m))
         .trim();
       if (partialText.length > 0) emitPartial(partialText);
 
-      const finals = msg.tokens.filter((t) => t.is_final);
+      const finals = msg.tokens.filter((t) => t.is_final && !isMarker(t.text));
       if (finals.length > 0) {
+        // Build final text by concatenating token text verbatim
         const text = finals
           .map((t) => t.text ?? '')
-          .join(' ')
+          .join('')
+          .replace(/\s+/g, (m) => (m.length > 1 ? ' ' : m))
           .trim();
-        const words = finals
-          .filter((t) => typeof t.start_ms === 'number' && typeof t.end_ms === 'number' && (t.text ?? '').length > 0)
-          .map((t) => ({
-            word: String(t.text ?? ''),
-            startMs: Math.max(0, Math.floor(t.start_ms ?? 0)),
-            endMs: Math.max(0, Math.floor(t.end_ms ?? 0)),
-            confidence: typeof t.confidence === 'number' ? t.confidence : undefined,
-            speaker: typeof t.speaker === 'number' ? t.speaker : undefined,
-          }));
+
+        // Coalesce adjacent non-space tokens into word timestamps
+        const words: { word: string; startMs: number; endMs: number; confidence?: number; speaker?: number }[] = [];
+        let buf = '';
+        let start = -1;
+        let end = -1;
+        let confSum = 0;
+        let confCount = 0;
+        let speaker: number | undefined;
+        const flush = () => {
+          if (buf.length === 0 || start < 0 || end < 0) return;
+          const w = buf;
+          const confidence = confCount > 0 ? confSum / confCount : undefined;
+          words.push({ word: w, startMs: start, endMs: end, confidence, speaker });
+          buf = '';
+          start = -1;
+          end = -1;
+          confSum = 0;
+          confCount = 0;
+          speaker = undefined;
+        };
+        for (const t of finals) {
+          const s = (t.text ?? '') as string;
+          if (s.trim().length === 0) {
+            flush();
+            continue;
+          }
+          if (start < 0 && typeof t.start_ms === 'number') start = Math.max(0, Math.floor(t.start_ms));
+          if (typeof t.end_ms === 'number') end = Math.max(0, Math.floor(t.end_ms));
+          if (typeof t.confidence === 'number') {
+            confSum += t.confidence;
+            confCount += 1;
+          }
+          if (typeof t.speaker === 'number') speaker = t.speaker;
+          buf += s;
+        }
+        flush();
         emitFinal({ text, words });
       }
     }
