@@ -1,4 +1,4 @@
-import { clamp, normalizeChannels } from '@saraudio/utils';
+import { clamp } from '@saraudio/utils';
 import { DEEPGRAM_MODEL_DEFINITIONS, type DeepgramModelId, isLanguageSupported } from './models';
 import type { DeepgramOptions } from './types';
 

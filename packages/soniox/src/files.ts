@@ -1,7 +1,7 @@
 import type { TranscriptResult } from '@saraudio/core';
 import { AuthenticationError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
-import { buildUrl, mergeHeaders, normalizeHeaders, toArrayBuffer } from '@saraudio/utils';
+import { mergeHeaders, normalizeHeaders, toArrayBuffer } from '@saraudio/utils';
 
 import { resolveApiKey } from './auth';
 import type { SonioxResolvedConfig } from './config';
@@ -31,7 +31,8 @@ export async function sonioxUploadFile(
   // When sending FormData, do NOT set content-type manually — let the browser/runtime set boundary.
   const form = new FormData();
   const filename = opts?.filename ?? 'audio.wav';
-  const body = audio instanceof Blob ? audio : new Blob([await toArrayBuffer(audio)], { type: 'application/octet-stream' });
+  const body =
+    audio instanceof Blob ? audio : new Blob([await toArrayBuffer(audio)], { type: 'application/octet-stream' });
   form.append('file', body, filename);
 
   let headers: Record<string, string> = {};
@@ -121,7 +122,11 @@ export async function sonioxTranscribeFile(
   logger?: Logger,
 ): Promise<TranscriptResult> {
   const upload = await sonioxUploadFile(resolved, audio, { filename: request.filename }, logger);
-  const job = await sonioxCreateTranscription(resolved, { model: request.model, file_id: upload.id, language_hints: request.language_hints });
+  const job = await sonioxCreateTranscription(resolved, {
+    model: request.model,
+    file_id: upload.id,
+    language_hints: request.language_hints,
+  });
   // Simple polling; in real apps consider webhooks.
   let current = job;
   const start = Date.now();
@@ -143,4 +148,3 @@ export async function sonioxTranscribeFile(
     metadata: { id: tr.id },
   } satisfies TranscriptResult;
 }
-

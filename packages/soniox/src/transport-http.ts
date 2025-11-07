@@ -14,7 +14,10 @@ export async function transcribeHTTP(
   _signal?: AbortSignal,
   logger?: Logger,
 ): Promise<TranscriptResult> {
-  const provided = typeof resolved.raw.headers === 'function' ? await resolved.raw.headers({ transport: 'http' }) : resolved.raw.headers;
+  const provided =
+    typeof resolved.raw.headers === 'function'
+      ? await resolved.raw.headers({ transport: 'http' })
+      : resolved.raw.headers;
   const _headers = provided ? mergeHeaders({}, normalizeHeaders(provided)) : undefined;
   return await sonioxTranscribeFile(resolved, audio, { model: resolved.raw.model }, logger);
 }

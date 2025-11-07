@@ -183,7 +183,18 @@ describe('soniox provider', () => {
         });
       if (url.endsWith('/transcriptions') && (init?.method ?? 'GET') === 'POST')
         return new Response(
-          JSON.stringify({ id: 't1', status: 'completed', created_at: 'now', model: 'm', audio_url: null, file_id: 'f1', language_hints: null, context: null, enable_speaker_diarization: false, enable_language_identification: false }),
+          JSON.stringify({
+            id: 't1',
+            status: 'completed',
+            created_at: 'now',
+            model: 'm',
+            audio_url: null,
+            file_id: 'f1',
+            language_hints: null,
+            context: null,
+            enable_speaker_diarization: false,
+            enable_language_identification: false,
+          }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       if (url.endsWith('/transcriptions/t1/transcript'))
@@ -193,7 +204,8 @@ describe('soniox provider', () => {
         });
       return new Response('not found', { status: 404 });
     });
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init) as Promise<Response>) as unknown as typeof fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      fetchMock(input, init) as Promise<Response>) as unknown as typeof fetch;
     const provider = soniox({ auth: { apiKey: 'key' }, model: 'stt-rt-v3' });
     const result = await provider.transcribe?.(new Uint8Array([1, 2]));
     expect(result?.text).toBe('ok');

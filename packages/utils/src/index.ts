@@ -21,11 +21,11 @@ export {
   appendBoolean,
   appendExtra,
   appendList,
+  buildTransportUrl,
   buildUrl,
   replaceParam,
-  buildTransportUrl,
-  type UrlBuilderFn,
   type TransportKind,
+  type UrlBuilderFn,
 } from './http/url';
 export type { LogContext, LogEntry, Logger, LoggerOptions, LogLevel } from './logger';
 export { createLogger, defaultOutput, noopLogger } from './logger';

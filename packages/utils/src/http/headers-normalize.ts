@@ -60,7 +60,7 @@ function toPairsFromRecord(rec: HeaderRecord): Array<[string, string]> {
   return pairs;
 }
 
-function isUnknownArray(value: unknown): value is unknown[] {
+function _isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
