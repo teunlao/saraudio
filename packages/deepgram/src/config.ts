@@ -1,3 +1,4 @@
+import { clamp, normalizeChannels } from '@saraudio/utils';
 import { DEEPGRAM_MODEL_DEFINITIONS, type DeepgramModelId, isLanguageSupported } from './models';
 import type { DeepgramOptions } from './types';
 
@@ -36,15 +37,7 @@ export interface DeepgramResolvedConfig {
 }
 
 /** Clamp numeric value to the inclusive [min, max] range; returns min for NaN/Infinity. */
-export function clamp(value: number, min: number, max: number): number {
-  if (Number.isNaN(value) || !Number.isFinite(value)) return min;
-  return Math.min(Math.max(value, min), max);
-}
-
-/** Normalize requested channel count to deegram‑supported 1 or 2. */
-export function normalizeChannels(channels: number): 1 | 2 {
-  return channels >= 2 ? 2 : 1;
-}
+// clamp/normalizeChannels из @saraudio/utils
 
 /**
  * Validate options, apply defaults and clamps, and prebuild base URLSearchParams.

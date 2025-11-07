@@ -1,8 +1,8 @@
 import type { Logger } from '@saraudio/utils';
+import { buildTransportUrl } from '@saraudio/utils';
 import { createProtocolList, resolveAuthToken } from './auth';
 import type { DeepgramResolvedConfig } from './config';
 import { createDeepgramStream, type DeepgramConnectionInfoFactory } from './stream';
-import { buildUrl } from './url';
 
 export function createWsStream(config: DeepgramResolvedConfig, logger?: Logger) {
   const providerLogger = logger ? logger.child('provider-deepgram') : undefined;
@@ -16,11 +16,7 @@ export function createWsStream(config: DeepgramResolvedConfig, logger?: Logger) 
       });
     }
     const defaultBase = 'wss://api.deepgram.com/v1/listen';
-    const base = config.raw.baseUrl;
-    const finalUrl =
-      typeof base === 'function'
-        ? await base({ defaultBaseUrl: defaultBase, params, transport: 'websocket' })
-        : await buildUrl(typeof base === 'string' && base.length > 0 ? base : defaultBase, undefined, params);
+    const finalUrl = await buildTransportUrl(config.raw.baseUrl, defaultBase, params, 'websocket');
 
     const token = await resolveAuthToken({
       auth: config.raw.auth,

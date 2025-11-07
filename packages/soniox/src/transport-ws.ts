@@ -1,7 +1,7 @@
 import type { NormalizedFrame, TranscriptionStream, TranscriptResult } from '@saraudio/core';
 import { AbortedError, AuthenticationError, NetworkError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
-import { frameDurationMs } from '@saraudio/utils';
+import { buildTransportUrl, frameDurationMs } from '@saraudio/utils';
 import { resolveApiKey } from './auth';
 import type { SonioxResolvedConfig } from './config';
 import type { SonioxWsFinishedResponse, SonioxWsInitConfig, SonioxWsStreamResponse } from './SonioxWsRealtimeModel';
@@ -184,7 +184,18 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
       const apiKey = await resolveApiKey(resolved.raw);
       if (signal?.aborted) throw new AbortedError('Soniox connect aborted');
 
-      const socket = new WebSocket(resolved.wsUrl);
+      // Build URL: support baseUrl string or builder from BaseProviderOptions
+      const defaultBase = resolved.wsUrl;
+      const params = new URLSearchParams();
+      const rawQuery = resolved.raw.query;
+      if (rawQuery && Object.keys(rawQuery).length > 0) {
+        for (const [k, v] of Object.entries(rawQuery)) {
+          if (v === null || v === undefined) continue;
+          params.set(k, String(v));
+        }
+      }
+      const url = await buildTransportUrl(resolved.raw.baseUrl, defaultBase, params, 'websocket');
+      const socket = new WebSocket(url);
       ws = socket;
       socket.binaryType = 'arraybuffer';
       closedByClient = false;

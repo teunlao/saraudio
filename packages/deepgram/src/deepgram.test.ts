@@ -462,6 +462,45 @@ describe('deepgram provider', () => {
     });
   });
 
+  test('http transport merges user headers and preserves Authorization precedence', async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(JSON.stringify({ results: { channels: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
+
+    const provider = deepgram({
+      auth: { apiKey: 'test-key' },
+      model: 'nova-2',
+      language: 'en-US',
+      headers: { 'X-Trace-Id': 'abc', Authorization: 'Bearer hacked' },
+    });
+    await provider.transcribe?.(new Uint8Array([1]));
+    const call = fetchMock.mock.calls[0];
+    if (Array.isArray(call)) {
+      const init = call[1];
+      if (isRequestInit(init)) {
+        const headers = init.headers as HeadersInit;
+        const auth = readAuthorization(headers);
+        expect(auth).toBe('Token test-key');
+        // Trace header is preserved
+        if (headers instanceof Headers) {
+          expect(headers.get('x-trace-id')).toBe('abc');
+        } else if (Array.isArray(headers)) {
+          const found = headers.find((h) => Array.isArray(h) && h[0].toLowerCase() === 'x-trace-id');
+          expect(found && typeof found[1] === 'string' && found[1] === 'abc').toBe(true);
+        } else if (typeof headers === 'object' && headers !== null) {
+          const rec = headers as Record<string, string>;
+          const val = rec['X-Trace-Id'] ?? rec['x-trace-id'];
+          expect(val).toBe('abc');
+        }
+      }
+    }
+  });
+
   test('http transport uses Bearer when tokenProvider returns JWT', async () => {
     const fetchMock = vi.fn(
       async (..._args: Parameters<typeof fetch>) =>

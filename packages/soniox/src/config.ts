@@ -1,3 +1,4 @@
+import { clamp, normalizeChannels } from '@saraudio/utils';
 import type { SonioxOptions } from './types';
 
 export const DEFAULT_WS_URL = 'wss://stt-rt.soniox.com/transcribe-websocket';
@@ -18,14 +19,7 @@ export interface SonioxResolvedConfig {
   queueBudgetMs: number;
 }
 
-export function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
-export function normalizeChannels(ch: number | undefined): 1 | 2 {
-  return ch && ch >= 2 ? 2 : 1;
-}
+// clamp/normalizeChannels из @saraudio/utils
 
 export function resolveConfig(options: SonioxOptions): SonioxResolvedConfig {
   const sampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;

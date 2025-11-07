@@ -1,18 +1,16 @@
-import type { AudioSource, BatchOptions, TranscriptResult, UrlBuilder } from '@saraudio/core';
+import type { AudioSource, BatchOptions, TranscriptResult } from '@saraudio/core';
 import { AuthenticationError, NetworkError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
+import { buildTransportUrl, mergeHeaders, normalizeHeaders, parseRetryAfter, toArrayBuffer } from '@saraudio/utils';
 import { hasEmbeddedToken, resolveAuthToken } from './auth';
 import { type DeepgramResolvedConfig, resolveConfig } from './config';
 import type { DeepgramModelId } from './models';
 import type { DeepgramOptions } from './types';
-import { buildUrl } from './url';
 
 const DEFAULT_HTTP_BASE_URL = 'https://api.deepgram.com/v1/listen';
 
 export function resolveHttpConfig<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramResolvedConfig {
   const resolved = resolveConfig(options);
-  // baseUrl может быть строкой или билдером; HTTP путь использует строковый base в случае строки,
-  // в противном случае — дефолтный HTTP endpoint, а билдер будет применён на этапе сборки URL.
   return { ...resolved };
 }
 
@@ -39,17 +37,20 @@ export async function transcribeHTTP(
   }
 
   const defaultBase = DEFAULT_HTTP_BASE_URL;
-  const base = config.raw.baseUrl;
-  const builder: UrlBuilder | undefined = typeof base === 'function' ? base : undefined;
-  const baseUrl: string = typeof base === 'string' && base.length > 0 ? base : defaultBase;
-  const url = builder
-    ? await builder({ defaultBaseUrl: defaultBase, params, transport: 'http' })
-    : await buildUrl(baseUrl, undefined, params);
+  const url = await buildTransportUrl(config.raw.baseUrl, defaultBase, params, 'http');
 
   const token = await resolveAuthToken({ auth: config.raw.auth, baseUrl: config.raw.baseUrl, query: config.raw.query });
-  const headers: Record<string, string> = { 'Content-Type': 'audio/wav' };
+  // Provider baseline headers
+  let headers: Record<string, string> = { 'content-type': 'audio/wav' };
+  // Merge user headers (supports HeadersInit or record function); user cannot override Authorization set below
+  const provided =
+    typeof config.raw.headers === 'function' ? await config.raw.headers({ transport: 'http' }) : config.raw.headers;
+
+  if (provided) {
+    headers = mergeHeaders(headers, normalizeHeaders(provided));
+  }
   if (!hasEmbeddedToken({ auth: config.raw.auth, baseUrl: config.raw.baseUrl, query: config.raw.query }) && token) {
-    headers.Authorization = chooseAuthScheme(config.raw, token);
+    headers.authorization = chooseAuthScheme(config.raw, token);
   }
 
   const body = await toArrayBuffer(audio);
@@ -81,23 +82,6 @@ function chooseAuthScheme(options: DeepgramOptions<DeepgramModelId>, token: stri
   if (auth?.token || auth?.getToken) return `Bearer ${token}`;
   if (token.includes('.')) return `Bearer ${token}`;
   return `Token ${token}`;
-}
-
-async function toArrayBuffer(source: AudioSource): Promise<ArrayBuffer> {
-  if (source instanceof Uint8Array) {
-    return sliceBuffer(source);
-  }
-  if (source instanceof ArrayBuffer) {
-    return source;
-  }
-  return await source.arrayBuffer();
-}
-
-function sliceBuffer(view: Uint8Array): ArrayBuffer {
-  if (view.buffer instanceof ArrayBuffer && view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
-    return view.buffer;
-  }
-  return view.slice().buffer;
 }
 
 async function parseJson(response: Response): Promise<Record<string, unknown> | null> {
@@ -202,18 +186,6 @@ function readArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const numbers = value.filter((entry): entry is number => typeof entry === 'number');
   return numbers.length > 0 ? numbers : undefined;
-}
-
-function parseRetryAfter(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return Math.round(numeric * 1000);
-  const dateMs = Date.parse(value);
-  if (!Number.isNaN(dateMs)) {
-    const diff = dateMs - Date.now();
-    return diff > 0 ? diff : 0;
-  }
-  return undefined;
 }
 
 function readNumber(value: unknown): number | undefined {

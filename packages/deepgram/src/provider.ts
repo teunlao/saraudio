@@ -1,7 +1,7 @@
 import { defineProvider } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
-
-import { normalizeChannels, resolveConfig } from './config';
+import { normalizeChannels } from '@saraudio/utils';
+import { resolveConfig } from './config';
 import { type DeepgramModelId, SUPPORTED_FORMATS } from './models';
 import { transcribeHTTP } from './transport-http';
 import { createWsStream } from './transport-ws';

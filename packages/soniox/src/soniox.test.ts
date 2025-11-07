@@ -170,4 +170,52 @@ describe('soniox provider', () => {
       name: 'AuthenticationError',
     });
   });
+
+  test('http uses baseUrl builder and merges headers', async () => {
+    const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ text: 'ok', tokens: [] }),
+      } as unknown as Response),
+    );
+    globalThis.fetch = ((...args: Parameters<typeof fetch>) => fetchMock(...args)) as typeof fetch;
+    const provider = soniox({
+      auth: { apiKey: 'key' },
+      model: 'stt-rt-v3',
+      baseUrl: ({ defaultBaseUrl, params }) => `${defaultBaseUrl}?custom=1&${params.toString()}`,
+      headers: { 'X-Trace-Id': 't-1' },
+      languageHints: ['en'],
+    });
+    await provider.transcribe?.(new Uint8Array([1, 2]));
+    const call = fetchMock.mock.calls[0];
+    if (Array.isArray(call)) {
+      const url = call[0];
+      expect(typeof url === 'string' && url.includes('custom=1')).toBe(true);
+      const init = call[1] as RequestInit;
+      const headers = init.headers as HeadersInit;
+      // Authorization generated from auth
+      if (headers instanceof Headers) {
+        expect(headers.get('authorization')).toBe('Bearer key');
+        expect(headers.get('x-trace-id')).toBe('t-1');
+      }
+    }
+  });
+
+  test('ws uses baseUrl builder for final URL', async () => {
+    const provider = soniox({
+      auth: { apiKey: 'k' },
+      model: 'stt-rt-v3',
+      baseUrl: ({ defaultBaseUrl }) => `${defaultBaseUrl}?x=1`,
+    });
+    if (!provider.stream) throw new Error('ws stream expected');
+    const stream = provider.stream();
+    const connectPromise = stream.connect();
+    const socket = await getSocket();
+    expect(socket.url.includes('?x=1')).toBe(true);
+    socket.open();
+    await connectPromise;
+    expect(stream.status).toBe('ready');
+  });
 });

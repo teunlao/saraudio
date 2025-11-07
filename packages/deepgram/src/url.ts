@@ -18,11 +18,6 @@ export type ReplaceInput =
   | Record<string, string>;
 
 /** Append boolean query param if defined. */
-export function appendBoolean(params: URLSearchParams, key: string, value: boolean | undefined): void {
-  if (value === undefined) return;
-  params.set(key, value ? 'true' : 'false');
-}
-
 /** Append keyword boosting definitions in Deepgram expected format. */
 export function appendKeywords(
   params: URLSearchParams,
@@ -47,14 +42,6 @@ export function appendKeywords(
   });
 }
 
-/** Append a list of string values as repeated query params. */
-export function appendList(params: URLSearchParams, key: string, values: ReadonlyArray<string>): void {
-  values.forEach((value) => {
-    if (value.length === 0) return;
-    params.append(key, value);
-  });
-}
-
 /** Append find/replace rules in `search:replace` format accepted by Deepgram. */
 export function appendReplace(params: URLSearchParams, replace: ReplaceInput): void {
   if (Array.isArray(replace)) {
@@ -68,29 +55,4 @@ export function appendReplace(params: URLSearchParams, replace: ReplaceInput): v
     if (search.length === 0) return;
     params.append('replace', `${search}:${replacement}`);
   });
-}
-
-/** Append arbitrary extra query params (skips null/undefined). */
-export function appendExtra(
-  params: URLSearchParams,
-  extra: Record<string, string | number | boolean | null | undefined>,
-): void {
-  Object.entries(extra).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
-    params.set(key, String(value));
-  });
-}
-
-/** Build final URL from base + query or via custom builder callback. */
-export async function buildUrl(
-  baseUrl: string,
-  builder: ((params: URLSearchParams) => string | Promise<string>) | undefined,
-  params: URLSearchParams,
-): Promise<string> {
-  if (builder) {
-    const result = await builder(params);
-    return result;
-  }
-  const query = params.toString();
-  return query.length > 0 ? `${baseUrl}?${query}` : baseUrl;
 }

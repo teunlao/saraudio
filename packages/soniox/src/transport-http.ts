@@ -1,6 +1,13 @@
 import type { WordTimestamp } from '@saraudio/core';
-import { AuthenticationError, ProviderError, RateLimitError, type TranscriptResult } from '@saraudio/core';
+import {
+  AuthenticationError,
+  ProviderError,
+  RateLimitError,
+  type TranscriptResult,
+  type UrlBuilder,
+} from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
+import { buildUrl, mergeHeaders, normalizeHeaders, toArrayBuffer } from '@saraudio/utils';
 import { resolveApiKey } from './auth';
 import type { SonioxResolvedConfig } from './config';
 import type { SonioxHttpTranscriptResponse } from './SonioxHttpTranscriptionModel';
@@ -16,27 +23,37 @@ export async function transcribeHTTP(
   _signal?: AbortSignal,
   logger?: Logger,
 ): Promise<TranscriptResult> {
-  const base = resolved.httpBase.replace(/\/?$/, '');
-  const url = `${base}/transcriptions`;
+  // Build final URL: supports baseUrl string or builder from BaseProviderOptions
+  const defaultBase = `${resolved.httpBase.replace(/\/?$/, '')}/transcriptions`;
+  const base = resolved.raw.baseUrl;
+  const builder: UrlBuilder | undefined = typeof base === 'function' ? base : undefined;
+  const baseUrl: string =
+    typeof base === 'string' && base.length > 0 ? `${base.replace(/\/?$/, '')}/transcriptions` : defaultBase;
+  const params = new URLSearchParams();
+  const extra = resolved.raw.query;
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) {
+      if (v === null || v === undefined) continue;
+      params.set(k, String(v));
+    }
+  }
+  const url = builder
+    ? await builder({ defaultBaseUrl: defaultBase, params, transport: 'http' })
+    : buildUrl(baseUrl, params);
   const token = await resolveApiKey(resolved.raw);
 
-  let body: BodyInit;
-  if (audio instanceof Blob) {
-    body = audio;
-  } else if (audio instanceof Uint8Array) {
-    const copy = new Uint8Array(audio.byteLength);
-    copy.set(audio);
-    body = copy.buffer;
-  } else if (audio instanceof ArrayBuffer) {
-    body = audio;
-  } else {
-    throw new ProviderError('Unsupported audio payload for Soniox HTTP', 'soniox');
-  }
-  const headers: HeadersInit = {
-    // Soniox REST commonly uses Bearer auth
-    Authorization: `Bearer ${token}`,
+  const body: BodyInit = audio instanceof Blob ? audio : await toArrayBuffer(audio);
+  // Baseline headers and user merge (user header form is flexible)
+  let headers: Record<string, string> = {
     'content-type': audio instanceof Blob ? audio.type || 'application/octet-stream' : 'application/octet-stream',
   };
+  const provided =
+    typeof resolved.raw.headers === 'function'
+      ? await resolved.raw.headers({ transport: 'http' })
+      : resolved.raw.headers;
+  if (provided) headers = mergeHeaders(headers, normalizeHeaders(provided));
+  // Authorization from auth takes precedence
+  headers.authorization = `Bearer ${token}`;
 
   const res = await fetch(url, { method: 'POST', headers, body });
   const contentType = res.headers.get('content-type') || '';
