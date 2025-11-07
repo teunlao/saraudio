@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/solid",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "SolidJS bindings for SARAUDIO pipeline",
   "license": "ISC",
   "sideEffects": false,

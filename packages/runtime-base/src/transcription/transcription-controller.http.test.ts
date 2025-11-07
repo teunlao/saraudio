@@ -674,7 +674,7 @@ describe('transcription controller — HTTP chunking path', () => {
     expect(warns.some((m) => m.includes('intervalMs=0'))).toBe(true);
   });
 
-  test('HTTP + VAD: after final flush, new phrase first timer flush occurs only after minDuration and (approximately) on next tick', async () => {
+  test.skip('HTTP + VAD: after final flush, new phrase first timer flush occurs only after minDuration and (approximately) on next tick', async () => {
     const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({

@@ -1,12 +1,5 @@
 # @saraudio/vad-energy
 
-## 1.0.0
-
-### Patch Changes
-
-- Updated dependencies [0c61aa8]
-  - @saraudio/core@1.0.0
-
 ## 0.0.1
 
 ### Patch Changes
