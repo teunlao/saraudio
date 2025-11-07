@@ -1,3 +1,4 @@
+export { buildStages, toSegmenterInput, type WithStagesOptions } from './pipeline/build-stages';
 export type {
   ConnectionOptions,
   CreateTranscriptionOptions,

@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { Frame, Pipeline, StageController } from '@saraudio/core';
+import type { Frame, Pipeline, SegmenterOptions, StageController } from '@saraudio/core';
 
 export interface RuntimeLogger {
   info: (...messages: ReadonlyArray<unknown>) => void;
@@ -57,7 +57,4 @@ export interface NodeRuntime {
   run(options: RunOptions): Promise<void>;
 }
 
-export interface SegmenterFactoryOptions {
-  preRollMs?: number;
-  hangoverMs?: number;
-}
+export type SegmenterFactoryOptions = SegmenterOptions;

@@ -46,21 +46,17 @@ export function watchAudioDeviceChanges(handler: () => void): () => void {
   if (!hasNavigator() || !navigator.mediaDevices) {
     return () => void 0;
   }
-  const md = navigator.mediaDevices as unknown as MediaDevices & {
-    addEventListener?: (type: string, cb: () => void) => void;
-    removeEventListener?: (type: string, cb: () => void) => void;
-    ondevicechange?: (() => void) | null;
-  };
+  const mediaDevices = navigator.mediaDevices;
 
   const cb = () => handler();
-  if (typeof md.addEventListener === 'function' && typeof md.removeEventListener === 'function') {
-    md.addEventListener('devicechange', cb);
-    return () => md.removeEventListener?.('devicechange', cb);
+  if (typeof mediaDevices.addEventListener === 'function' && typeof mediaDevices.removeEventListener === 'function') {
+    mediaDevices.addEventListener('devicechange', cb);
+    return () => mediaDevices.removeEventListener?.('devicechange', cb);
   }
-  const prev = md.ondevicechange ?? null;
-  md.ondevicechange = cb;
+  const prev = mediaDevices.ondevicechange ?? null;
+  mediaDevices.ondevicechange = cb;
   return () => {
-    md.ondevicechange = prev;
+    mediaDevices.ondevicechange = prev;
   };
 }
 

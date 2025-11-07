@@ -2,14 +2,14 @@ import type { Logger } from '@saraudio/utils';
 import { downmixToMono, float32ToInt16 } from '@saraudio/utils';
 import type { BrowserFrameSource } from '../types';
 
-export interface MediaRecorderSourceConfig {
+export interface AudioContextSourceConfig {
   constraints?: MediaStreamConstraints['audio'] | MediaTrackConstraints;
   frameSize?: number;
   logger: Logger;
   onStream?: (stream: MediaStream | null) => void;
 }
 
-export const createMediaRecorderSource = (config: MediaRecorderSourceConfig): BrowserFrameSource => {
+export const createAudioContextSource = (config: AudioContextSourceConfig): BrowserFrameSource => {
   let mediaStream: MediaStream | null = null;
   let audioContext: AudioContext | null = null;
   let sourceNode: MediaStreamAudioSourceNode | null = null;

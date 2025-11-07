@@ -1,4 +1,5 @@
 import { createSegmenterController, Pipeline, type StageController } from '@saraudio/core';
+import { buildStages, toSegmenterInput } from '@saraudio/runtime-base';
 import { createRuntimeServices } from './context/services';
 import { createPcm16FileSource } from './sources/pcm16-file-source';
 import { createPcm16StreamSource } from './sources/pcm16-stream-source';
@@ -12,26 +13,7 @@ import type {
   SegmenterFactoryOptions,
 } from './types';
 
-const isStageController = (value: unknown): value is StageController =>
-  typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
-
-const toSegmenterInput = (value: SegmenterFactoryOptions | StageController | undefined): StageController => {
-  if (!value) {
-    return createSegmenterController();
-  }
-  if (isStageController(value)) {
-    return value;
-  }
-  return createSegmenterController(value);
-};
-
-const buildStages = (options?: NodePipelineOptions): StageController[] => {
-  const base: StageController[] = options?.stages ? [...options.stages] : [];
-  if (options?.segmenter !== false) {
-    base.push(toSegmenterInput(options?.segmenter as SegmenterFactoryOptions | StageController | undefined));
-  }
-  return base;
-};
+export { buildStages, toSegmenterInput };
 
 export const createNodeRuntime = (options?: RuntimeOptions): NodeRuntime => {
   const services = createRuntimeServices(options);

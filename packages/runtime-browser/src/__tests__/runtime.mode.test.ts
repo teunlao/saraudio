@@ -49,6 +49,31 @@ describe('createBrowserRuntime mode resolution', () => {
 
     (globalThis as { MediaRecorder?: unknown }).MediaRecorder = MockMediaRecorder as unknown as typeof MediaRecorder;
 
+    // New capability check relies on AudioContext and getUserMedia presence.
+    if (typeof (globalThis as { AudioContext?: unknown }).AudioContext === 'undefined') {
+      class FakeAudioContext {}
+      Object.defineProperty(globalThis, 'AudioContext', {
+        configurable: true,
+        value: FakeAudioContext,
+      });
+    }
+    if (typeof (globalThis as { navigator?: unknown }).navigator === 'undefined') {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: {
+          mediaDevices: {
+            getUserMedia: async () => ({ getTracks: () => [] }),
+          },
+        },
+      });
+    } else {
+      const nav = (globalThis as { navigator: Navigator }).navigator;
+      Object.defineProperty(nav, 'mediaDevices', {
+        configurable: true,
+        value: { ...(nav.mediaDevices ?? {}), getUserMedia: async () => ({ getTracks: () => [] }) },
+      });
+    }
+
     const onFallback = vi.fn();
 
     const runtime = createBrowserRuntime({

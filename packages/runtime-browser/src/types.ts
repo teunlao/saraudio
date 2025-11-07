@@ -1,4 +1,4 @@
-import type { Frame, Pipeline, StageController } from '@saraudio/core';
+import type { Frame, Pipeline, SegmenterOptions, StageController } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 
 export type RuntimeMode = 'worklet' | 'media-recorder' | 'auto';
@@ -25,10 +25,7 @@ export interface BrowserRuntimeOptions {
   onFallback?: (reason: FallbackReason) => void;
 }
 
-export interface SegmenterFactoryOptions {
-  preRollMs?: number;
-  hangoverMs?: number;
-}
+export type SegmenterFactoryOptions = SegmenterOptions;
 
 export interface BrowserPipelineOptions {
   stages?: StageController[];

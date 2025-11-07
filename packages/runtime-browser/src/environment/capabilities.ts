@@ -3,6 +3,8 @@ export interface CapabilitySnapshot {
   sharedArrayBuffer: boolean;
   crossOriginIsolated: boolean;
   mediaRecorder: boolean;
+  audioContext: boolean;
+  getUserMedia: boolean;
 }
 
 export const snapshotCapabilities = (): CapabilitySnapshot => ({
@@ -11,9 +13,13 @@ export const snapshotCapabilities = (): CapabilitySnapshot => ({
   crossOriginIsolated:
     typeof window !== 'undefined' && 'crossOriginIsolated' in window ? Boolean(window.crossOriginIsolated) : false,
   mediaRecorder: typeof MediaRecorder !== 'undefined',
+  audioContext: typeof AudioContext !== 'undefined',
+  getUserMedia: typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
 });
 
 export const supportsWorkletPipeline = (snapshot: CapabilitySnapshot): boolean =>
   snapshot.crossOriginIsolated && snapshot.sharedArrayBuffer && snapshot.audioWorklet;
 
-export const supportsMediaRecorderPipeline = (snapshot: CapabilitySnapshot): boolean => snapshot.mediaRecorder;
+// Historically called "MediaRecorder" pipeline; actual implementation uses AudioContext + ScriptProcessor.
+export const supportsMediaRecorderPipeline = (snapshot: CapabilitySnapshot): boolean =>
+  snapshot.audioContext && snapshot.getUserMedia;

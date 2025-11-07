@@ -1,6 +1,6 @@
 import { noopLogger } from '@saraudio/utils';
 import { describe, expect, it, vi } from 'vitest';
-import { createMediaRecorderSource } from '../sources/media-recorder-source';
+import { createAudioContextSource } from '../sources/audio-context-source';
 
 // Type definitions for test stubs
 interface FakeAudioBuffer {
@@ -132,9 +132,9 @@ class FakeAudioContext {
   } as unknown as MediaDevices,
 } as unknown as Navigator;
 
-describe('media-recorder-source idempotent start/stop', () => {
+describe('audio-context-source idempotent start/stop', () => {
   it('start() and stop() are idempotent and ignore late frames', async () => {
-    const source = createMediaRecorderSource({ logger: noopLogger });
+    const source = createAudioContextSource({ logger: noopLogger });
 
     // First start should succeed
     await expect(source.start(() => void 0)).resolves.toBeUndefined();

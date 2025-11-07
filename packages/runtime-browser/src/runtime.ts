@@ -1,11 +1,12 @@
 import { createSegmenterController, Pipeline, type StageController } from '@saraudio/core';
+import { buildStages, toSegmenterInput } from '@saraudio/runtime-base';
 import { createRuntimeServices } from './context/services';
 import {
   snapshotCapabilities,
   supportsMediaRecorderPipeline,
   supportsWorkletPipeline,
 } from './environment/capabilities';
-import { createMediaRecorderSource } from './sources/media-recorder-source';
+import { createAudioContextSource } from './sources/audio-context-source';
 import { createWorkletMicrophoneSource } from './sources/worklet-source';
 import type {
   BrowserFrameSource,
@@ -19,26 +20,7 @@ import type {
   SegmenterFactoryOptions,
 } from './types';
 
-const isStageController = (value: unknown): value is StageController =>
-  typeof value === 'object' && value !== null && typeof (value as StageController).create === 'function';
-
-export const toSegmenterInput = (value: SegmenterFactoryOptions | StageController | undefined): StageController => {
-  if (!value) {
-    return createSegmenterController();
-  }
-  if (isStageController(value)) {
-    return value;
-  }
-  return createSegmenterController(value);
-};
-
-export const buildStages = (opts?: BrowserPipelineOptions): StageController[] => {
-  const base: StageController[] = opts?.stages ? [...opts.stages] : [];
-  if (opts?.segmenter !== false) {
-    base.push(toSegmenterInput(opts?.segmenter));
-  }
-  return base;
-};
+export { buildStages, toSegmenterInput };
 
 const resolveMode = (
   requested: RuntimeMode,
@@ -130,9 +112,11 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
           services.logger.debug('fallback disabled, rethrowing error');
           throw error;
         }
-        services.logger.warn('AudioWorklet microphone source not available, falling back to MediaRecorder', { error });
+        services.logger.warn('AudioWorklet microphone source not available, falling back to AudioContext source', {
+          error,
+        });
         options?.onFallback?.('worklet-unsupported');
-        return createMediaRecorderSource({
+        return createAudioContextSource({
           constraints: sourceOptions?.constraints,
           frameSize: options?.recorder?.frameSize,
           onStream: sourceOptions?.onStream,
@@ -140,8 +124,8 @@ export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRu
         });
       }
     }
-    services.logger.debug('creating MediaRecorder source');
-    return createMediaRecorderSource({
+    services.logger.debug('creating AudioContext source');
+    return createAudioContextSource({
       constraints: sourceOptions?.constraints,
       frameSize: options?.recorder?.frameSize,
       onStream: sourceOptions?.onStream,
