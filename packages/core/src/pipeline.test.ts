@@ -100,9 +100,9 @@ describe('Pipeline', () => {
       },
     });
 
-    const controller = (metadata: string): StageController => ({
+    const controller = (key: string): StageController => ({
       id: 'controller-under-test',
-      metadata,
+      key,
       create: () => {
         created += 1;
         return createStage();
@@ -154,7 +154,7 @@ describe('Pipeline', () => {
 
     const controller = (label: string): StageController => ({
       id: `controller-${label}`,
-      metadata: label,
+      key: label,
       create: () => makeStage(label),
     });
 
@@ -225,16 +225,16 @@ describe('Pipeline', () => {
     expect(teardown).toBe(1);
   });
 
-  it('uses controller isEqual when provided even if metadata differs', () => {
+  it('uses symmetric isEqual when provided even if keys are absent', () => {
     const pipeline = new Pipeline({
       now: () => 0,
       createId: () => 'id',
     });
 
     let createCount = 0;
-    const controller = (key: string): StageController => ({
+    const controller = (_label: string): StageController => ({
       id: 'custom-equal',
-      metadata: key,
+      // no key -> force isEqual path
       create: () => {
         createCount += 1;
         return {

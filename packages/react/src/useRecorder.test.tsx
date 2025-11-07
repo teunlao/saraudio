@@ -115,7 +115,7 @@ describe('useRecorder', () => {
           stages: [
             {
               id: 'stage',
-              metadata: threshold,
+              key: String(threshold),
               create: () => ({ name: 'stage', setup: () => {}, handle: () => {} }),
             } as StageController,
           ],
@@ -137,7 +137,7 @@ describe('useRecorder', () => {
   it('reuses recorder when stage configuration is referentially stable', async () => {
     const stage: StageController = {
       id: 'stable',
-      metadata: 1,
+      key: '1',
       create: () => ({ name: 'stable', setup: () => {}, handle: () => {} }),
     } as StageController;
 

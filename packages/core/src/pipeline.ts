@@ -35,7 +35,11 @@ export interface StageController<TStage extends Stage = Stage> {
   create(): TStage;
   configure?(stage: TStage): void;
   isEqual?(other: StageController<TStage>): boolean;
-  readonly metadata?: unknown;
+  /**
+   * Stable, string key representing controller configuration.
+   * If present on both sides, equality is decided solely by (id, key).
+   */
+  readonly key?: string;
 }
 
 export type StageInput = Stage | StageController;
@@ -53,10 +57,15 @@ const controllersMatch = (a: StageController | undefined, b: StageController): b
   if (!a) return false;
   if (a === b) return true;
   if (a.id !== b.id) return false;
-  if (typeof a.isEqual === 'function') return a.isEqual(b);
-  if (typeof b.isEqual === 'function') return b.isEqual(a);
-  if (a.metadata !== undefined || b.metadata !== undefined) {
-    return a.metadata === b.metadata;
+  // Prefer cheap and deterministic key match when available on both
+  const aHasKey = typeof a.key === 'string';
+  const bHasKey = typeof b.key === 'string';
+  if (aHasKey || bHasKey) {
+    return a.key !== undefined && b.key !== undefined && a.key === b.key;
+  }
+  // Fallback to symmetric isEqual when both provide it
+  if (typeof a.isEqual === 'function' && typeof b.isEqual === 'function') {
+    return a.isEqual(b) && b.isEqual(a);
   }
   return false;
 };

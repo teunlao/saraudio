@@ -153,13 +153,10 @@ export const createSegmenterController = (options: SegmenterOptions = {}): Stage
 
   return {
     id: 'segmenter',
+    key,
     create: () => createSegmenterStage(normalized),
     configure: (stage) => {
       stage.updateConfig(normalized);
     },
-    isEqual(other) {
-      return other.id === 'segmenter' && other.metadata === key;
-    },
-    metadata: key,
   };
 };

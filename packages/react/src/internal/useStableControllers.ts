@@ -5,10 +5,13 @@ const controllersMatch = (a: StageController | undefined, b: StageController): b
   if (!a) return false;
   if (a === b) return true;
   if (a.id !== b.id) return false;
-  if (typeof a.isEqual === 'function') return a.isEqual(b);
-  if (typeof b.isEqual === 'function') return b.isEqual(a);
-  if (a.metadata !== undefined || b.metadata !== undefined) {
-    return a.metadata === b.metadata;
+  const aHasKey = typeof a.key === 'string';
+  const bHasKey = typeof b.key === 'string';
+  if (aHasKey || bHasKey) {
+    return a.key !== undefined && b.key !== undefined && a.key === b.key;
+  }
+  if (typeof a.isEqual === 'function' && typeof b.isEqual === 'function') {
+    return a.isEqual(b) && b.isEqual(a);
   }
   return false;
 };

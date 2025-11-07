@@ -29,7 +29,7 @@ const createRuntime = (pipeline: Pipeline, overrides: Partial<BrowserRuntime>): 
     createPipeline: () => pipeline,
     createSegmenter: () => ({
       id: 'segmenter',
-      metadata: 'default',
+      key: 'default',
       create: () => baseStage,
       configure: () => {},
     }),

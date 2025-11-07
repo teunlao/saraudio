@@ -29,7 +29,7 @@ const createRuntime = (pipeline: Pipeline, overrides?: Partial<BrowserRuntime>):
     createPipeline: () => pipeline,
     createSegmenter: () => ({
       id: 'segmenter',
-      metadata: 'default',
+      key: 'default',
       create: () => baseStage(),
       configure: () => {},
     }),
@@ -67,9 +67,9 @@ describe('Recorder.configure', () => {
       },
     });
 
-    const controller = (metadata: string): StageController => ({
+    const controller = (key: string): StageController => ({
       id: 'custom-stage',
-      metadata,
+      key,
       create: () => {
         created += 1;
         return createStage();
@@ -82,7 +82,7 @@ describe('Recorder.configure', () => {
     const runtime = createRuntime(pipeline, {
       createSegmenter: () => ({
         id: 'segmenter',
-        metadata: 'default',
+        key: 'default',
         create: () => createStage(),
         configure: () => {},
       }),
@@ -157,7 +157,7 @@ describe('Recorder.configure', () => {
 });
 
 describe('Recorder.update', () => {
-  it('reuses controller-backed stages when metadata is unchanged', async () => {
+  it('reuses controller-backed stages when key is unchanged', async () => {
     const pipeline = new Pipeline({
       now: () => 0,
       createId: () => 'id',
@@ -176,9 +176,9 @@ describe('Recorder.update', () => {
       },
     });
 
-    const controller = (metadata: string): StageController => ({
+    const controller = (key: string): StageController => ({
       id: 'custom-stage',
-      metadata,
+      key,
       create: () => {
         created += 1;
         return createStage();
@@ -191,7 +191,7 @@ describe('Recorder.update', () => {
     const runtime = createRuntime(pipeline, {
       createSegmenter: () => ({
         id: 'segmenter',
-        metadata: 'default',
+        key: 'default',
         create: () => createStage(),
         configure: () => {},
       }),

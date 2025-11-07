@@ -110,13 +110,10 @@ export const createEnergyVadController = (options: EnergyVadOptions = {}): Stage
 
   return {
     id: 'vad-energy',
+    key,
     create: () => createEnergyVadStage(normalized),
     configure: (stage) => {
       stage.updateConfig(normalized);
     },
-    isEqual(other) {
-      return other.id === 'vad-energy' && other.metadata === key;
-    },
-    metadata: key,
   };
 };
