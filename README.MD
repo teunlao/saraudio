@@ -58,7 +58,7 @@ Audio Input → VAD Stage → Segmenter → Your App
 - `@saraudio/meter` - Audio level measurement
 
 ### Runtimes
-- `@saraudio/runtime-browser` - Browser implementation (AudioWorklet/MediaRecorder)
+- `@saraudio/runtime-browser` - Browser implementation (AudioWorklet/AudioContext)
 - `@saraudio/runtime-node` - Node.js microphone support
 
 ### Framework bindings
@@ -79,7 +79,7 @@ Check the `examples/` directory for working demos:
 
 ## Key features
 
-- **Low latency** - 10ms with AudioWorklet, automatic fallback to MediaRecorder
+- **Low latency** - 10ms with AudioWorklet, automatic fallback to AudioContext
 - **Modular design** - Use only what you need, tree-shakeable
 - **TypeScript first** - Full type safety and great DX
 
@@ -88,7 +88,7 @@ Check the `examples/` directory for working demos:
 - Chrome/Edge 90+ (AudioWorklet)
 - Firefox 85+ (AudioWorklet)
 - Safari 14.5+ (AudioWorklet with limitations)
-- Older browsers use MediaRecorder fallback (higher latency)
+- Older browsers use AudioContext fallback (higher latency)
 
 ## Development
 

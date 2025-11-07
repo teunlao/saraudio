@@ -20,7 +20,7 @@ pnpm --filter @saraudio/example-react-mic-visualizer lint
 - `useSaraudioPipeline` + `useSaraudioMicrophone` form the PCM stream and segments (using the selected microphone).
 - Live VAD + separate input level indicator and recent event log for debugging.
 - Built-in device selection with instant list updates without restarting the app; threshold (dB) and smoothing can be adjusted.
-- Hook reports fallbacks (e.g., switching to MediaRecorder).
+- Hook reports fallbacks (e.g., switching to AudioContext).
 
 ## Requirements
 

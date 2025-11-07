@@ -52,7 +52,7 @@ pnpm --filter @saraudio/runtime-browser test
 - `@saraudio/core` - Pipeline, stages, events
 - `@saraudio/utils` - Logger, DSP utils (rms, int16/float32)
 - `@saraudio/vad-energy` - Energy-based VAD stage
-- `@saraudio/runtime-browser` - Browser runtime (MediaRecorder, AudioWorklet)
+- `@saraudio/runtime-browser` - Browser runtime (AudioContext, AudioWorklet)
 
 ---
 

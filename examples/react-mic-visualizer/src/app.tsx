@@ -351,7 +351,7 @@ export const App = () => {
                 >
                   <option value='auto'>auto</option>
                   <option value='worklet'>worklet</option>
-                  <option value='media-recorder'>media-recorder</option>
+                  <option value='media-recorder'>audio-context</option>
                 </select>
               </div>
             </label>

@@ -40,7 +40,7 @@ const resolveMode = (
     if (supportsMediaRecorderPipeline(snapshot)) {
       return 'media-recorder';
     }
-    throw new Error('MediaRecorder API is not supported in this environment');
+    throw new Error('AudioContext/getUserMedia is not supported in this environment');
   }
 
   if (requested === 'media-recorder') {
@@ -48,7 +48,7 @@ const resolveMode = (
       return 'media-recorder';
     }
     notifyFallback('media-recorder-unsupported');
-    throw new Error('MediaRecorder API is not supported in this environment');
+    throw new Error('AudioContext/getUserMedia is not supported in this environment');
   }
 
   // auto mode
@@ -60,7 +60,7 @@ const resolveMode = (
     return 'media-recorder';
   }
   notifyFallback('media-recorder-unsupported');
-  throw new Error('Neither AudioWorklet nor MediaRecorder are supported in this environment');
+  throw new Error('Neither AudioWorklet nor AudioContext are supported in this environment');
 };
 
 export const createBrowserRuntime = (options?: BrowserRuntimeOptions): BrowserRuntime => {

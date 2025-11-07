@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe('createBrowserRuntime mode resolution', () => {
-  it('falls back to MediaRecorder when worklet pipeline unsupported', () => {
+  it('falls back to AudioContext when worklet pipeline unsupported', () => {
     (globalThis as { SharedArrayBuffer?: unknown }).SharedArrayBuffer = undefined;
     Object.defineProperty(globalThis, 'crossOriginIsolated', {
       configurable: true,

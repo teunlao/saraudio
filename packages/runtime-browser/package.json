@@ -1,7 +1,7 @@
 {
   "name": "@saraudio/runtime-browser",
   "version": "0.0.3",
-  "description": "Browser runtime for SARAUDIO pipelines (AudioWorklet + MediaRecorder)",
+  "description": "Browser runtime for SARAUDIO pipelines (AudioWorklet + AudioContext)",
   "license": "ISC",
   "sideEffects": false,
   "main": "./dist/index.js",

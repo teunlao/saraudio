@@ -186,7 +186,7 @@ const isRunning = computed(() => rec.status.value === 'running' || rec.status.va
               class='w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50'>
               <option value='auto'>Auto</option>
               <option value='worklet'>Worklet</option>
-              <option value='media-recorder'>Media Recorder</option>
+              <option value='media-recorder'>AudioContext</option>
             </select>
           </div>
           <div class='flex items-end'>
@@ -306,4 +306,3 @@ const isRunning = computed(() => rec.status.value === 'running' || rec.status.va
     </div>
   </div>
 </template>
-

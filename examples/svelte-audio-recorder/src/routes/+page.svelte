@@ -221,7 +221,7 @@ const isRunning = $derived(rec.status === 'running' || rec.status === 'acquiring
           >
             <option value='auto'>Auto</option>
             <option value='worklet'>Worklet</option>
-            <option value='media-recorder'>Media Recorder</option>
+            <option value='media-recorder'>AudioContext</option>
           </select>
         </div>
         <div class='flex items-end'>

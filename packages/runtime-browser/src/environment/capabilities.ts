@@ -2,7 +2,7 @@ export interface CapabilitySnapshot {
   audioWorklet: boolean;
   sharedArrayBuffer: boolean;
   crossOriginIsolated: boolean;
-  mediaRecorder: boolean;
+  mediaRecorder: boolean; // legacy alias retained for API mode name
   audioContext: boolean;
   getUserMedia: boolean;
 }

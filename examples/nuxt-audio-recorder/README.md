@@ -7,7 +7,7 @@ Full-featured demo showcasing advanced SARAUDIO capabilities with Nuxt 4.
 **Reactive Configuration**
 - Live VAD threshold and smoothing adjustment during recording
 - Dynamic stage reconfiguration without restarting (`computed` stages → `useRecorder`)
-- Runtime mode switching (worklet/media-recorder/auto)
+- Runtime mode switching (worklet/audio-context/auto)
 
 **Complete Audio Pipeline**
 - Device enumeration and selection with `useAudioInputs`
