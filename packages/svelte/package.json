@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/svelte",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Svelte 5 bindings for SARAUDIO pipeline",
   "license": "ISC",
   "sideEffects": false,

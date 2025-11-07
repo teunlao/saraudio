@@ -1,5 +1,16 @@
 ## 0.0.2
 
+## 0.0.4
+
+### Patch Changes
+
+- 7c7e90f: Rename runtime mode from media-recorder to audio-context
+- Updated dependencies [7c7e90f]
+- Updated dependencies [7c7e90f]
+  - @saraudio/core@0.1.1
+  - @saraudio/vad-energy@0.0.4
+  - @saraudio/runtime-base@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes

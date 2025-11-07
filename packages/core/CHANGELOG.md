@@ -1,5 +1,11 @@
 ## 0.0.2
 
+## 0.1.1
+
+### Patch Changes
+
+- 7c7e90f: Replace StageController.metadata with key field and improve matching logic with symmetric isEqual check
+
 ## 0.1.0
 
 ### Minor Changes
