@@ -4,8 +4,15 @@
     { "path": "packages/utils" },
     { "path": "packages/core" },
     { "path": "packages/vad-energy" },
+    { "path": "packages/meter" },
+    { "path": "packages/runtime-base" },
     { "path": "packages/runtime-node" },
     { "path": "packages/runtime-browser" },
-    { "path": "packages/react-saraudio" }
+    { "path": "packages/deepgram" },
+    { "path": "packages/soniox" },
+    { "path": "packages/react" },
+    { "path": "packages/vue" },
+    { "path": "packages/svelte" },
+    { "path": "packages/solid" }
   ]
 }

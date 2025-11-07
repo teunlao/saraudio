@@ -254,7 +254,7 @@ onUnmounted(() => {
           @refresh="audioInputs.refresh"
         />
 
-        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" :disabled="recorderRunning" />
+        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" />
       </div>
 
       <DeepgramProviderControls

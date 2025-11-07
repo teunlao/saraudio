@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import type { SubscribeHandle, TranscriptResult } from '@saraudio/core';
+import type { MeterPayload, TranscriptResult, VADScore } from '@saraudio/core';
 import {
   DEEPGRAM_MODEL_DEFINITIONS,
+  deepgram,
   isLanguageSupported,
   type DeepgramLanguage,
   type DeepgramModelId,
 } from '@saraudio/deepgram';
 import { meter } from '@saraudio/meter';
-import type { RuntimeMode } from '@saraudio/runtime-browser';
+import {
+  createRecorder,
+  createTranscription,
+  listAudioInputs,
+  watchAudioDeviceChanges,
+  type RuntimeMode,
+} from '@saraudio/runtime-browser';
 import { vadEnergy } from '@saraudio/vad-energy';
-import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRuntimeConfig } from '#app';
-import { useDeepgramRealtime } from './useDeepgramRealtime';
 import PageShell from '../../components/demo/PageShell.vue';
 import SectionCard from '../../components/demo/SectionCard.vue';
 import DeepgramDeviceSelect from '../../components/deepgram/DeviceSelect.vue';
@@ -34,78 +39,262 @@ const selectedLanguage = ref<DeepgramLanguage>('en-US');
 
 const config = useRuntimeConfig();
 
-const audioInputs = useAudioInputs({ promptOnMount: true, autoSelectFirst: true, rememberLast: true });
-const devicesList = computed(() => audioInputs.devices.value ?? []);
-const selectedDeviceId = computed({
-  get: () => audioInputs.selectedDeviceId.value,
-  set: (value: string) => {
-    audioInputs.selectedDeviceId.value = value;
+// Device management with pure API
+const devicesList = ref<MediaDeviceInfo[]>([]);
+const selectedDeviceId = ref<string>('');
+const enumerating = ref(false);
+
+async function refreshDevices() {
+  enumerating.value = true;
+  try {
+    const result = await listAudioInputs({ requestPermission: 'auto' });
+    devicesList.value = result.devices;
+    const firstDevice = result.devices[0];
+    if (firstDevice && !selectedDeviceId.value) {
+      selectedDeviceId.value = firstDevice.deviceId;
+    }
+  } finally {
+    enumerating.value = false;
+  }
+}
+
+// Recorder with pure API
+const recorderStatus = ref<'idle' | 'acquiring' | 'running' | 'stopped'>('idle');
+const vadState = ref<VADScore | null>(null);
+const meterState = ref<MeterPayload>({ rms: 0, peak: 0, db: -100, tsMs: 0 });
+
+const rec = createRecorder({
+  stages: [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()],
+  segmenter: { preRollMs: 120, hangoverMs: 250 },
+  source: { microphone: { deviceId: selectedDeviceId.value } },
+  format: { sampleRate: 16000 },
+  mode: mode.value,
+  allowFallback: allowFallback.value,
+});
+
+// Subscribe to recorder events
+const unsubVad = rec.onVad((vad) => {
+  vadState.value = vad;
+});
+
+const unsubMeter = rec.pipeline.events.on('meter', (payload) => {
+  meterState.value = payload;
+});
+
+const unsubError = rec.onError((error) => {
+  console.error('[recorder] error:', error);
+});
+
+// Deepgram transcription with pure API
+const transcript = ref('');
+const partial = ref('');
+const latestResults = ref<TranscriptResult[]>([]);
+const events = ref<string[]>([]);
+
+const MAX_EVENTS = 60;
+const MAX_RESULTS = 20;
+
+const pushEvent = (message: string) => {
+  events.value.unshift(`${new Date().toLocaleTimeString()} ${message}`);
+  if (events.value.length > MAX_EVENTS) events.value.length = MAX_EVENTS;
+};
+
+const resolveToken = async (): Promise<string> => {
+  const key = config.public.deepgramApiKey;
+  if (!key || typeof key !== 'string' || key.trim().length === 0) {
+    throw new Error('Missing NUXT_PUBLIC_DEEPGRAM_API_KEY');
+  }
+  return key.trim();
+};
+
+const provider = deepgram({
+  model: selectedModel.value,
+  language: selectedLanguage.value,
+  interimResults: true,
+  punctuate: true,
+  tokenProvider: resolveToken,
+});
+
+let transcription = createTranscription({
+  provider,
+  transport: transportMode.value,
+  recorder: rec,
+  preconnectBufferMs: 120,
+  flushOnSegmentEnd: true,
+  connection: {
+    ws: {
+      retry: {
+        enabled: true,
+        maxAttempts: 5,
+        baseDelayMs: 300,
+        factor: 2,
+        maxDelayMs: 5000,
+        jitterRatio: 0.2,
+      },
+    },
+    http: {
+      chunking: {
+        intervalMs: 2500,
+        minDurationMs: 1000,
+        overlapMs: 300,
+        maxInFlight: 1,
+        timeoutMs: 15000,
+      },
+    },
   },
 });
 
-const rec = useRecorder({
-  stages: computed(() => [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()]),
-  segmenter: { preRollMs: 120, hangoverMs: 250 },
-  source: computed(() => ({ microphone: { deviceId: audioInputs.selectedDeviceId.value } })),
-  format: { sampleRate: 16000 },
-  mode,
-  allowFallback,
+let unsubTranscript = transcription.onTranscript((result) => {
+  if (transcript.value) {
+    transcript.value += ' ' + result.text;
+  } else {
+    transcript.value = result.text;
+  }
+  latestResults.value.unshift(result);
+  if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
+  pushEvent(`[transcript] ${result.text}`);
 });
 
-const levels = useMeter({ pipeline: rec.pipeline });
-const vadState = computed(() => rec.vad.value);
+let unsubPartial = transcription.onPartial((text) => {
+  partial.value = text;
+});
 
-const dg = useDeepgramRealtime();
-let frameSubscription: SubscribeHandle | null = null;
-let readySubscription: SubscribeHandle | null = null;
+let unsubTransError = transcription.onError((err) => {
+  pushEvent(`[error] ${err.message}`);
+});
 
-const transcriptText = computed(() => dg.transcript.value.trim());
-const partialText = computed(() => dg.partial.value);
-const latestResults = computed<TranscriptResult[]>(() =>
-  dg.segments.value.map((text): TranscriptResult => ({ text, language: selectedLanguage.value })),
-);
+let unsubStatus = transcription.onStatusChange((status) => {
+  pushEvent(`[status] ${status}`);
+});
+
+// Recreate transcription when transport changes
+watch(transportMode, async (newTransport, oldTransport) => {
+  if (newTransport === oldTransport) return;
+
+  pushEvent(`[config] transport changed: ${oldTransport} → ${newTransport}`);
+
+  const wasConnected = transcription.isConnected;
+
+  if (wasConnected) {
+    await transcription.disconnect();
+  }
+
+  unsubTranscript();
+  unsubPartial();
+  unsubTransError();
+  unsubStatus();
+
+  transcript.value = '';
+  partial.value = '';
+  latestResults.value = [];
+
+  transcription = createTranscription({
+    provider,
+    transport: newTransport,
+    recorder: rec,
+    preconnectBufferMs: 120,
+    flushOnSegmentEnd: true,
+    connection: {
+      ws: {
+        retry: {
+          enabled: true,
+          maxAttempts: 5,
+          baseDelayMs: 300,
+          factor: 2,
+          maxDelayMs: 5000,
+          jitterRatio: 0.2,
+        },
+      },
+      http: {
+        chunking: {
+          intervalMs: 2500,
+          minDurationMs: 1000,
+          overlapMs: 300,
+          maxInFlight: 1,
+          timeoutMs: 15000,
+        },
+      },
+    },
+  });
+
+  unsubTranscript = transcription.onTranscript((result) => {
+    if (transcript.value) {
+      transcript.value += ' ' + result.text;
+    } else {
+      transcript.value = result.text;
+    }
+    latestResults.value.unshift(result);
+    if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
+    pushEvent(`[transcript] ${result.text}`);
+  });
+
+  unsubPartial = transcription.onPartial((text) => {
+    partial.value = text;
+  });
+
+  unsubTransError = transcription.onError((err) => {
+    pushEvent(`[error] ${err.message}`);
+  });
+
+  unsubStatus = transcription.onStatusChange((status) => {
+    pushEvent(`[status] ${status}`);
+  });
+
+  if (wasConnected) {
+    await transcription.connect();
+  }
+});
+
+const transcriptText = computed(() => transcript.value.trim());
+const partialText = computed(() => partial.value);
+const transcriptionStatus = computed(() => transcription.status);
+const isConnected = computed(() => transcription.isConnected);
 const missingApiKey = computed(() => {
   const key = config.public.deepgramApiKey;
   return !key || typeof key !== 'string' || key.trim().length === 0;
 });
-const events = computed(() => dg.log.value);
-const isConnected = computed(() => dg.status.value === 'open');
 
-onMounted(() => {
-  readySubscription = rec.onReady(() => {
-    console.log('[nuxt] recorder ready — streaming normalized frames');
+onMounted(async () => {
+  await refreshDevices();
+  const unwatch = watchAudioDeviceChanges(() => {
+    void refreshDevices();
   });
-  frameSubscription = rec.subscribeFrames((frame) => {
-
-    dg.sendPcm16(frame.pcm, frame.sampleRate);
-  });
+  onUnmounted(unwatch);
 });
 
 async function start() {
-  dg.connect();
+  await transcription.connect();
+  recorderStatus.value = 'acquiring';
   await rec.start();
+  recorderStatus.value = 'running';
+  pushEvent('[action] recording + transcription started');
 }
 
 async function stop() {
   await rec.stop();
-  levels.reset();
-  dg.close();
+  recorderStatus.value = 'stopped';
+  meterState.value = { rms: 0, peak: 0, db: -100, tsMs: 0 };
+  await transcription.disconnect();
+  pushEvent('[action] recording stopped, transcription disconnected');
 }
 
 const clearTranscript = () => {
-  dg.clear();
+  transcript.value = '';
+  partial.value = '';
+  latestResults.value = [];
 };
 
 const clearEvents = () => {
-  dg.clearLog();
+  events.value = [];
 };
 
-const forceEndpoint = () => {
-  dg.log.value.unshift('[action] force endpoint not available (manual WS demo)');
-  if (dg.log.value.length > 60) dg.log.value.length = 60;
+const forceEndpoint = async () => {
+  await transcription.forceEndpoint();
+  pushEvent('[action] force endpoint');
 };
 
-const isRunning = computed(() => rec.status.value === 'running' || rec.status.value === 'acquiring');
+const isRunning = computed(() => recorderStatus.value === 'running' || recorderStatus.value === 'acquiring');
+const isHttpMode = computed(() => transportMode.value === 'http');
 
 const modelEntries = computed(() =>
   (Object.keys(DEEPGRAM_MODEL_DEFINITIONS) as DeepgramModelId[]).map((id) => ({
@@ -116,33 +305,43 @@ const modelEntries = computed(() =>
 
 const availableLanguages = computed(() => [...DEEPGRAM_MODEL_DEFINITIONS[selectedModel.value].languages]);
 
-dg.model.value = selectedModel.value;
-dg.language.value = selectedLanguage.value;
-
 watch(selectedModel, (modelId) => {
-  dg.model.value = modelId;
   if (!isLanguageSupported(modelId, selectedLanguage.value)) {
     const fallback = DEEPGRAM_MODEL_DEFINITIONS[modelId].languages[0] as DeepgramLanguage;
     selectedLanguage.value = fallback;
-    dg.language.value = fallback;
   }
 });
 
-watch(selectedLanguage, (lang) => {
-  dg.language.value = lang;
+// Update recorder config on settings change
+watch([thresholdDb, smoothMs], () => {
+  rec.update({
+    stages: [vadEnergy({ thresholdDb: thresholdDb.value, smoothMs: smoothMs.value }), meter()],
+  });
+});
+
+watch(selectedDeviceId, (deviceId) => {
+  rec.update({
+    source: { microphone: { deviceId } },
+  });
 });
 
 onUnmounted(() => {
-  readySubscription?.()
-  frameSubscription?.()
+  unsubVad();
+  unsubMeter();
+  unsubError();
+  unsubTranscript();
+  unsubPartial();
+  unsubTransError();
+  unsubStatus();
+  rec.dispose();
   void stop();
 });
 </script>
 
 <template>
   <PageShell
-    title="Deepgram Realtime · Nuxt + SARAUDIO"
-    description="Live transcription using AudioWorklet/MediaRecorder pipeline"
+    title="Deepgram Manual API · Pure SARAUDIO"
+    description="Live transcription using pure SARAUDIO API without Vue integration hooks"
   >
     <template #alert>
       <div v-if="missingApiKey" class="p-4 rounded bg-red-900/40 border border-red-700 text-sm">
@@ -158,10 +357,10 @@ onUnmounted(() => {
           :devices="devicesList"
           :disabled="isRunning"
           show-refresh
-          :enumerating="audioInputs.enumerating.value"
-          @refresh="audioInputs.refresh"
+          :enumerating="enumerating"
+          @refresh="refreshDevices"
         />
-        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" :disabled="isRunning" />
+        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" />
       </div>
 
       <DeepgramProviderControls
@@ -172,15 +371,15 @@ onUnmounted(() => {
         :models="modelEntries"
         :languages="availableLanguages"
         :mode-disabled="isRunning"
-        :transport-disabled="true"
+        :transport-disabled="isRunning"
       />
 
       <DeepgramRecorderActions
         :start-disabled="isRunning || missingApiKey"
         :stop-disabled="!isRunning"
-        :force-disabled="true"
-        :show-force="true"
-        :status="dg.status.value"
+        :force-disabled="!isConnected"
+        :show-force="!isHttpMode"
+        :status="transcriptionStatus"
         :is-connected="isConnected"
         @start="start"
         @stop="stop"
@@ -191,10 +390,10 @@ onUnmounted(() => {
     <DeepgramStatsRow
       :vad-speech="vadState?.speech ?? false"
       :vad-score="vadState?.score ?? null"
-      :rms="levels.rms.value"
-      :db="levels.db.value"
-      transport="websocket"
-      :manual-ws="true"
+      :rms="meterState.rms"
+      :db="meterState.db"
+      :transport="transcription.transport"
+      :manual-ws="false"
     />
 
     <section class="grid lg:grid-cols-2 gap-6">
