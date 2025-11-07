@@ -7,12 +7,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
+// Full platform surface: core, utils, runtimes, and UI bindings
 const platform = [
   { name: '@saraudio/core', dir: 'packages/core' },
   { name: '@saraudio/utils', dir: 'packages/utils' },
   { name: '@saraudio/runtime-base', dir: 'packages/runtime-base' },
   { name: '@saraudio/runtime-browser', dir: 'packages/runtime-browser' },
+  { name: '@saraudio/runtime-node', dir: 'packages/runtime-node' },
+  { name: '@saraudio/react', dir: 'packages/react' },
   { name: '@saraudio/vue', dir: 'packages/vue' },
+  { name: '@saraudio/svelte', dir: 'packages/svelte' },
+  { name: '@saraudio/solid', dir: 'packages/solid' },
 ];
 
 function readVersion(path) {
@@ -44,4 +49,3 @@ console.error('\nExpected all platform packages to share the same MAJOR.');
 console.error('If introducing a breaking change, create a changeset that bumps MAJOR for the whole platform group.');
 console.error('Helper: pnpm changeset:platform-major');
 process.exit(1);
-

@@ -12,7 +12,11 @@ const platform = [
   '@saraudio/utils',
   '@saraudio/runtime-base',
   '@saraudio/runtime-browser',
+  '@saraudio/runtime-node',
+  '@saraudio/react',
   '@saraudio/vue',
+  '@saraudio/svelte',
+  '@saraudio/solid',
 ];
 
 const id = `platform-major-${Date.now()}`;
@@ -24,4 +28,3 @@ const header = ['---', ...platform.map((p) => `'${p}': major`), '---'].join('\n'
 const body = `\n${message}\n`;
 writeFileSync(file, `${header}${body}`);
 console.log(`Created ${file}`);
-
