@@ -25,7 +25,13 @@ if (!Array.isArray(packages) || packages.length === 0) {
   process.exit(0);
 }
 
-const interesting = packages.filter((pkg) => pkg && pkg.type !== 'patch');
+const getType = (pkg) => {
+  const type = pkg && pkg.type;
+  if (type === 'major' || type === 'minor' || type === 'patch') return type;
+  return 'patch';
+};
+
+const interesting = packages.filter((pkg) => pkg && getType(pkg) !== 'patch');
 if (interesting.length === 0) {
   console.log('Only patch packages were published; skipping GitHub release.');
   setOutput('should_release', 'false');
@@ -35,7 +41,7 @@ if (interesting.length === 0) {
 const tag = `release-${process.env.GITHUB_RUN_ID ?? Date.now()}`;
 const title = `Release ${tag}`;
 const body = interesting
-  .map((pkg) => `- ${pkg.name}@${pkg.version} (${pkg.type})`)
+  .map((pkg) => `- ${pkg.name}@${pkg.version} (${getType(pkg)})`)
   .join('\n');
 
 setOutput('should_release', 'true');

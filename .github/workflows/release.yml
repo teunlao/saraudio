@@ -62,7 +62,7 @@ jobs:
         if: steps.changesets.outputs.published == 'true'
         run: |
           echo "🎉 Packages published!"
-          echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version) (\(.type))"'
+          echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version) (\(.type // "unknown"))"'
 
       - name: Prepare filtered release notes
         if: steps.changesets.outputs.published == 'true'
