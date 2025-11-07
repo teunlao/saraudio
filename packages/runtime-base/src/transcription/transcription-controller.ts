@@ -17,6 +17,41 @@ import { connectWsTransport } from './transports/ws-transport';
 
 type ProviderUpdateOptions<P extends TranscriptionProvider> = Parameters<P['update']>[0];
 
+export interface RetryOptions {
+  enabled?: boolean;
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  factor?: number;
+  maxDelayMs?: number;
+  jitterRatio?: number;
+}
+
+export interface HttpChunkingOptions {
+  intervalMs?: number;
+  minDurationMs?: number;
+  overlapMs?: number;
+  maxInFlight?: number;
+  timeoutMs?: number;
+}
+
+export interface ConnectionOptions {
+  ws?: {
+    /**
+     * How to handle silence in WebSocket mode.
+     * - 'keep' (default): send all frames continuously
+     * - 'drop': send only during speech (based on VAD)
+     * - 'mute': keep cadence by sending zeroed frames during silence
+     */
+    silencePolicy?: 'keep' | 'drop' | 'mute';
+    /** Retry policy for transient errors. */
+    retry?: RetryOptions;
+  };
+  http?: {
+    /** Chunked sending options for HTTP providers. */
+    chunking?: HttpChunkingOptions;
+  };
+}
+
 export interface CreateTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> {
   provider: P;
   recorder?: Recorder;
@@ -26,23 +61,8 @@ export interface CreateTranscriptionOptions<P extends TranscriptionProvider = Tr
   flushOnSegmentEnd?: boolean;
   /** Max duration of pre-connect audio buffer to avoid losing early speech (ms). Default: 60, soft-max: 120. */
   preconnectBufferMs?: number;
-  /** Chunked sending options for HTTP providers (ignored for WebSocket). */
-  chunking?: {
-    intervalMs?: number;
-    minDurationMs?: number;
-    overlapMs?: number;
-    maxInFlight?: number;
-    timeoutMs?: number;
-  };
-  /** Retry policy for transient errors. */
-  retry?: {
-    enabled?: boolean;
-    maxAttempts?: number; // total attempts including the first one
-    baseDelayMs?: number; // base backoff
-    factor?: number; // exponential factor
-    maxDelayMs?: number; // cap
-    jitterRatio?: number; // 0..1, multiplicative jitter
-  };
+  /** Connection options for WebSocket and HTTP transports. */
+  connection?: ConnectionOptions;
   // httpClient?: HttpClient // YAGNI: добавим при первой HTTP интеграции
 }
 
@@ -84,6 +104,7 @@ export function createTranscription<P extends TranscriptionProvider>(
   const statusSubs = new Set<(s: StreamStatus) => void>();
   let unsubscribeRecorder: (() => void) | null = null;
   let unsubscribeSegment: (() => void) | null = null;
+  let unsubscribeVad: (() => void) | null = null;
   let unsubscribeStream: Array<() => void> = [];
   let httpTransport: ReturnType<typeof createHttpTransport> | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,7 +118,7 @@ export function createTranscription<P extends TranscriptionProvider>(
     maxDelayMs: 10_000,
     jitterRatio: 0,
   };
-  const retryCfg = { ...retryDefaults, ...(opts.retry ?? {}) };
+  const retryCfg = { ...retryDefaults, ...(opts.connection?.ws?.retry ?? {}) };
   const retryConfig: RetryConfig = {
     baseDelayMs: retryCfg.baseDelayMs,
     factor: retryCfg.factor,
@@ -276,7 +297,7 @@ export function createTranscription<P extends TranscriptionProvider>(
     if (selectedTransport === 'http') {
       if (!httpTransport) {
         // If user wants segment-driven semantics, default intervalMs to 0 (no timer) unless explicitly provided.
-        const userInterval = opts.chunking?.intervalMs;
+        const userInterval = opts.connection?.http?.chunking?.intervalMs;
         const effectiveInterval = userInterval === undefined && opts.flushOnSegmentEnd === true ? 0 : userInterval;
 
         if ((effectiveInterval ?? 0) <= 0 && opts.flushOnSegmentEnd !== true) {
@@ -304,7 +325,7 @@ export function createTranscription<P extends TranscriptionProvider>(
             errorSubs.forEach((h) => h(err));
             setStatus('error');
           },
-          chunking: { ...opts.chunking, intervalMs: effectiveInterval },
+          chunking: { ...opts.connection?.http?.chunking, intervalMs: effectiveInterval },
         });
       }
       connected = true;
@@ -355,13 +376,37 @@ export function createTranscription<P extends TranscriptionProvider>(
         unsubscribeRecorder();
       }
       // Start with all frames; after transport is resolved, we'll re-subscribe if HTTP+segment-only.
+      const silencePolicy = opts.connection?.ws?.silencePolicy ?? 'keep';
+      let speechActive = false;
+      if (silencePolicy === 'drop' || silencePolicy === 'mute') {
+        if (unsubscribeVad) unsubscribeVad();
+        unsubscribeVad = recorder.onVad((v) => {
+          speechActive = v.speech;
+        });
+      }
       unsubscribeRecorder = recorder.subscribeFrames((frame) => {
         if (!connected) {
           preconnectBuffer.push(frame);
         } else if (httpTransport) {
           httpTransport.aggregator.push({ pcm: frame.pcm, sampleRate: frame.sampleRate, channels: frame.channels });
         } else if (stream) {
-          stream.send(frame);
+          if (selectedTransport === 'websocket') {
+            if (silencePolicy === 'keep') {
+              stream.send(frame);
+            } else if (silencePolicy === 'drop') {
+              if (speechActive) stream.send(frame);
+            } else {
+              // mute: keep cadence with zeroed frames during silence
+              if (speechActive) {
+                stream.send(frame);
+              } else {
+                const zeros = new Int16Array(frame.pcm.length);
+                stream.send({ ...frame, pcm: zeros });
+              }
+            }
+          } else {
+            stream.send(frame);
+          }
         }
       });
 
@@ -418,6 +463,10 @@ export function createTranscription<P extends TranscriptionProvider>(
       if (unsubscribeRecorder) {
         unsubscribeRecorder();
         unsubscribeRecorder = null;
+      }
+      if (unsubscribeVad) {
+        unsubscribeVad();
+        unsubscribeVad = null;
       }
       if (unsubscribeSegment) {
         unsubscribeSegment();

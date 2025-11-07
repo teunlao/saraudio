@@ -38,7 +38,9 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0, maxInFlight: 1, timeoutMs: 1000 },
+      connection: {
+        http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0, maxInFlight: 1, timeoutMs: 1000 } },
+      },
       flushOnSegmentEnd: true,
     });
 
@@ -60,7 +62,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
     const finals: TranscriptResult[] = [];
     controller.onTranscript((r) => finals.push(r));
@@ -77,7 +79,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
     let count = 0;
     controller.onTranscript(() => {
@@ -99,7 +101,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -123,7 +125,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -148,7 +150,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       preconnectBufferMs: 20,
     });
 
@@ -174,7 +176,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -204,7 +206,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -237,7 +239,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 } } },
     });
 
     await controller.connect();
@@ -256,7 +258,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -282,7 +284,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -307,7 +309,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       preconnectBufferMs: 20,
     });
 
@@ -331,7 +333,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     await controller.connect();
@@ -344,7 +346,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     await controller.connect();
@@ -358,7 +360,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -385,7 +387,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     controller.onError(() => {
@@ -407,7 +409,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -433,7 +435,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     const finals: TranscriptResult[] = [];
@@ -460,7 +462,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     const start = Date.now();
@@ -477,7 +479,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
     await controller.connect();
@@ -496,7 +498,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 5, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 5, minDurationMs: 0 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -518,7 +520,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 5, minDurationMs: 5 },
+      connection: { http: { chunking: { intervalMs: 5, minDurationMs: 5 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -560,7 +562,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -585,7 +587,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 10, minDurationMs: 50 },
+      connection: { http: { chunking: { intervalMs: 10, minDurationMs: 50 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -624,7 +626,7 @@ describe('transcription controller — HTTP chunking path', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, maxInFlight: 1 } } },
       flushOnSegmentEnd: true,
     });
 
@@ -665,7 +667,7 @@ describe('transcription controller — HTTP chunking path', () => {
       provider: stub.provider,
       recorder,
       logger,
-      chunking: { intervalMs: 0, minDurationMs: 0 },
+      connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
       // flushOnSegmentEnd is intentionally omitted
     });
     await controller.connect();
@@ -679,7 +681,7 @@ describe('transcription controller — HTTP chunking path', () => {
       provider: stub.provider,
       recorder,
       // Tick every 10ms; require at least 3000ms of audio (scaled) before timer flush
-      chunking: { intervalMs: 10, minDurationMs: 3000 },
+      connection: { http: { chunking: { intervalMs: 10, minDurationMs: 3000 } } },
       flushOnSegmentEnd: true,
     });
 

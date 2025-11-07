@@ -8,6 +8,7 @@ import type {
 } from '@saraudio/core';
 import type { Recorder } from '@saraudio/runtime-browser';
 import {
+  type ConnectionOptions,
   type CreateTranscriptionOptions,
   createTranscription,
   type TranscriptionController,
@@ -18,32 +19,6 @@ import { onMounted, onUnmounted, ref, shallowRef, toValue, watch } from 'vue';
 
 import type { UseRecorderResult } from './useRecorder';
 import { useRecorder } from './useRecorder';
-
-interface RetryOptions {
-  enabled?: boolean;
-  maxAttempts?: number;
-  baseDelayMs?: number;
-  factor?: number;
-  maxDelayMs?: number;
-  jitterRatio?: number;
-}
-
-interface HttpChunkingOptions {
-  intervalMs?: number;
-  minDurationMs?: number;
-  overlapMs?: number;
-  maxInFlight?: number;
-  timeoutMs?: number;
-}
-
-interface ConnectionOptions {
-  ws?: {
-    retry?: RetryOptions;
-  };
-  http?: {
-    chunking?: HttpChunkingOptions;
-  };
-}
 
 export interface UseTranscriptionOptions<P extends TranscriptionProvider = TranscriptionProvider> {
   provider: MaybeRefOrGetter<P>;
@@ -237,8 +212,7 @@ export function useTranscription<P extends TranscriptionProvider>(
         const t = options.transport ? toValue(options.transport) : undefined;
         return (t ?? 'auto') as 'auto' | Transport;
       })(),
-      chunking: options.connection?.http?.chunking,
-      retry: options.connection?.ws?.retry,
+      connection: options.connection,
     };
 
     const controller = createTranscription(controllerOptions);

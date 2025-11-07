@@ -1,7 +1,10 @@
 import type { TranscriptionProvider } from '@saraudio/core';
 import {
   type CreateTranscriptionOptions as BaseOptions,
+  type ConnectionOptions,
   createTranscription as createTranscriptionBase,
+  type HttpChunkingOptions,
+  type RetryOptions,
   type TranscriptionController,
 } from '@saraudio/runtime-base';
 
@@ -34,4 +37,4 @@ export function createTranscription<P extends TranscriptionProvider>(
   });
 }
 
-export type { TranscriptionController };
+export type { ConnectionOptions, HttpChunkingOptions, RetryOptions, TranscriptionController };

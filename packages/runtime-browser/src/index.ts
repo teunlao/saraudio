@@ -16,8 +16,11 @@ export {
 } from './recorder';
 export { buildStages, createBrowserRuntime } from './runtime';
 export {
+  type ConnectionOptions,
   type CreateTranscriptionOptions,
   createTranscription,
+  type HttpChunkingOptions,
+  type RetryOptions,
   type TranscriptionController,
 } from './transcription';
 export type {

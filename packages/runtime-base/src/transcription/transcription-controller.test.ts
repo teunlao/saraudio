@@ -179,7 +179,7 @@ describe('createTranscription controller', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      retry: { maxAttempts: 2, baseDelayMs: 5 },
+      connection: { ws: { retry: { maxAttempts: 2, baseDelayMs: 5 } } },
     });
     await controller.connect();
     expect(controller.isConnected).toBe(false);
@@ -363,7 +363,7 @@ describe('createTranscription controller', () => {
 
       const controller = createTranscription({
         provider: stub.provider,
-        chunking: { intervalMs: 10, minDurationMs: 0 },
+        connection: { http: { chunking: { intervalMs: 10, minDurationMs: 0 } } },
       });
 
       await controller.connect();
@@ -471,7 +471,7 @@ describe('createTranscription controller', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      retry: { baseDelayMs: 10, jitterRatio: 0 },
+      connection: { ws: { retry: { baseDelayMs: 10, jitterRatio: 0 } } },
     });
     await controller.connect();
     expect(controller.isConnected).toBe(true);
@@ -483,7 +483,7 @@ describe('createTranscription controller', () => {
     const controller = createTranscription({
       provider: stub.provider,
       recorder,
-      retry: { baseDelayMs: 5, jitterRatio: 0 },
+      connection: { ws: { retry: { baseDelayMs: 5, jitterRatio: 0 } } },
     });
     await controller.connect();
     expect(controller.isConnected).toBe(true);
@@ -492,7 +492,11 @@ describe('createTranscription controller', () => {
   test('does not retry on AuthenticationError', async () => {
     const stub = createProviderStub({ retryPlan: [new AuthenticationError('bad'), 'ok'] });
     const recorder = createRecorderStub();
-    const controller = createTranscription({ provider: stub.provider, recorder, retry: { baseDelayMs: 5 } });
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      connection: { ws: { retry: { baseDelayMs: 5 } } },
+    });
     void controller.connect();
     await new Promise((r) => setTimeout(r, 20));
     expect(controller.isConnected).toBe(false);
@@ -502,7 +506,11 @@ describe('createTranscription controller', () => {
     vi.useFakeTimers();
     const stub = createProviderStub({ retryPlan: [new NetworkError('net'), 'ok'] });
     const recorder = createRecorderStub();
-    const controller = createTranscription({ provider: stub.provider, recorder, retry: { baseDelayMs: 200 } });
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      connection: { ws: { retry: { baseDelayMs: 200 } } },
+    });
     void controller.connect();
     // scheduled retry at 200ms
     await controller.disconnect();
@@ -525,5 +533,58 @@ describe('createTranscription controller', () => {
     expect(statuses).toContain('connecting');
     expect(statuses).toContain('connected');
     expect(statuses).toContain('ready');
+  });
+
+  test('WS silencePolicy=drop sends only during speech', async () => {
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      connection: { ws: { silencePolicy: 'drop' } },
+    });
+    await controller.connect();
+
+    // Initially no speech → frame is dropped
+    const f1 = makeFrame();
+    recorder.emitNormalizedFrame(f1);
+    expect(stub.streamInstance?.sentFrames.length ?? 0).toBe(0);
+
+    // Speech starts → frames are sent
+    recorder.emitVad({ score: 0.9, speech: true, tsMs: 0 });
+    const f2 = makeFrame();
+    recorder.emitNormalizedFrame(f2);
+    expect(stub.streamInstance?.lastSentFrame).toBe(f2);
+
+    // Speech ends → next frame dropped
+    recorder.emitVad({ score: 0.1, speech: false, tsMs: 10 });
+    const f3 = makeFrame();
+    recorder.emitNormalizedFrame(f3);
+    expect(stub.streamInstance?.lastSentFrame).toBe(f2);
+  });
+
+  test('WS silencePolicy=mute keeps cadence with zeroed frames during silence', async () => {
+    const stub = createProviderStub({ reuseStream: true });
+    const recorder = createRecorderStub();
+    const controller = createTranscription({
+      provider: stub.provider,
+      recorder,
+      connection: { ws: { silencePolicy: 'mute' } },
+    });
+    await controller.connect();
+
+    // Silence → zeroed frame
+    const f1 = makeFrameWithSamples(8);
+    recorder.emitNormalizedFrame(f1);
+    const sent1 = stub.streamInstance?.lastSentFrame;
+    expect(sent1?.pcm.some((v) => v !== 0)).toBe(false);
+
+    // Speech → real frame content
+    recorder.emitVad({ score: 0.9, speech: true, tsMs: 0 });
+    const f2 = makeFrameWithSamples(8);
+    recorder.emitNormalizedFrame(f2);
+    const sent2 = stub.streamInstance?.lastSentFrame;
+    // Non-zero expected (original data)
+    expect(sent2?.pcm.some((v) => v !== 0)).toBe(true);
   });
 });
