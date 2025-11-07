@@ -1,3 +1,4 @@
+import { float32ToInt16 } from '@saraudio/utils';
 import type { Frame, Segment } from '../types';
 
 // Simple PCM16 chunk accumulator with duration helpers
@@ -106,15 +107,7 @@ export class RecordingAssembler {
   }
 
   onFrame(frame: Frame): void {
-    const pcm = frame.pcm instanceof Int16Array ? frame.pcm : new Int16Array(frame.pcm.length);
-    if (!(frame.pcm instanceof Int16Array)) {
-      // Avoid importing utils here; fall back to naive float clamp/scale
-      const src = frame.pcm;
-      for (let i = 0; i < src.length; i += 1) {
-        const s = Math.max(-1, Math.min(1, src[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-    }
+    const pcm = frame.pcm instanceof Int16Array ? frame.pcm : float32ToInt16(frame.pcm);
 
     // Track session bounds
     if (this.sessionStartMs === null) this.sessionStartMs = frame.tsMs;

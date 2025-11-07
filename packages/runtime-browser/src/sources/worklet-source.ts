@@ -98,16 +98,16 @@ export const createWorkletMicrophoneSource = (config: WorkletSourceConfig): Brow
   };
 
   const start: BrowserFrameSource['start'] = async (onFrame) => {
-    console.log('[worklet-source] start called', { isActive, lifecycleToken });
+    config.logger.debug('worklet-source start', { isActive, lifecycleToken });
     if (isActive) {
-      console.log('[worklet-source] already active, returning');
+      config.logger.debug('worklet-source already active, returning');
       return;
     }
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       throw new Error('mediaDevices.getUserMedia is not available in this environment');
     }
     const token = lifecycleToken + 1;
-    console.log('[worklet-source] starting with token', token);
+    config.logger.debug('worklet-source starting', { token });
     baseTs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     samplesConsumed = 0;
 
@@ -209,14 +209,14 @@ export const createWorkletMicrophoneSource = (config: WorkletSourceConfig): Brow
   };
 
   const stop: BrowserFrameSource['stop'] = async () => {
-    console.log('[worklet-source] stop called', { isActive, lifecycleToken });
+    config.logger.debug('worklet-source stop', { isActive, lifecycleToken });
     if (!isActive) {
-      console.log('[worklet-source] not active, returning');
+      config.logger.debug('worklet-source not active, returning');
       return;
     }
     isActive = false;
     lifecycleToken += 1;
-    console.log('[worklet-source] stopping with new token', lifecycleToken);
+    config.logger.debug('worklet-source stopping', { token: lifecycleToken });
 
     try {
       workletNode?.port?.close?.();

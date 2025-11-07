@@ -99,7 +99,7 @@ export class Pipeline {
   }
 
   configure({ stages }: { stages: StageInput[] }): void {
-    const previous = this.records.slice();
+    const previous: Array<StageRecord | undefined> = this.records.slice();
     const next: StageRecord[] = [];
 
     for (let i = 0; i < stages.length; i += 1) {
@@ -110,13 +110,13 @@ export class Pipeline {
         if (prevRecord && controllersMatch(prevRecord.controller, stageInput)) {
           stageInput.configure?.(prevRecord.stage as Stage);
           next.push({ stage: prevRecord.stage, controller: stageInput });
-          previous[i] = undefined as unknown as StageRecord;
+          previous[i] = undefined;
           continue;
         }
 
         if (prevRecord) {
           prevRecord.stage.teardown?.();
-          previous[i] = undefined as unknown as StageRecord;
+          previous[i] = undefined;
         }
 
         const stage = stageInput.create();
@@ -128,7 +128,7 @@ export class Pipeline {
 
       if (prevRecord) {
         prevRecord.stage.teardown?.();
-        previous[i] = undefined as unknown as StageRecord;
+        previous[i] = undefined;
       }
 
       const stage = stageInput;

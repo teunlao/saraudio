@@ -187,7 +187,7 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
       resolved.push(segmenter);
     }
     currentStages = resolved;
-    console.log('[recorder] refreshStages', {
+    runtime.services.logger.debug('recorder refreshStages', {
       status,
       stageCount: currentStages.length,
       stageIds: currentStages.map((controller) => controller.id),
@@ -252,13 +252,13 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   };
 
   const update = async (next: RecorderUpdateOptions = {}): Promise<void> => {
-    console.log('[recorder] update called');
+    runtime.services.logger.debug('recorder update called');
     pipelineManager.attach();
     const entries = Object.entries(next) as Array<[UpdateKey, RecorderUpdateOptions[UpdateKey]]>;
     let pipelineNeedsRefresh = entries.length === 0;
 
     const updateKeys = entries.map(([key]) => key);
-    console.log('[recorder] update: begin', {
+    runtime.services.logger.debug('recorder update begin', {
       status,
       keys: updateKeys,
       running: status === 'running',
@@ -283,7 +283,7 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
       refreshStages();
     }
 
-    console.log('[recorder] update: complete', {
+    runtime.services.logger.debug('recorder update complete', {
       status,
       reconfigured: pipelineNeedsRefresh ? currentStages.length : 0,
       segmentActive: pipelineManager.isSegmentActive,
@@ -295,9 +295,9 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
   };
 
   const start = async (): Promise<void> => {
-    console.log('[recorder] start called', { status });
+    runtime.services.logger.debug('recorder start', { status });
     if (status === 'acquiring' || status === 'running') {
-      console.log('[recorder] already acquiring/running, returning');
+      runtime.services.logger.debug('recorder already acquiring/running, returning');
       return;
     }
     lastError = null;
@@ -308,9 +308,9 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
     try {
       // Configure pipeline with stages (controllers allow dynamic reconfig)
       refreshStages();
-      console.log('[recorder] pipeline configured with', currentStages.length, 'stages');
+      runtime.services.logger.debug('recorder pipeline configured', { stages: currentStages.length });
 
-      console.log('[recorder] creating microphone source', {
+      runtime.services.logger.debug('creating microphone source', {
         mode: captureOptions.mode,
         allowFallback: captureOptions.allowFallback,
       });
@@ -360,13 +360,13 @@ export function createRecorder<E extends RecorderFrameEncoding = 'pcm16'>(
       .slice(1, 6)
       .map((line) => line.trim())
       .join(' → ');
-    console.log('[recorder] stop called', { status, hasSource: !!source, stack });
+    runtime.services.logger.debug('recorder stop', { status, hasSource: !!source, stack });
     if (status !== 'running' && status !== 'acquiring') {
-      console.log('[recorder] not running/acquiring, returning');
+      runtime.services.logger.debug('recorder not running/acquiring, returning');
       return;
     }
     if (!source) {
-      console.log('[recorder] no source, returning');
+      runtime.services.logger.debug('recorder no source, returning');
       return;
     }
     setStatus('stopping');

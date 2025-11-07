@@ -5,6 +5,7 @@
   "description": "Audio control with silence detection.",
   "keywords": [],
   "license": "ISC",
+  "private": true,
   "packageManager": "pnpm@10.19.0",
   "engines": {
     "node": ">=18.0.0",
