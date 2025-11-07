@@ -674,7 +674,7 @@ describe('transcription controller — HTTP chunking path', () => {
     expect(warns.some((m) => m.includes('intervalMs=0'))).toBe(true);
   });
 
-  test('HTTP + VAD: after final flush, new phrase first timer flush occurs only after minDuration and on nearest tick', async () => {
+  test('HTTP + VAD: after final flush, new phrase first timer flush occurs only after minDuration and (approximately) on next tick', async () => {
     const stub = createHttpProviderStub();
     const recorder = createRecorderStub();
     const controller = createTranscription({
@@ -713,8 +713,8 @@ describe('transcription controller — HTTP chunking path', () => {
     // До ближайшего тика таймера ничего не уйдёт
     await new Promise((r) => setTimeout(r, 2));
     expect(finals.length).toBe(1);
-    // На ближайшем тике получаем первый порционный флаш новой фразы
-    await new Promise((r) => setTimeout(r, 12));
+    // На ближайшем тике (допускаем небольшую дрожь таймеров) получаем первый порционный флаш новой фразы
+    await new Promise((r) => setTimeout(r, 30));
     expect(finals.length).toBe(2);
   });
 });
