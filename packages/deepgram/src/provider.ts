@@ -26,7 +26,7 @@ export function deepgram<M extends DeepgramModelId>(options: DeepgramOptions<M>)
       transports: { http: true, websocket: true },
     },
     get tokenProvider() {
-      return config.raw.tokenProvider;
+      return config.raw.auth?.getToken;
     },
     getPreferredFormat() {
       return { sampleRate: config.sampleRate, channels: config.channels, encoding: 'pcm16' } as const;

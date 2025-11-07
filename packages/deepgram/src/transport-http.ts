@@ -1,4 +1,4 @@
-import type { AudioSource, BatchOptions, TranscriptResult } from '@saraudio/core';
+import type { AudioSource, BatchOptions, TranscriptResult, UrlBuilder } from '@saraudio/core';
 import { AuthenticationError, NetworkError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { hasEmbeddedToken, resolveAuthToken } from './auth';
@@ -11,9 +11,9 @@ const DEFAULT_HTTP_BASE_URL = 'https://api.deepgram.com/v1/listen';
 
 export function resolveHttpConfig<M extends DeepgramModelId>(options: DeepgramOptions<M>): DeepgramResolvedConfig {
   const resolved = resolveConfig(options);
-  const baseUrl =
-    typeof options.baseUrl === 'string' && options.baseUrl.length > 0 ? options.baseUrl : DEFAULT_HTTP_BASE_URL;
-  return { ...resolved, baseUrl };
+  // baseUrl может быть строкой или билдером; HTTP путь использует строковый base в случае строки,
+  // в противном случае — дефолтный HTTP endpoint, а билдер будет применён на этапе сборки URL.
+  return { ...resolved };
 }
 
 export async function transcribeHTTP(
@@ -30,10 +30,25 @@ export async function transcribeHTTP(
     params.set('format', batchOptions.responseFormat);
   }
   params.set('interim_results', 'false');
-  const url = await buildUrl(config.baseUrl, config.raw.buildUrl, params);
-  const token = await resolveAuthToken(config.raw);
+  // extra query params из базовых опций
+  if (config.raw.query) {
+    Object.entries(config.raw.query).forEach(([k, v]) => {
+      if (v === null || v === undefined) return;
+      params.set(k, String(v));
+    });
+  }
+
+  const defaultBase = DEFAULT_HTTP_BASE_URL;
+  const base = config.raw.baseUrl;
+  const builder: UrlBuilder | undefined = typeof base === 'function' ? base : undefined;
+  const baseUrl: string = typeof base === 'string' && base.length > 0 ? base : defaultBase;
+  const url = builder
+    ? await builder({ defaultBaseUrl: defaultBase, params, transport: 'http' })
+    : await buildUrl(baseUrl, undefined, params);
+
+  const token = await resolveAuthToken({ auth: config.raw.auth, baseUrl: config.raw.baseUrl, query: config.raw.query });
   const headers: Record<string, string> = { 'Content-Type': 'audio/wav' };
-  if (!hasEmbeddedToken(config.raw) && token) {
+  if (!hasEmbeddedToken({ auth: config.raw.auth, baseUrl: config.raw.baseUrl, query: config.raw.query }) && token) {
     headers.Authorization = chooseAuthScheme(config.raw, token);
   }
 
@@ -61,15 +76,10 @@ export async function transcribeHTTP(
 }
 
 function chooseAuthScheme(options: DeepgramOptions<DeepgramModelId>, token: string): string {
-  if (options.apiKey && !options.token) {
-    return `Token ${token}`;
-  }
-  if (options.token) {
-    return `Bearer ${token}`;
-  }
-  if (token.includes('.')) {
-    return `Bearer ${token}`;
-  }
+  const auth = options.auth;
+  if (auth?.apiKey && !auth.token && !auth.getToken) return `Token ${token}`;
+  if (auth?.token || auth?.getToken) return `Bearer ${token}`;
+  if (token.includes('.')) return `Bearer ${token}`;
   return `Token ${token}`;
 }
 

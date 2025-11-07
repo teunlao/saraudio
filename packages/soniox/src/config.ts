@@ -32,10 +32,15 @@ export function resolveConfig(options: SonioxOptions): SonioxResolvedConfig {
   const channels = normalizeChannels(options.channels ?? DEFAULT_CHANNELS);
   const audioFormat = options.audioFormat ?? 'pcm_s16le';
   const queueBudgetMs = clamp(options.queueBudgetMs ?? DEFAULT_QUEUE_BUDGET_MS, QUEUE_MIN_MS, QUEUE_MAX_MS);
+  // Если задан baseUrl строкой, позволим ей переопределить дефолты транспорта, иначе оставим дефолты.
+  const base = options.baseUrl;
+  const wsUrl = typeof base === 'string' && base.startsWith('ws') ? base : DEFAULT_WS_URL;
+  const httpBase =
+    typeof base === 'string' && base.startsWith('http') && !base.startsWith('ws') ? base : DEFAULT_HTTP_BASE;
   return {
     raw: options,
-    wsUrl: options.wsUrl ?? DEFAULT_WS_URL,
-    httpBase: options.httpBaseUrl ?? DEFAULT_HTTP_BASE,
+    wsUrl,
+    httpBase,
     sampleRate,
     channels,
     audioFormat,

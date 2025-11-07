@@ -87,7 +87,7 @@ const provider = computed(() =>
   soniox({
     model: selectedModel.value,
     languageHints: [selectedLanguage.value],
-    tokenProvider: resolveToken,
+    auth: { getToken: resolveToken },
   }),
 );
 
@@ -268,4 +268,3 @@ onUnmounted(() => {
     <DeepgramEventLog :events="events" @clear="clearEvents" />
   </PageShell>
 </template>
-

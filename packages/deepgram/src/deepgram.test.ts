@@ -105,7 +105,7 @@ function createFrame(samples: number): { pcm: Int16Array; sampleRate: number; ch
 
 function createProvider(): DeepgramProvider {
   return deepgram({
-    apiKey: 'test-key',
+    auth: { apiKey: 'test-key' },
     model: 'nova-2',
     language: 'en-US',
     keepaliveMs: 8_000,
@@ -256,10 +256,10 @@ describe('deepgram provider', () => {
 
   test('uses custom URL builder when provided', async () => {
     const provider = deepgram({
-      apiKey: 'test-key',
+      auth: { apiKey: 'test-key' },
       model: 'nova-2',
       language: 'en-US',
-      buildUrl: (params) => `wss://example.test/listen?${params.toString()}&custom=1`,
+      baseUrl: ({ params }) => `wss://example.test/listen?${params.toString()}&custom=1`,
     });
     if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
@@ -272,7 +272,7 @@ describe('deepgram provider', () => {
   });
 
   test('tokenProvider supplies token via subprotocols', async () => {
-    const provider = deepgram({ tokenProvider: async () => 'jwt-token', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { getToken: async () => 'jwt-token' }, model: 'nova-2', language: 'en-US' });
     if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
@@ -284,7 +284,7 @@ describe('deepgram provider', () => {
 
   test('keepalive is clamped to minimum interval (1000ms)', async () => {
     vi.useFakeTimers();
-    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US', keepaliveMs: 500 });
+    const provider = deepgram({ auth: { apiKey: 'test-key' }, model: 'nova-2', language: 'en-US', keepaliveMs: 500 });
     if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
@@ -373,7 +373,7 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { apiKey: 'test-key' }, model: 'nova-2', language: 'en-US' });
     const result = await provider.transcribe?.(new Uint8Array([0, 1, 2]));
     expect(result?.text).toBe('hello http');
   });
@@ -410,7 +410,7 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { apiKey: 'test-key' }, model: 'nova-2', language: 'en-US' });
     if (!provider.transcribe) throw new Error('expected http-capable provider');
     const result = await provider.transcribe(new Uint8Array([0, 1, 2]));
 
@@ -442,7 +442,7 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ apiKey: 'bad-key', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { apiKey: 'bad-key' }, model: 'nova-2', language: 'en-US' });
     await expect(provider.transcribe?.(new Uint8Array([1]))).rejects.toBeInstanceOf(AuthenticationError);
   });
 
@@ -456,7 +456,7 @@ describe('deepgram provider', () => {
     );
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
-    const provider = deepgram({ apiKey: 'test-key', model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { apiKey: 'test-key' }, model: 'nova-2', language: 'en-US' });
     await expect(provider.transcribe?.(new Uint8Array([1]))).rejects.toSatisfy((error) => {
       return error instanceof RateLimitError && error.retryAfterMs === 2000;
     });
@@ -473,7 +473,7 @@ describe('deepgram provider', () => {
     globalThis.fetch = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetchMock(...args);
 
     const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature';
-    const provider = deepgram({ tokenProvider: async () => jwt, model: 'nova-2', language: 'en-US' });
+    const provider = deepgram({ auth: { getToken: async () => jwt }, model: 'nova-2', language: 'en-US' });
     await provider.transcribe?.(new Uint8Array([1]));
     const call = fetchMock.mock.calls[0];
     if (Array.isArray(call)) {

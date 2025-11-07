@@ -112,7 +112,7 @@ const provider = deepgram({
   language: selectedLanguage.value,
   interimResults: true,
   punctuate: true,
-  tokenProvider: resolveToken,
+  auth: { getToken: resolveToken },
 });
 
 let transcription = createTranscription({

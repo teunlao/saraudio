@@ -1,32 +1,36 @@
+import type { UrlBuilder } from '@saraudio/core';
 import { AuthenticationError } from '@saraudio/core';
 
 export interface MinimalAuthOptions {
-  apiKey?: string;
-  token?: string;
-  tokenProvider?: () => Promise<string>;
-  baseUrl?: string;
-  extraQueryParams?: Record<string, string | number | boolean | null | undefined>;
+  auth?: {
+    getToken?: () => Promise<string>;
+    token?: string;
+    apiKey?: string;
+  };
+  baseUrl?: string | UrlBuilder;
+  query?: Record<string, string | number | boolean | null | undefined>;
 }
 
 export async function resolveAuthToken(options: MinimalAuthOptions): Promise<string | null> {
-  if (options.tokenProvider) {
-    const token = await options.tokenProvider();
+  const auth = options.auth;
+  if (auth?.getToken) {
+    const token = await auth.getToken();
     if (!token) {
       throw new AuthenticationError('Deepgram tokenProvider returned an empty token');
     }
     return token;
   }
-  if (options.token) {
-    if (options.token.length === 0) {
+  if (auth?.token) {
+    if (auth.token.length === 0) {
       throw new AuthenticationError('Deepgram token must be non-empty');
     }
-    return options.token;
+    return auth.token;
   }
-  if (options.apiKey) {
-    if (options.apiKey.length === 0) {
+  if (auth?.apiKey) {
+    if (auth.apiKey.length === 0) {
       throw new AuthenticationError('Deepgram apiKey must be non-empty');
     }
-    return options.apiKey;
+    return auth.apiKey;
   }
   if (hasEmbeddedToken(options)) {
     return null;
@@ -35,11 +39,9 @@ export async function resolveAuthToken(options: MinimalAuthOptions): Promise<str
 }
 
 export function hasEmbeddedToken(options: MinimalAuthOptions): boolean {
-  const base = options.baseUrl ?? '';
-  if (base.includes('token=') || base.includes('access_token=')) {
-    return true;
-  }
-  const extra = options.extraQueryParams ?? {};
+  const base = typeof options.baseUrl === 'string' ? options.baseUrl : '';
+  if (base.includes('token=') || base.includes('access_token=')) return true;
+  const extra = options.query ?? {};
   return ['token', 'access_token', 'key'].some((k) => {
     const value = extra[k];
     return typeof value === 'string' && value.length > 0;

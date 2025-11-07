@@ -28,7 +28,6 @@ export const QUEUE_MAX_MS = 500;
 
 export interface DeepgramResolvedConfig {
   raw: DeepgramOptions<DeepgramModelId>;
-  baseUrl: string;
   queueBudgetMs: number;
   keepaliveMs: number;
   sampleRate: number;
@@ -58,7 +57,6 @@ export function resolveConfig<T extends DeepgramModelId>(options: DeepgramOption
   if (options.language && !isLanguageSupported(options.model, options.language)) {
     throw new Error(`Language ${options.language} is not supported by model ${options.model}`);
   }
-  const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const queueBudgetMs = clamp(options.queueBudgetMs ?? DEFAULT_QUEUE_BUDGET_MS, QUEUE_MIN_MS, QUEUE_MAX_MS);
   const keepaliveMs = clamp(options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS, KEEPALIVE_MIN_MS, KEEPALIVE_MAX_MS);
   const sampleRate = options.sampleRate ?? DEFAULT_SAMPLE_RATE;
@@ -66,7 +64,6 @@ export function resolveConfig<T extends DeepgramModelId>(options: DeepgramOption
   const baseParams = buildBaseParams({ ...options, sampleRate, channels });
   return {
     raw: options,
-    baseUrl,
     queueBudgetMs,
     keepaliveMs,
     sampleRate,

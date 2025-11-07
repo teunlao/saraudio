@@ -1,3 +1,4 @@
+import type { Logger } from '@saraudio/utils';
 import type { NormalizedFrame, RecorderFormatOptions } from '../format';
 
 export type Transport = 'websocket' | 'http';
@@ -27,6 +28,54 @@ export interface TranscriptResult {
 export type StreamStatus = 'idle' | 'connecting' | 'ready' | 'connected' | 'error' | 'disconnected';
 
 export type ProviderUpdateListener<TOptions> = (options: TOptions) => void;
+
+/**
+ * Build a final URL for HTTP or WebSocket transports.
+ * When provided, takes precedence over simple string baseUrl.
+ */
+export type UrlBuilder = (ctx: {
+  /** Provider's default base URL for the current transport. */
+  defaultBaseUrl: string;
+  /** Fully populated query params for this request. */
+  params: URLSearchParams;
+  /** The transport the URL is being built for. */
+  transport: Transport;
+}) => string | Promise<string>;
+
+/**
+ * Minimal, transport-agnostic options that every provider may support.
+ * Providers extend this type with their domain-specific configuration.
+ */
+export interface BaseProviderOptions {
+  /**
+   * Authentication parameters. Priority: getToken > token > apiKey.
+   * - Browser: prefer getToken() for ephemeral tokens.
+   * - Server/CLI: apiKey is acceptable.
+   */
+  auth?: {
+    getToken?: () => Promise<string>;
+    token?: string;
+    apiKey?: string;
+  };
+  /**
+   * Base URL (string) or URL builder callback. Applies to HTTP and WS.
+   * If string, params will be appended as a query string.
+   */
+  baseUrl?: string | UrlBuilder;
+  /** Additional query parameters; null/undefined values are skipped. */
+  query?: Record<string, string | number | boolean | null | undefined>;
+  /**
+   * Extra HTTP headers. In browsers, headers don't apply to native WebSocket.
+   * Authorization is derived from auth and should generally not be overridden.
+   */
+  headers?:
+    | Record<string, string>
+    | ((ctx: { transport: Transport }) => Record<string, string> | Promise<Record<string, string>>);
+  /** Additional WebSocket subprotocols (prepended after provider-specific ones). */
+  wsProtocols?: ReadonlyArray<string>;
+  /** Optional structured logger (child logger recommended). */
+  logger?: Logger;
+}
 
 export interface TranscriptionStream {
   readonly status: StreamStatus;

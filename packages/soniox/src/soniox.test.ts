@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 function createProvider(): SonioxProvider {
-  return soniox({ apiKey: 'soniox-test-key', model: 'stt-rt-v3' });
+  return soniox({ auth: { apiKey: 'soniox-test-key' }, model: 'stt-rt-v3' });
 }
 
 async function getSocket(): Promise<MockWebSocket> {
@@ -115,7 +115,7 @@ describe('soniox provider', () => {
   });
 
   test('queue drops on backpressure and flushes on open', async () => {
-    const provider = soniox({ apiKey: 'k', model: 'stt-rt-v3', queueBudgetMs: 200 });
+    const provider = soniox({ auth: { apiKey: 'k' }, model: 'stt-rt-v3', queueBudgetMs: 200 });
     if (!provider.stream) throw new Error('ws stream expected');
     const stream = provider.stream();
     const promise = stream.connect();

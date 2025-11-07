@@ -150,7 +150,7 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
           speaker = undefined;
         };
         for (const t of finals) {
-          const s = (t.text ?? '') as string;
+          const s = t.text ?? '';
           if (s.trim().length === 0) {
             flush();
             continue;

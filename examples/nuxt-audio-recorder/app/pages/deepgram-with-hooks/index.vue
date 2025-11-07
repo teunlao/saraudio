@@ -109,7 +109,7 @@ const provider = computed(() => {
     language,
     interimResults: true,
     punctuate: true,
-    tokenProvider: resolveToken,
+    auth: { getToken: resolveToken },
   });
 });
 
