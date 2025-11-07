@@ -1,5 +1,11 @@
 # @saraudio/soniox
 
+## 0.0.3
+
+### Patch Changes
+
+- 9709496: Improve Soniox WebSocket transport: filter control markers, fix token coalescing, and improve word timestamp accuracy
+
 ## 0.0.2
 
 ### Patch Changes
