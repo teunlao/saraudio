@@ -65,7 +65,7 @@ const updateTransport = (event: Event) => {
       >
         <option value="auto">Auto</option>
         <option value="worklet">AudioWorklet</option>
-        <option value="media-recorder">MediaRecorder</option>
+        <option value="audio-context">AudioContext</option>
       </select>
     </div>
     <div v-if="props.transport">

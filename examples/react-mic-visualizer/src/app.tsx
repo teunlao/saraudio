@@ -103,7 +103,7 @@ export const App = () => {
     if (typeof window === 'undefined') return 'auto';
     try {
       const raw = window.localStorage.getItem(MODE_KEY);
-      if (raw === 'worklet' || raw === 'media-recorder' || raw === 'auto') return raw;
+      if (raw === 'worklet' || raw === 'audio-context' || raw === 'auto') return raw;
       return 'auto';
     } catch {
       return 'auto';
@@ -351,7 +351,7 @@ export const App = () => {
                 >
                   <option value='auto'>auto</option>
                   <option value='worklet'>worklet</option>
-                  <option value='media-recorder'>audio-context</option>
+                  <option value='audio-context'>audio-context</option>
                 </select>
               </div>
             </label>

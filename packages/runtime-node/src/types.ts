@@ -1,14 +1,9 @@
 import type { Readable } from 'node:stream';
 import type { Frame, Pipeline, SegmenterOptions, StageController } from '@saraudio/core';
-
-export interface RuntimeLogger {
-  info: (...messages: ReadonlyArray<unknown>) => void;
-  warn: (...messages: ReadonlyArray<unknown>) => void;
-  error: (...messages: ReadonlyArray<unknown>) => void;
-}
+import type { Logger } from '@saraudio/utils';
 
 export interface RuntimeServices {
-  logger: RuntimeLogger;
+  logger: Logger;
   clock: () => number;
   createId: () => string;
 }

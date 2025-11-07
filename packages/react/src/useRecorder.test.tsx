@@ -169,11 +169,11 @@ describe('useRecorder', () => {
 
     expect(mocks.updateMock).not.toHaveBeenCalled();
 
-    rerender({ mode: 'media-recorder' });
+    rerender({ mode: 'audio-context' });
 
     await waitFor(() => expect(mocks.updateMock).toHaveBeenCalledTimes(1));
     const captureArgs = lastUpdateArgs();
-    expect(captureArgs?.mode).toBe('media-recorder');
+    expect(captureArgs?.mode).toBe('audio-context');
     expect(mocks.createRecorderMock).toHaveBeenCalledTimes(1);
   });
 

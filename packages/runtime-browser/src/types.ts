@@ -1,7 +1,7 @@
 import type { Frame, Pipeline, SegmenterOptions, StageController } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 
-export type RuntimeMode = 'worklet' | 'media-recorder' | 'auto';
+export type RuntimeMode = 'worklet' | 'audio-context' | 'auto';
 
 export type FallbackReason = 'worklet-unsupported' | 'media-recorder-unsupported' | 'display-audio-unsupported';
 

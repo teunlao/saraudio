@@ -24,7 +24,7 @@ onMounted(() => {
     const savedSmooth = window.localStorage.getItem(SMOOTH_KEY);
     if (savedSmooth) smoothMs.value = Number(savedSmooth);
     const savedMode = window.localStorage.getItem(MODE_KEY);
-    if (savedMode === 'worklet' || savedMode === 'media-recorder' || savedMode === 'auto') {
+    if (savedMode === 'worklet' || savedMode === 'audio-context' || savedMode === 'auto') {
       mode.value = savedMode;
     }
     const savedFallback = window.localStorage.getItem(FALLBACK_KEY);
@@ -186,7 +186,7 @@ const isRunning = computed(() => rec.status.value === 'running' || rec.status.va
               class='w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50'>
               <option value='auto'>Auto</option>
               <option value='worklet'>Worklet</option>
-              <option value='media-recorder'>AudioContext</option>
+              <option value='audio-context'>AudioContext</option>
             </select>
           </div>
           <div class='flex items-end'>

@@ -25,7 +25,7 @@ onMount(() => {
     const savedSmooth = window.localStorage.getItem(SMOOTH_KEY);
     if (savedSmooth) smoothMs = Number(savedSmooth);
     const savedMode = window.localStorage.getItem(MODE_KEY);
-    if (savedMode === 'worklet' || savedMode === 'media-recorder' || savedMode === 'auto') {
+    if (savedMode === 'worklet' || savedMode === 'audio-context' || savedMode === 'auto') {
       mode = savedMode;
     }
     const savedFallback = window.localStorage.getItem(FALLBACK_KEY);
@@ -221,7 +221,7 @@ const isRunning = $derived(rec.status === 'running' || rec.status === 'acquiring
           >
             <option value='auto'>Auto</option>
             <option value='worklet'>Worklet</option>
-            <option value='media-recorder'>AudioContext</option>
+            <option value='audio-context'>AudioContext</option>
           </select>
         </div>
         <div class='flex items-end'>

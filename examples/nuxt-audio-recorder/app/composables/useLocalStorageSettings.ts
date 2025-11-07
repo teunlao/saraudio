@@ -28,7 +28,7 @@ export function useLocalStorageSettings(settings: Settings) {
   if (typeof window !== 'undefined') {
     try {
       const savedMode = window.localStorage.getItem(keys.mode);
-      if (savedMode === 'auto' || savedMode === 'worklet' || savedMode === 'media-recorder') {
+      if (savedMode === 'auto' || savedMode === 'worklet' || savedMode === 'audio-context') {
         settings.mode.value = savedMode;
       }
       const savedThreshold = window.localStorage.getItem(keys.threshold);

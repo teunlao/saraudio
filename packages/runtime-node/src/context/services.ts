@@ -1,11 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { RuntimeLogger, RuntimeOptions, RuntimeServices } from '../types';
+import { createLogger, type Logger } from '@saraudio/utils';
+import type { RuntimeOptions, RuntimeServices } from '../types';
 
-const createDefaultLogger = (): RuntimeLogger => ({
-  info: (...messages) => console.info(...messages),
-  warn: (...messages) => console.warn(...messages),
-  error: (...messages) => console.error(...messages),
-});
+const createDefaultLogger = (): Logger => createLogger({ level: 'info', namespace: 'saraudio:runtime-node' });
 
 const defaultClock = () => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {

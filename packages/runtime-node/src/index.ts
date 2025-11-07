@@ -25,7 +25,6 @@ export type {
   Pcm16FileSourceOptions,
   Pcm16StreamSourceOptions,
   RunOptions,
-  RuntimeLogger,
   RuntimeOptions,
   RuntimeServices,
   SegmenterFactoryOptions,

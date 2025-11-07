@@ -38,14 +38,14 @@ const resolveMode = (
     }
     notifyFallback('worklet-unsupported');
     if (supportsMediaRecorderPipeline(snapshot)) {
-      return 'media-recorder';
+      return 'audio-context';
     }
     throw new Error('AudioContext/getUserMedia is not supported in this environment');
   }
 
-  if (requested === 'media-recorder') {
+  if (requested === 'audio-context') {
     if (supportsMediaRecorderPipeline(snapshot)) {
-      return 'media-recorder';
+      return 'audio-context';
     }
     notifyFallback('media-recorder-unsupported');
     throw new Error('AudioContext/getUserMedia is not supported in this environment');
@@ -57,7 +57,7 @@ const resolveMode = (
   }
   if (supportsMediaRecorderPipeline(snapshot)) {
     notifyFallback('worklet-unsupported');
-    return 'media-recorder';
+    return 'audio-context';
   }
   notifyFallback('media-recorder-unsupported');
   throw new Error('Neither AudioWorklet nor AudioContext are supported in this environment');

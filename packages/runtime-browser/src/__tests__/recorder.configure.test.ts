@@ -254,14 +254,14 @@ describe('Recorder.update', () => {
     const onStream = vi.fn();
     await recorder.update({
       allowFallback: false,
-      mode: 'media-recorder',
+      mode: 'audio-context',
       onStream,
     });
 
     await recorder.start();
     expect(capturedOptions).toHaveLength(2);
     expect(capturedOptions[1]?.allowFallback).toBe(false);
-    expect(capturedOptions[1]?.mode).toBe('media-recorder');
+    expect(capturedOptions[1]?.mode).toBe('audio-context');
     expect(capturedOptions[1]?.onStream).toBe(onStream);
 
     await recorder.stop();

@@ -193,13 +193,13 @@ describe('useRecorder', () => {
     await Promise.resolve();
     updateMock.mockClear();
 
-    mode.value = 'media-recorder';
+    mode.value = 'audio-context';
     await nextTick();
     await Promise.resolve();
 
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        mode: 'media-recorder',
+        mode: 'audio-context',
       }),
     );
   });
