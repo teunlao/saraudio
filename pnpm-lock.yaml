@@ -71,6 +71,9 @@ importers:
       '@saraudio/runtime-browser':
         specifier: workspace:*
         version: link:../../packages/runtime-browser
+      '@saraudio/soniox':
+        specifier: workspace:*
+        version: link:../../packages/soniox
       '@saraudio/vad-energy':
         specifier: workspace:*
         version: link:../../packages/vad-energy
@@ -511,6 +514,37 @@ importers:
       vite-plugin-solid:
         specifier: 2.11.10
         version: 2.11.10(solid-js@1.9.10)(vite@7.1.12(@types/node@24.9.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.3(@types/node@24.9.1)(@vitest/ui@4.0.3)(happy-dom@20.0.8)(jiti@2.6.1)(jsdom@16.7.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/soniox:
+    dependencies:
+      '@saraudio/core':
+        specifier: workspace:*
+        version: link:../core
+      '@saraudio/utils':
+        specifier: workspace:*
+        version: link:../utils
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.9.1
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 4.0.3(vitest@4.0.3)
+      '@vitest/ui':
+        specifier: 'catalog:'
+        version: 4.0.3(vitest@4.0.3)
+      happy-dom:
+        specifier: 'catalog:'
+        version: 20.0.8
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.0(@swc/core@1.13.5)(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
       vitest:
         specifier: 'catalog:'
         version: 4.0.3(@types/node@24.9.1)(@vitest/ui@4.0.3)(happy-dom@20.0.8)(jiti@2.6.1)(jsdom@16.7.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)

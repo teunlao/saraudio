@@ -10,6 +10,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       deepgramApiKey: '',
+      sonioxApiKey: '',
     },
   },
   vite: {

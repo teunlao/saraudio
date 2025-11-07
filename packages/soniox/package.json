@@ -1,0 +1,70 @@
+{
+  "name": "@saraudio/soniox",
+  "version": "1.0.0",
+  "description": "Soniox transcription provider for SARAUDIO",
+  "license": "ISC",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "pnpm clean && tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@saraudio/core": "workspace:*",
+    "@saraudio/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
+    "happy-dom": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teunlao/silence-aware-recorder.git",
+    "directory": "packages/soniox"
+  },
+  "homepage": "https://github.com/teunlao/silence-aware-recorder#readme",
+  "bugs": {
+    "url": "https://github.com/teunlao/silence-aware-recorder/issues"
+  },
+  "keywords": [
+    "audio",
+    "stt",
+    "soniox",
+    "websocket",
+    "transcription",
+    "realtime"
+  ]
+}
