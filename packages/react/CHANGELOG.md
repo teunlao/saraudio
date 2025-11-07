@@ -1,5 +1,18 @@
 ## 0.0.2
 
+## 0.0.4
+
+### Patch Changes
+
+- 7c7e90f: Update useStableControllers to use key field instead of metadata
+- Updated dependencies [7c7e90f]
+- Updated dependencies [7c7e90f]
+- Updated dependencies [7c7e90f]
+  - @saraudio/core@0.1.1
+  - @saraudio/runtime-browser@0.0.4
+  - @saraudio/vad-energy@0.0.4
+  - @saraudio/meter@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes

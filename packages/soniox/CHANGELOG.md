@@ -1,5 +1,12 @@
 # @saraudio/soniox
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [7c7e90f]
+  - @saraudio/core@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 ## 0.0.2
 
+## 0.0.4
+
+### Patch Changes
+
+- 7c7e90f: Replace custom RuntimeLogger with Logger from @saraudio/utils
+- Updated dependencies [7c7e90f]
+  - @saraudio/core@0.1.1
+  - @saraudio/runtime-base@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes
