@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/vad-energy",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Energy-based Voice Activity Detection for SARAudio",
   "license": "ISC",
   "sideEffects": false,

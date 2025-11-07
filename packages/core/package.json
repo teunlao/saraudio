@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/core",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Smart Audio Recording - Core engine, pipeline, and event system",
   "license": "ISC",
   "sideEffects": false,

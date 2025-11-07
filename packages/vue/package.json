@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/vue",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Vue 3 Composition API bindings for SARAUDIO pipeline",
   "license": "ISC",
   "sideEffects": false,
