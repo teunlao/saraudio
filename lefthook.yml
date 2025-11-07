@@ -1,0 +1,17 @@
+# Lefthook configuration
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: pnpm lint
+      stage_fixed: true
+    typecheck:
+      run: pnpm typecheck
+
+pre-push:
+  parallel: false
+  commands:
+    test:
+      run: pnpm test

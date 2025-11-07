@@ -23,11 +23,13 @@
     "version": "changeset version && pnpm install --no-frozen-lockfile",
     "release": "turbo clean && turbo build && changeset publish",
     "verify:platform-major": "node scripts/verify-platform-major.mjs",
-    "changeset:platform-major": "node scripts/create-platform-major-changeset.mjs"
+    "changeset:platform-major": "node scripts/create-platform-major-changeset.mjs",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@changesets/cli": "^2.29.7",
+    "lefthook": "2.0.2",
     "turbo": "^2.5.8",
     "typescript": "^5.9.3"
   },
