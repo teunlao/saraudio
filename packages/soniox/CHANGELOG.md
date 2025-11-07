@@ -1,5 +1,18 @@
 # @saraudio/soniox
 
+## 0.1.0
+
+### Minor Changes
+
+- af17c99: Add Files API for batch HTTP transcription, improve WS transport token handling and word timestamps, refactor to use shared utilities
+
+### Patch Changes
+
+- Updated dependencies [af17c99]
+- Updated dependencies [af17c99]
+  - @saraudio/core@0.1.0
+  - @saraudio/utils@0.1.0
+
 ## 0.0.3
 
 ### Patch Changes
