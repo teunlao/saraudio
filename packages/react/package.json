@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/react",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "React bindings for SARAUDIO pipeline",
   "license": "ISC",
   "sideEffects": false,
