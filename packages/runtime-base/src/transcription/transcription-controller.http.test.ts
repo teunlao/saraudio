@@ -1,6 +1,6 @@
 import type { NormalizedFrame, TranscriptResult } from '@saraudio/core';
 import { createRecorderStub } from '@saraudio/core/testing';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createProviderStub } from '../testing/transcription-provider-stubs';
 import { createTranscription } from './transcription-controller';
 
@@ -640,9 +640,12 @@ describe('transcription controller — HTTP chunking path', () => {
     // While first flush in-flight, request another flush
     recorder.emitSpeechFrame(makeFrame(640));
     void controller.forceEndpoint();
-    await new Promise((r) => setTimeout(r, 60));
-
-    expect(finals.length).toBe(2);
+    await vi.waitFor(
+      () => {
+        expect(finals.length).toBe(2);
+      },
+      { timeout: 500 },
+    );
     expect(maxConcurrent).toBe(1); // inFlight limit respected
   });
 
