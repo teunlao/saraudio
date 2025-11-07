@@ -12,17 +12,17 @@ import { vadEnergy } from '@saraudio/vad-energy';
 import { useAudioInputs, useMeter, useRecorder } from '@saraudio/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRuntimeConfig } from '#app';
-import { useDeepgramRealtime } from '../../composables/useDeepgramRealtime';
-import PageShell from '../components/demo/PageShell.vue';
-import SectionCard from '../components/demo/SectionCard.vue';
-import DeepgramDeviceSelect from '../components/deepgram/DeviceSelect.vue';
-import DeepgramProviderControls from '../components/deepgram/ProviderControls.vue';
-import DeepgramVadControls from '../components/deepgram/VadControls.vue';
-import DeepgramRecorderActions from '../components/deepgram/RecorderActions.vue';
-import DeepgramStatsRow from '../components/deepgram/StatsRow.vue';
-import DeepgramTranscriptPanel from '../components/deepgram/TranscriptPanel.vue';
-import DeepgramRecentResults from '../components/deepgram/RecentResults.vue';
-import DeepgramEventLog from '../components/deepgram/EventLog.vue';
+import { useDeepgramRealtime } from './useDeepgramRealtime';
+import PageShell from '../../components/demo/PageShell.vue';
+import SectionCard from '../../components/demo/SectionCard.vue';
+import DeepgramDeviceSelect from '../../components/deepgram/DeviceSelect.vue';
+import DeepgramProviderControls from '../../components/deepgram/ProviderControls.vue';
+import DeepgramVadControls from '../../components/deepgram/VadControls.vue';
+import DeepgramRecorderActions from '../../components/deepgram/RecorderActions.vue';
+import DeepgramStatsRow from '../../components/deepgram/StatsRow.vue';
+import DeepgramTranscriptPanel from '../../components/deepgram/TranscriptPanel.vue';
+import DeepgramRecentResults from '../../components/deepgram/RecentResults.vue';
+import DeepgramEventLog from '../../components/deepgram/EventLog.vue';
 
 const mode = ref<RuntimeMode>('auto');
 const allowFallback = ref(true);
@@ -59,11 +59,6 @@ const dg = useDeepgramRealtime();
 let frameSubscription: SubscribeHandle | null = null;
 let readySubscription: SubscribeHandle | null = null;
 
-// Derived, typed values for template (avoid any and ref property access warnings)
-const wsInfo = computed(() => {
-  const c = dg.lastClose.value;
-  return c ? { code: c.code, reason: c.reason, clean: c.wasClean } : null;
-});
 const transcriptText = computed(() => dg.transcript.value.trim());
 const partialText = computed(() => dg.partial.value);
 const latestResults = computed<TranscriptResult[]>(() =>

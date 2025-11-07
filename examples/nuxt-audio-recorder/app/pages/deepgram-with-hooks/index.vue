@@ -14,16 +14,16 @@ import { useAudioInputs, useMeter, useRecorder, useTranscription } from '@saraud
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRuntimeConfig } from '#app';
 import { useLocalStorageSettings } from '../../composables/useLocalStorageSettings';
-import PageShell from '../components/demo/PageShell.vue';
-import SectionCard from '../components/demo/SectionCard.vue';
-import DeepgramDeviceSelect from '../components/deepgram/DeviceSelect.vue';
-import DeepgramProviderControls from '../components/deepgram/ProviderControls.vue';
-import DeepgramVadControls from '../components/deepgram/VadControls.vue';
-import DeepgramRecorderActions from '../components/deepgram/RecorderActions.vue';
-import DeepgramStatsRow from '../components/deepgram/StatsRow.vue';
-import DeepgramTranscriptPanel from '../components/deepgram/TranscriptPanel.vue';
-import DeepgramRecentResults from '../components/deepgram/RecentResults.vue';
-import DeepgramEventLog from '../components/deepgram/EventLog.vue';
+import PageShell from '../../components/demo/PageShell.vue';
+import SectionCard from '../../components/demo/SectionCard.vue';
+import DeepgramDeviceSelect from '../../components/deepgram/DeviceSelect.vue';
+import DeepgramProviderControls from '../../components/deepgram/ProviderControls.vue';
+import DeepgramVadControls from '../../components/deepgram/VadControls.vue';
+import DeepgramRecorderActions from '../../components/deepgram/RecorderActions.vue';
+import DeepgramStatsRow from '../../components/deepgram/StatsRow.vue';
+import DeepgramTranscriptPanel from '../../components/deepgram/TranscriptPanel.vue';
+import DeepgramRecentResults from '../../components/deepgram/RecentResults.vue';
+import DeepgramEventLog from '../../components/deepgram/EventLog.vue';
 
 const config = useRuntimeConfig();
 
@@ -98,27 +98,23 @@ const resolveToken = async (): Promise<string> => {
   return key.trim();
 };
 
-const buildProviderOptions = (model: DeepgramModelId, language: DeepgramLanguage) => ({
-  model,
-  language,
-  interimResults: true,
-  punctuate: true,
-  tokenProvider: resolveToken,
+const provider = computed(() => {
+  const model = selectedModel.value;
+  const language = ensureLanguage(model, selectedLanguage.value);
+  if (language !== selectedLanguage.value) {
+    selectedLanguage.value = language;
+  }
+  return deepgram({
+    model,
+    language,
+    interimResults: true,
+    punctuate: true,
+    tokenProvider: resolveToken,
+  });
 });
 
-const synchroniseSelection = (model: DeepgramModelId, language: DeepgramLanguage) => {
-  const effectiveLanguage = ensureLanguage(model, language);
-  if (effectiveLanguage !== language) {
-    selectedLanguage.value = effectiveLanguage;
-  }
-  return { model, language: effectiveLanguage } as const;
-};
-
-let currentSelection = synchroniseSelection(selectedModel.value, selectedLanguage.value);
-let currentOptions = buildProviderOptions(currentSelection.model, currentSelection.language);
-
 const transcription = useTranscription({
-  provider: deepgram(currentOptions),
+  provider,
   transport: transportMode,
   recorder,
   preconnectBufferMs: 120,
@@ -134,13 +130,22 @@ const transcription = useTranscription({
         jitterRatio: 0.2,
       },
     },
+    http: {
+      chunking: {
+        intervalMs: 2500,
+        minDurationMs: 1000,
+        overlapMs: 300,
+        maxInFlight: 1,
+        timeoutMs: 15000,
+      },
+    },
   },
   onTranscript: (result) => {
     latestResults.value.unshift(result);
     if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
     pushEvent(`[transcript] ${result.text}`);
   },
-  onError: (err: Error) => {
+  onError: (err) => {
     pushEvent(`[error] ${err.message}`);
   },
 });
@@ -153,32 +158,28 @@ watch(
   },
 );
 
-let configInitialized = false;
-watch([selectedModel, selectedLanguage], ([model, lang]) => {
-  const nextSelection = synchroniseSelection(model, lang);
-  if (!configInitialized) {
-    configInitialized = true;
-    currentSelection = nextSelection;
-    pushEvent(`[config] provider set to model=${nextSelection.model}, language=${nextSelection.language}`);
+let lastSelection: { model: DeepgramModelId; language: DeepgramLanguage; transport: 'websocket' | 'http' } | null = null;
+watch([selectedModel, selectedLanguage, transportMode], ([model, lang, transport]) => {
+  const effectiveLanguage = ensureLanguage(model, lang);
+  if (!lastSelection) {
+    lastSelection = { model, language: effectiveLanguage, transport };
+    pushEvent(`[config] provider set to model=${model}, language=${effectiveLanguage}, transport=${transport}`);
     return;
   }
-  if (nextSelection.model === currentSelection.model && nextSelection.language === currentSelection.language) {
+  if (
+    lastSelection.model === model &&
+    lastSelection.language === effectiveLanguage &&
+    lastSelection.transport === transport
+  ) {
     return;
   }
-  currentSelection = nextSelection;
-  currentOptions = buildProviderOptions(nextSelection.model, nextSelection.language);
-  void (async () => {
-    try {
-      await transcription.provider.update(currentOptions);
-      transcription.clear();
-      pushEvent(
-        `[config] provider updated: model=${nextSelection.model}, language=${nextSelection.language}`,
-      );
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      pushEvent(`[config-error] ${error.message}`);
-    }
-  })();
+  const previousTransport = lastSelection.transport;
+  lastSelection = { model, language: effectiveLanguage, transport };
+  pushEvent(`[config] provider updated: model=${model}, language=${effectiveLanguage}, transport=${transport}`);
+  if (transport !== previousTransport) {
+    latestResults.value.length = 0;
+    transcription.clear();
+  }
 });
 
 const transcriptText = computed(() => transcription.transcript.value.trim());
@@ -190,6 +191,7 @@ const missingApiKey = computed(() => {
   const key = config.public.deepgramApiKey;
   return !key || typeof key !== 'string' || key.trim().length === 0;
 });
+const isHttpMode = computed(() => transportMode.value === 'http');
 
 const start = async () => {
   try {
@@ -252,11 +254,7 @@ onUnmounted(() => {
           @refresh="audioInputs.refresh"
         />
 
-        <DeepgramVadControls
-          v-model:threshold="thresholdDb"
-          v-model:smooth="smoothMs"
-          :disabled="recorderRunning"
-        />
+        <DeepgramVadControls v-model:threshold="thresholdDb" v-model:smooth="smoothMs" :disabled="recorderRunning" />
       </div>
 
       <DeepgramProviderControls
@@ -274,7 +272,7 @@ onUnmounted(() => {
         :start-disabled="recorderRunning || missingApiKey"
         :stop-disabled="!recorderRunning && !isConnected"
         :force-disabled="!isConnected"
-        :show-force="true"
+        :show-force="!isHttpMode"
         :status="controllerStatus"
         :is-connected="isConnected"
         @start="start"
