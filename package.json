@@ -20,7 +20,9 @@
     "clean": "turbo clean",
     "changeset": "changeset",
     "version": "changeset version && pnpm install --no-frozen-lockfile",
-    "release": "turbo clean && turbo build && changeset publish"
+    "release": "turbo clean && turbo build && changeset publish",
+    "verify:platform-major": "node scripts/verify-platform-major.mjs",
+    "changeset:platform-major": "node scripts/create-platform-major-changeset.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

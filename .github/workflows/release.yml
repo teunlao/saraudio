@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '.changeset/**'  # Run only when changesets are added/modified
-      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 concurrency:
@@ -47,13 +44,16 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Verify platform MAJOR alignment
+        run: pnpm verify:platform-major
+
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm changeset version
           publish: pnpm changeset publish
-          createGithubReleases: false
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -64,8 +64,4 @@ jobs:
           echo "🎉 Packages published!"
           echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version)"'
 
-      - name: Create Grouped GitHub Release
-        if: steps.changesets.outputs.published == 'true'
-        run: node scripts/create-github-release.mts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GitHub Releases are created by changesets/action when published

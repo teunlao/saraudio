@@ -32,8 +32,8 @@ GitHub Actions will automatically:
 1. ✅ Run tests and checks
 2. ✅ Create/update "Version Packages" PR
 3. ⏸️ Wait for you to review and merge PR
-4. ✅ Publish to npm with `latest` tag
-5. ✅ Create grouped GitHub release with commit tables
+4. ✅ Publish to npm with `latest` tag (via CI)
+5. ✅ GitHub Release created automatically (changesets/action)
 6. ✅ Push git tags
 
 ## Review "Version Packages" PR 🔍
@@ -70,9 +70,6 @@ If automation fails:
 ```bash
 # 1. Publish to npm
 pnpm changeset publish
-
-# 2. Create GitHub release
-node scripts/create-github-release.mts
 
 # 3. Push tags
 git push --follow-tags
