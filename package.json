@@ -1,7 +1,7 @@
 {
   "name": "@silence-aware-recorder/root",
   "author": "teunlao (https://github.com/teunlao)",
-  "version": "2.0.0",
+  "version": "0.0.1",
   "description": "Audio control with silence detection.",
   "keywords": [],
   "license": "ISC",
