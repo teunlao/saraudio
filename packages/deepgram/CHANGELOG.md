@@ -1,5 +1,16 @@
 # @saraudio/deepgram
 
+## 2.0.0
+
+### Minor Changes
+
+- 6a26648: Add Deepgram provider with HTTP and WebSocket support, speech-gated frame subscriptions, and transport selection architecture. Unify connection options in nested structure.
+
+### Patch Changes
+
+- Updated dependencies [6a26648]
+  - @saraudio/core@2.0.0
+
 ## 0.0.1
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # svelte-audio-recorder
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [6a26648]
+  - @saraudio/core@2.0.0
+  - @saraudio/runtime-browser@2.0.0
+  - @saraudio/svelte@2.0.0
+  - @saraudio/meter@2.0.0
+  - @saraudio/vad-energy@2.0.0
+
 ## 0.0.2
 
 ### Patch Changes

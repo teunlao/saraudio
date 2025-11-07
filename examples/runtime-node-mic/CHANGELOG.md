@@ -1,5 +1,14 @@
 # @saraudio/example-runtime-node-mic
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [6a26648]
+  - @saraudio/core@2.0.0
+  - @saraudio/runtime-node@2.0.0
+  - @saraudio/vad-energy@2.0.0
+
 ## 1.0.0
 
 ### Patch Changes

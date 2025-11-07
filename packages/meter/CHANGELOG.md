@@ -1,5 +1,12 @@
 # @saraudio/meter
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [6a26648]
+  - @saraudio/core@2.0.0
+
 ## 0.0.1
 
 ### Patch Changes
