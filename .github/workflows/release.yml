@@ -53,28 +53,7 @@ jobs:
         with:
           version: pnpm changeset version
           publish: pnpm changeset publish
-          createGithubReleases: false
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Release Summary
-        if: steps.changesets.outputs.published == 'true'
-        run: |
-          echo "🎉 Packages published!"
-          echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[] | "✓ \(.name)@\(.version) (\(.type // "unknown"))"'
-
-      - name: Prepare filtered release notes
-        if: steps.changesets.outputs.published == 'true'
-        id: release_notes
-        env:
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
-        run: node scripts/generate-release-notes.mjs
-
-      - name: Create GitHub release
-        if: steps.release_notes.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.release_notes.outputs.tag }}
-          name: ${{ steps.release_notes.outputs.title }}
-          body: ${{ steps.release_notes.outputs.body }}
