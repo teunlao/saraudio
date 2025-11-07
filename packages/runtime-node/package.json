@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/runtime-node",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Node/Bun runtime helpers for SARAudio pipeline",
   "license": "ISC",
   "sideEffects": false,
