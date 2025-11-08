@@ -1,18 +1,27 @@
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
-**READING FILES:** ALWAYS read files COMPLETELY. NEVER use limit/offset. ALWAYS read FULL file content.
+## META - MAINTAINING THIS DOCUMENT
 
-**Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
-**Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
-**Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
-**Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
+### Writing Effective Guidelines
+
+When adding new rules to this document, follow these principles:
+
+**Core Principles (Always Apply):**
+1. Use absolute directives - Start with "NEVER" or "ALWAYS"
+2. Lead with why - Explain the problem before the solution (1-3 bullets max)
+3. Be concrete - Include actual commands/code
+4. Minimize examples - One clear point per code block
+5. Bullets over paragraphs - Keep explanations concise
+
+**Optional Enhancements (Use Strategically):**
+- ❌/✅ examples: Only when the antipattern is subtle
+- "Warning Signs" section: Only for gradual mistakes
+- "General Principle": Only when abstraction is non-obvious
+
+**Anti-Bloat Rules:**
+- ❌ Don't add "Warning Signs" to obvious rules
+- ❌ Don't show bad examples for trivial mistakes
+- ❌ Don't write paragraphs explaining what bullets can convey
+
+
 **Git commits:** NO promotional links, NO "Generated with Claude Code", NO "Co-Authored-By: Claude".
 **Git commits:** KEEP IT SHORT. NO detailed descriptions unless asked. Just "type(scope): what changed".
 
