@@ -17,7 +17,11 @@ HTTP is great for simple, cost‑efficient transcription. The live aggregator ba
 ## 1) Install
 
 ```bash
+# Required
 pnpm add @saraudio/runtime-browser @saraudio/deepgram
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
 
 ## 2) Provider (Deepgram example)
@@ -41,8 +45,13 @@ export const provider = deepgram({
 
 ```ts
 import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
-const recorder = createRecorder({ segmenter: true });
+const recorder = createRecorder({
+  stages: [vadEnergy({ thresholdDb: -50 }), meter()],
+  segmenter: true,
+});
 
 const ctrl = createTranscription({
   provider,

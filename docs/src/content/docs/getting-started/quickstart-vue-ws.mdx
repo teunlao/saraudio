@@ -8,7 +8,11 @@ Use the Vue composables to capture audio, connect a WebSocket provider, and rend
 ## 1) Install
 
 ```bash
+# Required
 pnpm add @saraudio/vue @saraudio/deepgram
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
 
 This brings the browser runtime transitively via `@saraudio/vue`.
@@ -34,6 +38,8 @@ export const deepgramProvider = deepgram({
 import { computed } from 'vue'
 import { useTranscription } from '@saraudio/vue'
 import { deepgramProvider } from '@/provider/deepgram'
+import { vadEnergy } from '@saraudio/vad-energy'
+import { meter } from '@saraudio/meter'
 
 const {
   start,
@@ -48,6 +54,8 @@ const {
   provider: deepgramProvider,
   transport: 'websocket',
   autoConnect: true, // connect on mount and start internal recorder
+  // Internal recorder will include VAD + Meter stages
+  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
   connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
   onError: (e) => console.error(e),
 })
@@ -89,4 +97,3 @@ const connectedText = computed(() => (isConnected.value ? 'Connected' : 'Disconn
 
 - Concepts → Controller & Transport (policies, retries)
 - Providers → Deepgram / Soniox (WS‑specific options)
-

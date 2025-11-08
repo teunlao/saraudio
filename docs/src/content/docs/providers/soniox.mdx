@@ -13,7 +13,11 @@ Use raw model IDs. The same provider instance exposes both methods; the controll
 ## Install
 
 ```bash
+# Required
 pnpm add @saraudio/soniox
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
 
 ## Create a provider
@@ -36,10 +40,16 @@ export const provider = soniox({
 ```ts
 import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
 import { soniox } from '@saraudio/soniox';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
 const provider = soniox({ model: 'stt-rt-v3', auth: { apiKey: '<KEY>' } });
 
-const recorder = createRecorder({ format: { sampleRate: 16000, channels: 1 }, segmenter: true });
+const recorder = createRecorder({
+  format: { sampleRate: 16000, channels: 1 },
+  stages: [vadEnergy({ thresholdDb: -50 }), meter()],
+  segmenter: true,
+});
 
 const ctrl = createTranscription({
   provider,
@@ -70,10 +80,12 @@ The controller’s HTTP path calls `provider.transcribe()` for each chunk. The S
 ```ts
 import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
 import { soniox } from '@saraudio/soniox';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
 const provider = soniox({ model: 'stt-async-v3', auth: { apiKey: '<KEY>' } });
 
-const recorder = createRecorder({ segmenter: true });
+const recorder = createRecorder({ stages: [vadEnergy({ thresholdDb: -50 }), meter()], segmenter: true });
 
 const ctrl = createTranscription({
   provider,

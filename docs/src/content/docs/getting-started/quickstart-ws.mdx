@@ -19,7 +19,11 @@ Get real‑time transcripts in minutes using the built‑in recorder and a WebSo
 ## 1) Install
 
 ```bash
+# Required
 pnpm add @saraudio/runtime-browser @saraudio/deepgram
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
 
 ## 2) Create a provider (Deepgram example)
@@ -43,11 +47,18 @@ export const provider = deepgram({
 
 ```ts
 import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
 const recorder = createRecorder({
-  // Optional: defaults are fine; keep mono 16 kHz for low latency
+  // Recommended: mono 16 kHz for low latency
   format: { sampleRate: 16000, channels: 1 },
-  segmenter: true, // enables VAD events for your UI (not required for WS)
+  // Stages: VAD for speech events; Meter for level visualization
+  stages: [
+    vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }),
+    meter(),
+  ],
+  segmenter: true,
 });
 
 const ctrl = createTranscription({
