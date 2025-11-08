@@ -1,5 +1,11 @@
 # @saraudio/soniox
 
+## 0.1.2
+
+### Patch Changes
+
+- f333aa8: fix(soniox): change auth priority to getToken → token → apiKey (matches Deepgram pattern, encourages secure ephemeral tokens)
+
 ## 0.1.1
 
 ### Patch Changes
