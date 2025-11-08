@@ -35,6 +35,32 @@ export const provider = soniox({
 
 ---
 
+## Authentication
+
+Soniox has different rules for WS vs REST. Do not expose a permanent API key in the browser.
+
+- WebSocket (realtime): issue a short‑lived temporary API key on your server using
+  `POST /v1/auth/temporary-api-key`, then pass it in the first WS message as `api_key`. This is the recommended browser
+  pattern for secure realtime streaming.
+- REST (Files/Transcriptions): requires a permanent project API key in `Authorization: Bearer <key>`. Temporary keys are
+  not valid for REST and will return `401 unauthenticated`.
+
+How SARAUDIO maps this:
+
+- WS sends credentials inside the init JSON (`api_key`).
+- REST sets the `Authorization` header. Auth priority is `getToken → token → apiKey`. In browsers prefer `getToken` that
+  returns the correct credential for the chosen transport.
+
+Recommended patterns:
+
+- Realtime (browser): server endpoint returns a temporary API key; client uses `auth.getToken`, transport `'websocket'`.
+- Batch REST: call Soniox from your server (or via server proxy routes) with a permanent key; avoid calling `/v1/files`
+  and `/v1/transcriptions` directly from the browser.
+
+If you use a temporary key against REST, Soniox will respond with `401 unauthenticated` — this is expected.
+
+---
+
 ## WebSocket quickstart (realtime)
 
 ```ts
