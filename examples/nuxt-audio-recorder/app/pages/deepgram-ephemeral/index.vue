@@ -53,7 +53,7 @@ async function fetchEphemeralToken(): Promise<string> {
 
   let response: Response;
   try {
-    response = await fetch('/api/deepgram/token', { method: 'POST' });
+    response = await fetch('/api/stt/session?provider=deepgram');
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to obtain Deepgram token (network): ${reason}`);
@@ -71,12 +71,14 @@ async function fetchEphemeralToken(): Promise<string> {
     throw new Error(msg);
   }
 
-  if (!isEphemeralTokenPayload(payload)) {
-    throw new Error('Invalid token payload from /api/deepgram/token');
+  // Unified session format: { token, expiresIn }
+  const tokenUnknown = (payload as { token?: unknown })?.token;
+  const expiresUnknown = (payload as { expiresIn?: unknown })?.expiresIn;
+  if (typeof tokenUnknown !== 'string' || tokenUnknown.length === 0) {
+    throw new Error('Invalid token payload from /api/stt/session');
   }
-
-  const token = payload.access_token;
-  const ttlSeconds = payload.expires_in;
+  const ttlSeconds = typeof expiresUnknown === 'number' && Number.isFinite(expiresUnknown) ? expiresUnknown : 30;
+  const token = tokenUnknown;
   const safeTtl = Math.max(1, Math.floor(ttlSeconds - 2));
   cachedToken = { value: token, expiresAt: nowMs() + safeTtl * 1000 };
   return token;

@@ -71,19 +71,13 @@ async function getSonioxTempKey(): Promise<string> {
   if (tempKeyCache && tempKeyCache.expiresAt - nowMs() > 2000) {
     return tempKeyCache.value;
   }
-  const response = await fetch('/api/soniox/token', { method: 'POST' });
+  const response = await fetch('/api/stt/session?provider=soniox');
   if (!response.ok) {
     throw new Error(`Failed to obtain Soniox temporary API key (status ${response.status})`);
   }
-  const body: TempKeyResponse = await response.json();
-  const key = body.api_key;
-  // Compute TTL from expires_at (RFC 3339); fallback to ~28s if parsing fails
-  let expiresAt = nowMs() + 28_000;
-  const parsed = Date.parse(body.expires_at);
-  if (!Number.isNaN(parsed)) {
-    // Subtract 2 seconds buffer
-    expiresAt = Math.max(nowMs() + 1000, parsed - 2000);
-  }
+  const body = (await response.json()) as { token: string; expiresIn: number };
+  const key = body.token;
+  const expiresAt = nowMs() + Math.max(1, body.expiresIn - 2) * 1000;
   tempKeyCache = { value: key, expiresAt };
   return key;
 }

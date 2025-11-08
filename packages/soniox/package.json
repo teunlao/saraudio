@@ -29,6 +29,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/session-auth.d.ts",
+      "import": "./dist/server/session-auth.mjs",
+      "require": "./dist/server/session-auth.js"
     }
   },
   "dependencies": {

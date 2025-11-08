@@ -11,6 +11,7 @@ export {
   type SubscribeHandle,
 } from './recorder';
 export { createNodeRuntime } from './runtime';
+export { type CreateSessionAuthHandlerOptions, createSessionAuthHandler } from './session-auth/handler';
 export { createPcm16FileSource } from './sources/pcm16-file-source';
 export { createPcm16StreamSource } from './sources/pcm16-stream-source';
 export {

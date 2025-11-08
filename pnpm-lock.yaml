@@ -86,6 +86,9 @@ importers:
       '@saraudio/runtime-browser':
         specifier: workspace:*
         version: link:../../packages/runtime-browser
+      '@saraudio/runtime-node':
+        specifier: workspace:*
+        version: link:../../packages/runtime-node
       '@saraudio/soniox':
         specifier: workspace:*
         version: link:../../packages/soniox

@@ -18,6 +18,7 @@
     "@saraudio/core": "workspace:*",
     "@saraudio/meter": "workspace:*",
     "@saraudio/runtime-browser": "workspace:*",
+    "@saraudio/runtime-node": "workspace:*",
     "@saraudio/vad-energy": "workspace:*",
     "@saraudio/vue": "workspace:*",
     "nuxt": "^4.2.0",

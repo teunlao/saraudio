@@ -1,3 +1,4 @@
+export type { ProviderId, SessionAuthAdapter, SessionAuthIssueResult } from './auth/session';
 export { EventBus } from './event-bus';
 export type {
   NormalizedFrame,
@@ -46,3 +47,4 @@ export * from './transcription/errors';
 export type * from './transcription/types';
 
 export type { CoreError, Frame, MeterPayload, Segment, VADScore } from './types';
+// session auth types are exported once at the top (organized)
