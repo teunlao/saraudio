@@ -1,110 +1,150 @@
-# SARAUDIO
+# SARAUDIO — Batteries‑Included Transcription SDK
 
-Modular audio processing pipeline for real-time voice applications. Capture, detect speech, and process audio with minimal latency.
+Modular audio toolkit and transcription SDK for real‑time voice applications. Works with any transcription provider, cross‑platform.
 
-> ⚠️ **Active development** - APIs may change between releases.
+> ⚠️ Active development - APIs may change between releases.
 
-## What is this?
+## Highlights
 
-SARAUDIO provides building blocks for audio processing:
-- Real-time voice activity detection (VAD)
-- Smart audio segmentation with configurable buffers
-- Low-latency processing via AudioWorklet (10ms)
-- Cross-platform support (browser, Node.js)
+- Batteries‑included: recorder, VAD/segments, HTTP/WS transports, provider adapters.
+- Provider‑agnostic: Deepgram and Soniox behind one interface; swap without rewrites.
+- Silence‑aware by design: WS `keep|drop|mute`, HTTP “segment‑only” (flush on VAD segment end).
+- Cross‑platform: Browser (AudioWorklet/AudioContext) and Node.
+- Type‑safe: clear options, no vendor lock‑in.
 
-## Quick start
+---
+
+## Quickstart (WebSocket)
 
 ```bash
-npm install @saraudio/react @saraudio/vad-energy
+# Required
+pnpm add @saraudio/runtime-browser @saraudio/deepgram
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
 
-```tsx
-import { useRecorder } from '@saraudio/react';
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { deepgram } from '@saraudio/deepgram';
 import { vadEnergy } from '@saraudio/vad-energy';
+import { meter } from '@saraudio/meter';
 
-function App() {
-  const { start, stop, segments } = useRecorder({
-    stages: [vadEnergy({ thresholdDb: -50 })]
-  });
+const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<DEEPGRAM_API_KEY>' } });
 
-  return (
-    <>
-      <button onClick={start}>Start</button>
-      <button onClick={stop}>Stop</button>
-      {segments.map(s => (
-        <audio key={s.id} src={URL.createObjectURL(s.blob)} controls />
-      ))}
-    </>
-  );
-}
+const recorder = createRecorder({
+  format: { sampleRate: 16000, channels: 1 },
+  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
+  segmenter: true,
+});
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
+});
+
+ctrl.onPartial((t) => console.log('partial:', t));
+ctrl.onTranscript((r) => console.log('final:', r.text));
+
+await recorder.start();
+await ctrl.connect();
 ```
 
-## Architecture
+## Quickstart (HTTP, segment‑only)
 
-The pipeline processes audio through composable stages:
+```ts
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true,
+  connection: { http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1, timeoutMs: 10_000 } } },
+});
 
+ctrl.onTranscript((r) => console.log('final:', r.text));
+await recorder.start();
+await ctrl.connect();
 ```
-Audio Input → VAD Stage → Segmenter → Your App
-                ↓
-            Events (speech start/end, segments)
+
+## Quickstart (Vue + WS)
+
+```bash
+# Required
+pnpm add @saraudio/vue @saraudio/deepgram
+
+# Optional stages (VAD + Meter)
+pnpm add @saraudio/vad-energy @saraudio/meter
 ```
+
+```vue
+<script setup lang="ts">
+import { useTranscription } from '@saraudio/vue'
+import { deepgram } from '@saraudio/deepgram'
+
+const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<KEY>' } })
+const { start, stop, connect, disconnect, partial, transcript, status } = useTranscription({
+  provider,
+  transport: 'websocket',
+  autoConnect: true,
+  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
+  connection: { ws: { silencePolicy: 'keep' } },
+})
+</script>
+
+<template>
+  <p>Status: {{ status }}</p>
+  <div v-if="partial">Partial: {{ partial }}</div>
+  <div v-if="transcript">Final: {{ transcript }}</div>
+  <button @click="start?.()">Start mic</button>
+  <button @click="stop?.()">Stop mic</button>
+  <button @click="connect">Connect</button>
+  <button @click="disconnect">Disconnect</button>
+  
+</template>
+```
+
+---
+
+## Providers
+
+- `@saraudio/deepgram` — WS realtime + HTTP chunked transcription (use raw model IDs like `nova-3`).
+- `@saraudio/soniox` — WS realtime (`stt-rt-v3`) + HTTP batch via Files API (`stt-async-v3`).
+
+See provider pages in docs for options, models, and error handling.
 
 ## Packages
 
-### Core
-- `@saraudio/core` - Pipeline engine and base types
-- `@saraudio/utils` - DSP utilities (RMS, buffers, conversions)
-- `@saraudio/vad-energy` - Energy-based voice detection
-- `@saraudio/meter` - Audio level measurement
+- `@saraudio/core` — core types and pipeline building blocks
+- `@saraudio/runtime-base` — controller, transports, utilities
+- `@saraudio/runtime-browser` — browser runtime (AudioWorklet/AudioContext)
+- `@saraudio/runtime-node` — Node runtime utilities (server‑side capture/streaming & batch helpers)
+- `@saraudio/deepgram` — Deepgram provider
+- `@saraudio/soniox` — Soniox provider
+- `@saraudio/vue` — Vue 3 composables (hooks)
+- `@saraudio/react` — React hooks (coming in examples)
+- `@saraudio/svelte` — Svelte stores
+- `@saraudio/solid` — Solid primitives
+- `@saraudio/vad-energy` — energy‑based VAD stage
+- `@saraudio/meter` — input level meter stage
 
-### Runtimes
-- `@saraudio/runtime-browser` - Browser implementation (AudioWorklet/AudioContext)
-- `@saraudio/runtime-node` - Node.js microphone support
+## Requirements
 
-### Framework bindings
-- `@saraudio/react` - React hooks
-- `@saraudio/vue` - Vue composables
-- `@saraudio/svelte` - Svelte stores
-- `@saraudio/solid` - SolidJS primitives
+- HTTPS (or `localhost`) for microphone access.
+- For lowest latency (AudioWorklet + SharedArrayBuffer) enable cross‑origin isolation.
 
-## Examples
+## Documentation
 
-Check the `examples/` directory for working demos:
-- `react-mic-visualizer` - Real-time visualization with React
-- `vue-audio-recorder` - Vue 3 composition API example  
-- `svelte-audio-recorder` - Svelte example
-- `solid-audio-recorder` - SolidJS example
-- `runtime-browser-vanilla` - Pure JavaScript usage
-- `runtime-node-mic` - Node.js recording
-
-## Key features
-
-- **Low latency** - 10ms with AudioWorklet, automatic fallback to AudioContext
-- **Modular design** - Use only what you need, tree-shakeable
-- **TypeScript first** - Full type safety and great DX
-
-## Browser compatibility
-
-- Chrome/Edge 90+ (AudioWorklet)
-- Firefox 85+ (AudioWorklet)
-- Safari 14.5+ (AudioWorklet with limitations)
-- Older browsers use AudioContext fallback (higher latency)
+- Live site: coming soon
+- Local: `cd docs && pnpm dev` (Astro Starlight)
 
 ## Development
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Run tests
-pnpm test
-
-# Build all packages
+pnpm typecheck && pnpm lint && pnpm test
 pnpm build
-
-# Run example
-cd examples/react-mic-visualizer
-pnpm dev
 ```
 
 ## License
