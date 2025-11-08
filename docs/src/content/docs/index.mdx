@@ -1,40 +1,30 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: SARAudio — Batteries‑Included Transcription SDK
+description: Modular audio toolkit for real‑time voice applications. Cross‑platform, provider‑agnostic.
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
+  tagline: Modular audio toolkit for real‑time voice applications. Cross‑platform, provider‑agnostic.
   image:
     file: ../../assets/houston.webp
   actions:
-    - text: Example Guide
-      link: /guides/example/
+    - text: Quickstart (WebSocket)
+      link: /getting-started/quickstart-ws/
       icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
+    - text: Quickstart (HTTP)
+      link: /getting-started/quickstart-http/
+      icon: right-arrow
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Next steps
+## Explore
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
-	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
-	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
-	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
-	</Card>
+  <Card title="Architecture" icon="document" href="/concepts/architecture/" />
+  <Card title="Controller & Transport" icon="document" href="/concepts/controller-and-transport/" />
+  <Card title="Providers: Deepgram" icon="open-book" href="/providers/deepgram/" />
+  <Card title="Providers: Soniox" icon="open-book" href="/providers/soniox/" />
+  <Card title="Core Types" icon="setting" href="/reference/core-types/" />
+  <Card title="Troubleshooting" icon="open-book" href="/troubleshooting/common-issues/" />
 </CardGrid>

@@ -1,0 +1,19 @@
+---
+title: Common Issues
+description: Quick fixes for frequent problems.
+---
+
+### No audio or errors in the browser
+
+- Use HTTPS or localhost.
+- Ensure AudioWorklet/SharedArrayBuffer support; see Requirements.
+
+### Empty transcripts over HTTP
+
+- Enable VAD gating: `flushOnSegmentEnd=true` + `intervalMs=0` for “segment‑only”.
+- Verify sample rate/channels match provider expectations.
+
+### CORS / 401 / 403
+
+- Use server proxy for secrets; ensure Authorization header and allowed origins.
+

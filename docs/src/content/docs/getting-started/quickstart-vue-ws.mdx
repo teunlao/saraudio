@@ -1,0 +1,92 @@
+---
+title: Quickstart (Vue + WebSocket)
+description: Real‑time speech streaming in Vue using composable hooks.
+---
+
+Use the Vue composables to capture audio, connect a WebSocket provider, and render partial/final transcripts.
+
+## 1) Install
+
+```bash
+pnpm add @saraudio/vue @saraudio/deepgram
+```
+
+This brings the browser runtime transitively via `@saraudio/vue`.
+
+## 2) Create a provider (Deepgram)
+
+```ts
+// provider/deepgram.ts
+import { deepgram } from '@saraudio/deepgram';
+
+export const deepgramProvider = deepgram({
+  model: 'nova-3',
+  auth: { apiKey: '<DEEPGRAM_API_KEY>' },
+});
+```
+
+> Note: In production browsers prefer short‑lived tokens from your backend. We'll cover this in the Auth guide.
+
+## 3) Vue component
+
+```vue
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useTranscription } from '@saraudio/vue'
+import { deepgramProvider } from '@/provider/deepgram'
+
+const {
+  start,
+  stop,
+  connect,
+  disconnect,
+  partial,
+  transcript,
+  status,
+  isConnected,
+} = useTranscription({
+  provider: deepgramProvider,
+  transport: 'websocket',
+  autoConnect: true, // connect on mount and start internal recorder
+  connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
+  onError: (e) => console.error(e),
+})
+
+const connectedText = computed(() => (isConnected.value ? 'Connected' : 'Disconnected'))
+</script>
+
+<template>
+  <section>
+    <p>Status: {{ status }} ({{ connectedText }})</p>
+
+    <div v-if="partial">Partial: {{ partial }}</div>
+    <div v-if="transcript">Final: {{ transcript }}</div>
+
+    <div class="controls">
+      <button @click="start?.()">Start mic</button>
+      <button @click="stop?.()">Stop mic</button>
+      <button @click="connect">Connect</button>
+      <button @click="disconnect">Disconnect</button>
+    </div>
+  </section>
+  
+  <!-- Optional: drop silence to save bandwidth -->
+  <!-- change to connection: { ws: { silencePolicy: 'drop' } } in the hook options -->
+</template>
+
+<style scoped>
+.controls { display: flex; gap: .5rem; margin-top: .5rem; }
+</style>
+```
+
+## Notes
+
+- The hook creates an internal recorder when you don't pass one; it exposes `start/stop` helpers.
+- `autoConnect: true` connects on mount and starts the internal recorder.
+- Use `silencePolicy: 'drop'` to send only speech frames; `mute` keeps cadence with zeroed frames.
+
+## Next
+
+- Concepts → Controller & Transport (policies, retries)
+- Providers → Deepgram / Soniox (WS‑specific options)
+

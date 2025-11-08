@@ -1,0 +1,14 @@
+---
+title: Core Types
+description: Key interfaces for recorder, controllers, and providers.
+---
+
+Highlights:
+
+- `TranscriptionProvider<TOptions>`: single interface with optional `stream?` (WS) and `transcribe?` (HTTP).
+- `defineProvider({ id, capabilities, ... })`: compile‑time enforcement for transports support.
+- `CreateTranscriptionOptions`: `transport`, `connection.ws.retry`, `connection.ws.silencePolicy`, `connection.http.chunking`.
+- `Recorder`: normalized frames, VAD, segments; `subscribeFrames`/`subscribeSpeechFrames`.
+
+Strong typing rules apply: no `any`, avoid `as` (unless unavoidable).
+

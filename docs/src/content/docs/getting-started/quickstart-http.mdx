@@ -1,0 +1,87 @@
+---
+title: Quickstart (HTTP)
+description: VAD‑gated HTTP transcription with “segment‑only” mode. Sends WAV chunks automatically.
+---
+
+HTTP is great for simple, cost‑efficient transcription. The live aggregator batches PCM frames into WAV and flushes by timer or at the end of a speech segment.
+
+## What you'll build
+
+- Start the recorder and gate audio by speech
+- Send HTTP chunks by timer or on segment end
+- Receive final transcripts
+
+> Tip
+> For “one request per phrase”, set `intervalMs = 0` and `flushOnSegmentEnd = true`.
+
+## 1) Install
+
+```bash
+pnpm add @saraudio/runtime-browser @saraudio/deepgram
+```
+
+## 2) Provider (Deepgram example)
+
+Use a raw API key for the quickest setup (ideal for server or local tests).
+
+```ts
+import { deepgram } from '@saraudio/deepgram';
+
+export const provider = deepgram({
+  model: 'nova-3',
+  auth: {
+    apiKey: '<DEEPGRAM_API_KEY>',
+  },
+});
+```
+
+> Note: For production browsers, prefer issuing short‑lived tokens from your backend. We'll cover this in the Auth guide.
+
+## 3) Controller in HTTP mode
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+
+const recorder = createRecorder({ segmenter: true });
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true, // enable segment‑only semantics
+  connection: {
+    http: {
+      chunking: {
+        intervalMs: 0, // no timer → flush on segment end (or forceEndpoint)
+        minDurationMs: 700, // ignore tiny bursts on timers (not used when interval=0)
+        overlapMs: 500, // tail continuity between chunks
+        maxInFlight: 1, // limit concurrent HTTP requests
+        timeoutMs: 10000, // per‑flush timeout
+      },
+    },
+  },
+});
+```
+
+## 4) Start and flush
+
+```ts
+ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onError((e) => console.error(e));
+
+await recorder.start();
+await ctrl.connect();
+
+// Optional: manual flush at any time (e.g., on button click)
+// await ctrl.forceEndpoint();
+```
+
+## How VAD gating works
+
+- With `flushOnSegmentEnd: true`, the controller subscribes to speech frames only → silence is dropped.
+- If you disable VAD or don’t end a segment, call `forceEndpoint()` to flush in‑flight audio.
+
+## Next
+
+- Concepts → Controller & Transport (HTTP chunking in detail)
+- Providers → Deepgram / Soniox (HTTP support and models)

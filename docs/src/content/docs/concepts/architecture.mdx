@@ -1,0 +1,168 @@
+---
+title: Architecture Overview
+description: A practical tour of the main pieces — how audio flows from the mic to transcripts.
+---
+
+This page explains how SARAUDIO works end‑to‑end.
+
+## Big picture
+
+From microphone (or file) to transcript:
+
+```
+Microphone / File → Recorder → (optional) Stages (VAD/segmenter) → Controller → Transport (WS / HTTP) → Provider → Transcript
+```
+
+Key ideas:
+
+- Recorder produces normalized PCM frames and segment events. You don’t manage `AudioContext` buffers manually.
+- The Controller chooses the transport (WebSocket or HTTP) and applies “silence‑aware” policies.
+- Providers (Deepgram, Soniox, …) sit behind a single interface. You can swap them without rewriting app code.
+
+## Components
+
+1) Recorder (browser & node)
+- Captures audio as normalized `pcm16` frames with stable cadence (mono/16 kHz by default).
+- Emits VAD and segment events (start/end of speech) so the rest of the system can act on speech boundaries.
+- Browser uses AudioWorklet when available (low latency), falls back to AudioContext.
+
+2) Stages (optional, plug‑in)
+- VAD (voice activity detection) marks speech vs silence.
+- Segmenter groups frames into utterances (“phrases”).
+- Future: DSP filters, gain control, masking — all as independent stages.
+
+3) Transcription Controller (runtime‑base / runtime‑browser)
+- Orchestrates the session with a provider and a recorder.
+- You decide the transport per session: `'websocket' | 'http' | 'auto'`.
+- Applies policies:
+  - WebSocket: `silencePolicy: 'keep' | 'drop' | 'mute'`.
+  - HTTP: live aggregator with `intervalMs`, `minDurationMs`, `overlapMs`, `maxInFlight`, `timeoutMs`.
+- Handles lifecycle (connect / disconnect / forceEndpoint) and transient errors (retry/backoff for WS).
+
+4) Transports
+- WebSocket (WS): bidirectional stream for partials and finals. Lowest latency.
+- HTTP: the controller batches PCM into WAV and POSTs chunks. Great for cost‑efficient “phrase” UX.
+
+5) Providers
+- A provider exposes `stream?()` for WS and/or `transcribe?()` for HTTP.
+- Same provider instance can be used with both transports; the controller decides which path to run.
+- Examples: `@saraudio/deepgram` supports WS + HTTP; `@saraudio/soniox` supports WS realtime and HTTP batch.
+
+## Data flow (step‑by‑step)
+
+1. You create a `Recorder` and a `Provider`, then pass both to the Controller.
+2. Controller selects a transport:
+   - WS for live streaming with partials.
+   - HTTP for chunked or “one request per phrase” flows.
+3. Recorder pushes frames; VAD/segments are emitted in parallel for policies and UI.
+4. Transport forwards frames:
+   - WS: sends each frame (or zeroed frame if `mute`, or drops during silence if `drop`).
+   - HTTP: accumulates frames and flushes by timer or on segment end.
+5. Provider returns results:
+   - WS: partials (mutable text) + finals.
+   - HTTP: finals per chunk or per phrase.
+6. Controller emits events to your app: `onPartial`, `onTranscript`, `onError`, `onStatusChange`.
+
+## When to use which transport
+
+- Choose WebSocket when you need real‑time partials (sub‑second UX: live captions, dictation, command & control).
+- Choose HTTP when you prefer simplicity and cost control (no partials), especially with “segment‑only” mode.
+
+> Segment‑only HTTP = `flushOnSegmentEnd: true` + `intervalMs: 0` → one request per phrase.
+
+## Silence‑aware policies
+
+Why care about silence?
+
+- Silence dominates real audio streams. Dropping/muting it reduces traffic and makes latency predictable.
+
+WS (streaming):
+- `keep` (default): send all frames (best quality, more bandwidth).
+- `drop`: send only during speech (based on VAD).
+- `mute`: keep cadence with zeroed frames during silence (useful if a provider expects constant flow).
+
+HTTP (chunking):
+- Send only speech frames when `flushOnSegmentEnd: true` (controller subscribes to speech‑only stream).
+- On segment end the controller triggers a final flush (best effort).
+
+## Buffering & backpressure
+
+- Recorder emits frames at a steady pace. The controller prevents runaway queues.
+- WS: when the send queue grows beyond budget, the oldest frame is dropped (drop‑oldest) — “last frame always passes”.
+- HTTP: `maxInFlight` limits concurrent POSTs; `overlapMs` prepends a short tail to the next chunk for continuity.
+
+Guidelines:
+- For minimal latency: mono 16 kHz, small frames.
+- For stability on mobile: slightly larger frames and overlap; keep `maxInFlight = 1`.
+
+## Lifecycle
+
+Connect
+- WS: connect → (optionally) prebuffer a few frames to avoid losing speech during handshake → ready.
+- HTTP: no handshake; the aggregator starts collecting frames immediately.
+
+Disconnect
+- WS: send a polite close where supported, then `close(1000)`.
+- HTTP: the aggregator performs a best‑effort final flush.
+
+Force endpoint
+- `controller.forceEndpoint()` forces an immediate HTTP flush; on WS it forwards to the stream if supported.
+
+## Error handling & retries
+
+- WS: transient network errors trigger exponential backoff retries.
+- HTTP: each flush has a timeout; errors from the provider are surfaced to `onError`.
+- Rate limiting: where supported, the controller respects `Retry‑After` for backoff timing.
+
+## Providers in practice
+
+Deepgram
+- WS: low‑latency partials + finals, mutable partials.
+- HTTP: chunked WAV; works well with segment‑only.
+
+Soniox
+- WS: realtime via `stt-rt-v3`.
+- HTTP: batch via Files API (`stt-async-v3`): upload → create job → poll → transcript.
+
+Provider options (in short)
+- `auth` (apiKey / token / getToken), `baseUrl` (string or builder), `headers`, `query`, `wsProtocols`.
+- Recorder format negotiation: the provider announces preferred/supported formats; the hook sets recorder format for you.
+
+## Common patterns
+
+Live captions (WS)
+```ts
+const ctrl = createTranscription({ provider, recorder, transport: 'websocket' });
+ctrl.onPartial((t) => ui.update(t));
+ctrl.onTranscript((r) => ui.commit(r.text));
+```
+
+“One request per phrase” (HTTP)
+```ts
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true,
+  connection: { http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1 } } },
+});
+```
+
+Switching provider or transport
+- The Vue hook can rebuild the controller when you swap the provider or transport reactively.
+- The provider instance supports both transports; your app decides which to run.
+
+## Gotchas & tips
+
+- Use HTTPS or localhost for microphone access. AudioWorklet needs cross‑origin isolation for the best path.
+- Safari/iOS may throttle background tabs; prefer slightly larger frames and segment‑only HTTP when backgrounding is common.
+- For browsers, avoid shipping long‑lived secrets; issue short‑lived tokens from your backend.
+- For long audio files, prefer provider batch APIs (jobs) instead of realtime paths.
+
+## What you don’t have to worry about
+
+- Decoding blobs or re‑encoding audio — the recorder emits normalized PCM, and the HTTP path builds WAV for you.
+- Partial vs final result plumbing — events are already separated and typed.
+- Glue code for retries, backpressure, or overlap math — the controller and utils handle it.
+
+With these pieces in mind, you can pick the right transport per screen, swap providers without lock‑in, and keep latency/cost predictable by managing silence instead of shovelling raw audio.

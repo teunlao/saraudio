@@ -1,0 +1,182 @@
+---
+title: Deepgram
+description: WebSocket and HTTP transcription with Deepgram — quickstarts, options, errors, and tips.
+---
+
+Deepgram works out of the box with both transports:
+
+- WebSocket (WS): low‑latency streaming with partial and final results.
+- HTTP: WAV chunks via the built‑in aggregator (finals only). Perfect with VAD “segment‑only”.
+
+Use raw model IDs (e.g., `nova-3`). Language hints are type‑checked against the chosen model.
+
+## Install
+
+```bash
+pnpm add @saraudio/deepgram
+```
+
+## Create a provider
+
+Simplest form — API key (great for servers and quick local tests):
+
+```ts
+import { deepgram } from '@saraudio/deepgram';
+
+export const provider = deepgram({
+  model: 'nova-3',
+  auth: { apiKey: '<DEEPGRAM_API_KEY>' },
+});
+```
+
+> For production browsers, prefer short‑lived tokens from your backend (`auth.token` or `auth.getToken()`). The provider automatically chooses the correct Authorization scheme (`Token` for API keys, `Bearer` for JWTs).
+
+---
+
+## WebSocket quickstart
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { deepgram } from '@saraudio/deepgram';
+
+const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<KEY>' } });
+
+const recorder = createRecorder({
+  format: { sampleRate: 16000, channels: 1 }, // recommended
+  segmenter: true, // optional – for UI events
+});
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
+});
+
+ctrl.onPartial((t) => console.log('partial:', t));
+ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onError((e) => console.error(e));
+
+await recorder.start();
+await ctrl.connect();
+```
+
+Tips
+- For bandwidth savings: use `silencePolicy: 'drop'` (send only during speech) or `mute` (zeroed frames in silence).
+- Deepgram partials are mutable — expect text to update until a final is emitted.
+
+---
+
+## HTTP quickstart (segment‑only)
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { deepgram } from '@saraudio/deepgram';
+
+const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<KEY>' } });
+
+const recorder = createRecorder({ segmenter: true });
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true, // "one request per phrase"
+  connection: {
+    http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1, timeoutMs: 10_000 } },
+  },
+});
+
+ctrl.onTranscript((r) => console.log('final:', r.text));
+
+await recorder.start();
+await ctrl.connect();
+```
+
+Notes
+- With `flushOnSegmentEnd: true`, the controller subscribes to speech‑only frames — silence isn’t sent.
+- Set `intervalMs > 0` to enable periodic flushes (e.g., every 3s) and keep `minDurationMs` ≥ 700ms for stability.
+
+---
+
+## Options (most used)
+
+Provider options
+- `model: DeepgramModelId` — raw model name (e.g., `nova-3`).
+- `language?: DeepgramLanguageForModel<M>` — language hint validated for the model.
+- `interimResults?: boolean` — enable mutable partials (default: true).
+- `multichannel?: boolean` and `channels?: 1 | 2` — multi‑channel input; recorder format is negotiated.
+- `sampleRate?: number`, `encoding?: string` — raw input expectations (defaults: 16 kHz, `linear16`).
+- `version?: string` — pin a specific model build.
+- Text options: `punctuate?`, `profanityFilter?`, `smartFormat?`, `numerals?`, `measurements?`, `paragraphs?`, `utterances?`, `diarize?`, `keywords?`, `search?`, `replace?`.
+- WS tuning: `keepaliveMs?` (clamped 1000..30000), `queueBudgetMs?` (clamped 100..500) — send‑queue budget, drop‑oldest when exceeded.
+
+Common provider options (shared across providers)
+- `auth`: `{ apiKey?; token?; getToken?: () => Promise<string> }` — API key or JWT; `getToken` recommended for browsers.
+- `baseUrl`: `string | ({ defaultBaseUrl, params, transport }) => string | Promise<string>` — override URL per transport.
+- `headers`: `HeadersInit | (ctx) => HeadersInit` — merge custom headers.
+- `query`: `Record<string, string | number | boolean | null | undefined>` — extra query params.
+- `wsProtocols?: string[]` — extra WebSocket subprotocols, if needed.
+
+URL building example (custom region or router)
+```ts
+const provider = deepgram({
+  model: 'nova-3',
+  auth: { apiKey: '<KEY>' },
+  baseUrl: ({ defaultBaseUrl, params, transport }) => {
+    // e.g., pin region or add routing
+    const base = transport === 'http' ? 'https://api.deepgram.com/v1/listen' : defaultBaseUrl;
+    const q = params.toString();
+    return q ? `${base}?${q}` : base;
+  },
+});
+```
+
+---
+
+## Errors & retries
+
+Error mapping (surfaced via `onError`):
+- 401/403 → `AuthenticationError`
+- 429 → `RateLimitError` (with `retryAfter` when present)
+- ≥500 → `ProviderError`
+- network/socket → `NetworkError`
+
+Controller behavior
+- WS retries with exponential backoff (configurable at `connection.ws.retry`).
+- HTTP flushes have a per‑request timeout; errors are forwarded and the aggregator continues for next chunks.
+
+Example handler
+```ts
+ctrl.onError((e) => {
+  if (e.name === 'RateLimitError') console.warn('rate limited');
+  else console.error('deepgram error', e);
+});
+```
+
+---
+
+## Models & languages
+
+Use raw IDs; types help keep pairs valid:
+
+```ts
+import { DEEPGRAM_MODEL_DEFINITIONS } from '@saraudio/deepgram';
+
+const all = Object.keys(DEEPGRAM_MODEL_DEFINITIONS); // ['nova-3', ...]
+```
+
+Language hints are typed per model via `DeepgramLanguageForModel<M>`. If a language isn’t supported, TypeScript flags it at compile time.
+
+---
+
+## Practical tips
+
+- Prefer WS for live captions and dictation (partials); prefer HTTP for phrase‑based UX and cost control.
+- Segment‑only HTTP = `flushOnSegmentEnd: true` + `intervalMs: 0`.
+- Keep recorder mono/16 kHz for low latency; negotiate via `getPreferredFormat()`.
+- In browsers, don’t ship long‑lived secrets — use short‑lived tokens from your backend.
+
+See also
+- Getting Started → Quickstart (WebSocket), Quickstart (HTTP), Quickstart (Vue + WS)
+- Concepts → Controller & Transport

@@ -1,0 +1,154 @@
+---
+title: Soniox
+description: Realtime WS via `stt-rt-v3` and batch HTTP via Files API (`stt-async-v3`).
+---
+
+Soniox provides two distinct paths:
+
+- WebSocket realtime (`stt-rt-v3`) — partials and finals with low latency.
+- HTTP batch via Files API (`stt-async-v3`) — upload → create job → poll → transcript.
+
+Use raw model IDs. The same provider instance exposes both methods; the controller chooses the transport.
+
+## Install
+
+```bash
+pnpm add @saraudio/soniox
+```
+
+## Create a provider
+
+```ts
+import { soniox } from '@saraudio/soniox';
+
+export const provider = soniox({
+  model: 'stt-rt-v3', // or 'stt-async-v3' when targeting HTTP batch
+  auth: { apiKey: '<SONIOX_API_KEY>' },
+});
+```
+
+> Tip: You can use the same instance for both transports; set `transport` on the controller per session.
+
+---
+
+## WebSocket quickstart (realtime)
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { soniox } from '@saraudio/soniox';
+
+const provider = soniox({ model: 'stt-rt-v3', auth: { apiKey: '<KEY>' } });
+
+const recorder = createRecorder({ format: { sampleRate: 16000, channels: 1 }, segmenter: true });
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { silencePolicy: 'keep' } },
+});
+
+ctrl.onPartial((t) => console.log('partial:', t));
+ctrl.onTranscript((r) => console.log('final:', r.text));
+
+await recorder.start();
+await ctrl.connect();
+```
+
+Notes
+- Soniox tokens stream as "tokens"; partials are coalesced into text for you.
+- Use `silencePolicy: 'drop'` to send frames only during speech.
+
+---
+
+## HTTP quickstart (Files API batch)
+
+The controller’s HTTP path calls `provider.transcribe()` for each chunk. The Soniox provider maps this to Files API:
+
+`upload` → `create transcription job` → `poll` → `fetch transcript`.
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+import { soniox } from '@saraudio/soniox';
+
+const provider = soniox({ model: 'stt-async-v3', auth: { apiKey: '<KEY>' } });
+
+const recorder = createRecorder({ segmenter: true });
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true, // pair with intervalMs: 0 for one request per phrase
+  connection: {
+    http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1, timeoutMs: 30_000 } },
+  },
+});
+
+ctrl.onTranscript((r) => console.log('final:', r.text));
+
+await recorder.start();
+await ctrl.connect();
+```
+
+Notes
+- Use the async model (`stt-async-v3`) for HTTP batch. Realtime model (`stt-rt-v3`) is for WebSocket.
+- Batch jobs incur additional latency (upload + processing). For live UX prefer WS.
+
+---
+
+## Options (Soniox)
+
+- `model: 'stt-rt-v3' | 'stt-async-v3'` — realtime vs async (batch REST).
+- `sampleRate?: number` — preferred sample rate; default 16000.
+- `channels?: 1 | 2` — channel count; default 1.
+- `audioFormat?: 'pcm_s16le' | 'auto' | string` — initial config for WS; default `pcm_s16le`.
+- `languageHints?: string[]` — optional list like `['en','es']`.
+- `queueBudgetMs?: number` — drop‑oldest send queue budget for WS; default 200ms (clamped [100..500]).
+
+Common provider options
+- `auth`: `{ apiKey?; token?; getToken? }`
+- `baseUrl`: string | builder per transport
+- `headers`, `query`, `wsProtocols`
+
+---
+
+## Errors & retries
+
+- 401/403 → `AuthenticationError`
+- 429 → `RateLimitError` (uses `Retry‑After` when present)
+- Other HTTP errors → `ProviderError`
+- WS close with error JSON (error_code/error_message) is mapped to the proper error type.
+- Controller: WS retry with backoff; HTTP flush timeout per request.
+
+```ts
+ctrl.onError((e) => {
+  if (e.name === 'RateLimitError') console.warn('rate limited');
+  else console.error('soniox error', e);
+});
+```
+
+---
+
+## Models
+
+```ts
+import { SONIOX_REALTIME_MODELS, SONIOX_ASYNC_MODELS } from '@saraudio/soniox';
+
+// ['stt-rt-v3'] and ['stt-async-v3']
+console.log(SONIOX_REALTIME_MODELS, SONIOX_ASYNC_MODELS);
+```
+
+Pick `stt-rt-v3` for WS realtime or `stt-async-v3` for HTTP batch.
+
+---
+
+## Practical tips
+
+- Prefer WS for live captions/partials; use HTTP for async jobs or phrase‑based UX with segment‑only.
+- Keep mono/16 kHz for low latency; the hook negotiates formats with the provider.
+- For big files prefer server‑side batch pipelines (upload → job → webhook/poll → storage).
+
+See also
+- Getting Started → Quickstart (WebSocket), Quickstart (HTTP), Quickstart (Vue + WS)
+- Concepts → Controller & Transport

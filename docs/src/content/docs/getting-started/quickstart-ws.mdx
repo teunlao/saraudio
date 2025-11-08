@@ -1,0 +1,89 @@
+---
+title: Quickstart (WebSocket)
+description: Real‑time speech streaming with partials over WebSocket. Low latency, provider‑agnostic.
+---
+
+Get real‑time transcripts in minutes using the built‑in recorder and a WebSocket‑capable provider. This guide uses Deepgram, but any WS provider works the same.
+
+## What you'll build
+
+- Start a microphone recorder (normalized PCM frames)
+- Connect a WebSocket transcription stream
+- Receive partial and final transcripts
+
+> Prerequisites
+> - HTTPS (or localhost)
+> - Microphone permission
+> - A provider key or short‑lived token endpoint
+
+## 1) Install
+
+```bash
+pnpm add @saraudio/runtime-browser @saraudio/deepgram
+```
+
+## 2) Create a provider (Deepgram example)
+
+Simplest form: use a raw API key (great for quick local tries and server‑side usage).
+
+```ts
+import { deepgram } from '@saraudio/deepgram';
+
+export const provider = deepgram({
+  model: 'nova-3',
+  auth: {
+    apiKey: '<DEEPGRAM_API_KEY>',
+  },
+});
+```
+
+> Note: For production browsers, prefer short‑lived tokens from your backend. We'll cover this in a separate Auth guide.
+
+## 3) Create recorder and controller
+
+```ts
+import { createRecorder, createTranscription } from '@saraudio/runtime-browser';
+
+const recorder = createRecorder({
+  // Optional: defaults are fine; keep mono 16 kHz for low latency
+  format: { sampleRate: 16000, channels: 1 },
+  segmenter: true, // enables VAD events for your UI (not required for WS)
+});
+
+const ctrl = createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: {
+    ws: { silencePolicy: 'keep' }, // 'keep' | 'drop' | 'mute'
+  },
+});
+```
+
+## 4) Wire up events and start
+
+```ts
+ctrl.onPartial((text) => console.log('partial:', text));
+ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onError((e) => console.error(e));
+
+await recorder.start();
+await ctrl.connect();
+
+// Later: stop
+// await ctrl.disconnect();
+// await recorder.stop();
+```
+
+## Silence policy (optional)
+
+- `keep` (default): send all frames (best quality, more bandwidth)
+- `drop`: send only during speech (based on VAD)
+- `mute`: keep cadence by sending zeroed frames in silence
+
+Change at controller creation: `connection.ws.silencePolicy`.
+
+## Next
+
+- Concepts → Controller & Transport (policies, retries)
+- Providers → Deepgram / Soniox (WS options)

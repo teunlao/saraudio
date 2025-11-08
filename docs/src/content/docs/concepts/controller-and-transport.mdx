@@ -1,0 +1,70 @@
+---
+title: Controller & Transport
+description: Select WS/HTTP at the controller; configure silence, VAD, and batching.
+---
+
+## Why controller decides transport
+
+Providers expose both methods where available (`stream?` for WS, `transcribe?` for HTTP). The controller picks the active transport per session:
+
+- `transport: 'websocket' | 'http' | 'auto'`
+- Switch behavior without changing provider code
+
+This keeps providers simple and lets apps tune transport per UX/cost needs.
+
+## WebSocket — silence policy
+
+```ts
+createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
+});
+```
+
+- `keep` (default): send all frames
+- `drop`: send only during speech
+- `mute`: keep cadence with zeroed frames in silence
+
+Use `drop` to save bandwidth or `mute` when provider expects constant cadence.
+
+## HTTP — chunking & “segment‑only”
+
+```ts
+createTranscription({
+  provider,
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true,
+  connection: { http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1 } } },
+});
+```
+
+Chunking options:
+
+- `intervalMs`: timer‑based flush (set to `0` for segment‑only)
+- `minDurationMs`: minimum audio before a timer flush
+- `overlapMs`: tail continuity between chunks
+- `maxInFlight`: limit parallel HTTP flushes
+- `timeoutMs`: per‑flush timeout
+
+With `flushOnSegmentEnd: true` + `intervalMs: 0` you get one request per phrase.
+
+## Retries (WS)
+
+```ts
+createTranscription({
+  provider,
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { retry: { enabled: true, maxAttempts: 3, baseDelayMs: 300 } } },
+});
+```
+
+On transient errors the controller reconnects with exponential backoff.
+
+## Force flush / endpoint
+
+- HTTP: `controller.forceEndpoint()` triggers a flush of the current buffer.
+- WS: if provider supports explicit endpointing, controller forwards `forceEndpoint()` to the stream.
