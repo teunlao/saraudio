@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/soniox",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Soniox transcription provider for SARAUDIO",
   "license": "ISC",
   "sideEffects": false,

@@ -1,5 +1,24 @@
 ## 0.0.2
 
+## 0.2.0
+
+### Minor Changes
+
+- f66709f: feat: add unified session auth system for ephemeral tokens
+
+  - **@saraudio/core**: export SessionAuthAdapter, SessionAuthIssueResult, ProviderId types
+  - **@saraudio/deepgram**: add `/server` subpath export with sessionAuthAdapter
+  - **@saraudio/soniox**: add `/server` subpath export with sessionAuthAdapter
+  - **@saraudio/runtime-node**: add createSessionAuthHandler for unified endpoint
+
+  Unified API returns `{ token: string, expiresIn: number }` for both providers.
+  Server-side adapters use standard SessionAuthAdapter interface.
+
+### Patch Changes
+
+- Updated dependencies [f66709f]
+  - @saraudio/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

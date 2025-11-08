@@ -1,5 +1,15 @@
 ## 0.0.2
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [f66709f]
+  - @saraudio/core@0.2.0
+  - @saraudio/meter@0.0.5
+  - @saraudio/runtime-browser@0.0.5
+  - @saraudio/vad-energy@0.0.5
+
 ## 0.0.4
 
 ### Patch Changes
