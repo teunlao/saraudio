@@ -48,11 +48,17 @@ export function hasEmbeddedToken(options: MinimalAuthOptions): boolean {
   });
 }
 
+function isJwt(token: string): boolean {
+  // JWTs typically have 2 dots (header.payload.signature)
+  return token.split('.').length >= 3;
+}
+
 export function createProtocolList(token: string | null, additional?: ReadonlyArray<string>): string[] | undefined {
   const extra = additional ? [...additional] : [];
   if (token) {
+    const scheme = isJwt(token) ? 'bearer' : 'token';
     extra.unshift(token);
-    extra.unshift('token');
+    extra.unshift(scheme);
   }
   return extra.length > 0 ? extra : undefined;
 }

@@ -207,14 +207,36 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
     }
   };
 
+  let lastUrl: string | undefined;
+
+  const maskUrl = (url: string | undefined): string | undefined => {
+    if (!url) return undefined;
+    try {
+      const u = new URL(url);
+      const redact = (name: string) => {
+        if (u.searchParams.has(name)) u.searchParams.set(name, '***');
+      };
+      redact('token');
+      redact('bearer');
+      redact('access_token');
+      return u.toString();
+    } catch {
+      return url;
+    }
+  };
+
   const handleError = (event: Event): void => {
-    const error = new NetworkError('Deepgram WebSocket error', true, event);
+    const error = new NetworkError(
+      lastUrl ? `Deepgram WebSocket error (url=${maskUrl(lastUrl)})` : 'Deepgram WebSocket error',
+      true,
+      event,
+    );
     emitError(error);
     setStatus('error');
   };
 
   const handleClose = (event: CloseEvent): void => {
-    const error = mapClose(event, closedByClient);
+    const error = mapClose(event, closedByClient, maskUrl(lastUrl));
     teardownSocket();
     setStatus('disconnected');
     if (!closedByClient && error) {
@@ -237,6 +259,7 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
         throw new AbortedError('Deepgram connect aborted');
       }
       const info = await config.connectionFactory();
+      lastUrl = info.url;
       if (signal?.aborted) {
         throw new AbortedError('Deepgram connect aborted');
       }
@@ -282,7 +305,8 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
         const onError = (event: Event): void => {
           if (!settled) {
             settled = true;
-            reject(new NetworkError('Deepgram WebSocket error', true, event));
+            const msg = lastUrl ? `Deepgram WebSocket error (url=${maskUrl(lastUrl)})` : 'Deepgram WebSocket error';
+            reject(new NetworkError(msg, true, event));
           }
           handleError(event);
         };
@@ -290,7 +314,7 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
         const onClose = (event: CloseEvent): void => {
           if (!settled) {
             settled = true;
-            const error = mapClose(event, closedByClient);
+            const error = mapClose(event, closedByClient, lastUrl);
             reject(error ?? new NetworkError('Deepgram connection closed before ready'));
           }
           handleClose(event);

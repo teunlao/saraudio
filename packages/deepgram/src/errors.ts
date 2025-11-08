@@ -38,7 +38,7 @@ export function mapError(message: DeepgramErrorMessage): Error {
   return new ProviderError(errorMessage, 'deepgram', message.err_code ?? status, status, raw);
 }
 
-export function mapClose(event: CloseEvent, closedByClient: boolean): Error | null {
+export function mapClose(event: CloseEvent, closedByClient: boolean, url?: string): Error | null {
   const reason = typeof event.reason === 'string' ? event.reason.trim() : '';
   if (closedByClient && event.code === 1000) {
     return null;
@@ -52,7 +52,10 @@ export function mapClose(event: CloseEvent, closedByClient: boolean): Error | nu
     }
   }
   if (!event.wasClean || event.code === 1006) {
-    return new NetworkError('Deepgram connection closed unexpectedly', true, {
+    const msg = url
+      ? `Deepgram connection closed unexpectedly (code=${event.code}, url=${url})`
+      : 'Deepgram connection closed unexpectedly';
+    return new NetworkError(msg, true, {
       code: event.code,
       reason,
     });
@@ -60,7 +63,9 @@ export function mapClose(event: CloseEvent, closedByClient: boolean): Error | nu
   if (event.code === 1000) {
     return null;
   }
-  return new ProviderError(reason || 'Deepgram connection closed', 'deepgram', event.code, undefined, {
+  const message = reason || 'Deepgram connection closed';
+  const withUrl = url ? `${message} (code=${event.code}, url=${url})` : message;
+  return new ProviderError(withUrl, 'deepgram', event.code, undefined, {
     code: event.code,
     reason,
   });
