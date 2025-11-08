@@ -1,5 +1,4 @@
-# SARAUDIO — Batteries‑Included Transcription SDK
-
+# SARAudio
 Modular audio toolkit and transcription SDK for real‑time voice applications. Works with any transcription provider, cross‑platform.
 
 > ⚠️ Active development - APIs may change between releases.
