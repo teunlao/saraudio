@@ -1,0 +1,314 @@
+---
+title: "Transcription — Overview"
+description: "What transcription is in SARAUDIO, why it exists, and how the pieces fit together (Recorder → Stages → Controller → Transport → Provider)."
+---
+
+This page gives you a practical, end‑to‑end understanding of how transcription works in SARAUDIO. It explains the problem we solve, the mental model, and the decisions behind the API. If you only skim, read “Concept map”, “Typical flows”, and “Pitfalls”.
+
+## Why this exists
+
+Building speech features in real apps quickly runs into the same pains:
+
+- Too many vendor‑specific SDKs and endpoints; code becomes tightly coupled to one provider.
+- Different transport models (WebSocket vs HTTP) with different failure modes, auth, and latency profiles.
+- Handling silence, buffering, backpressure, and partial vs final results is non‑trivial.
+- Frontends need a recorder that is predictable and consistent across browsers, workers, and Node.
+
+SARAUDIO provides a vendor‑agnostic, composable layer that unifies these concerns without hiding power:
+
+- One recorder abstraction that always emits normalized frames (PCM Int16) with known format.
+- One controller that binds recorder + provider and implements robust transports.
+- Providers that expose the minimal surface needed: `stream?()` (WS) and/or `transcribe?()` (HTTP).
+- Optional stages (e.g., VAD and Meter) to control when and what you send, without forking your app logic.
+
+The result: you can switch providers, switch transports, and tune silence behavior without rewriting your app.
+
+## Concept map
+
+```
+Mic/File → Recorder → [Stages: VAD, Meter, …] → Controller → Transport (WS|HTTP) → Provider (Deepgram, Soniox, …)
+                                      ↓                                           ↑
+                                   Partials                                   Results/Errors
+```
+
+- Recorder: converts real audio sources into normalized frames; can run in Worklet/AudioContext/Node.
+- Stages: pure, pluggable processors that annotate frames (e.g., speech/silence) or compute metrics.
+- Controller: orchestrates the session, chooses the transport, handles retries and buffering.
+- Transport:
+  - WebSocket: low latency, partial + final results; long‑lived connection; sensitive to auth and network.
+  - HTTP: request/response; we chunk or flush on segment end; finals only; simpler operationally.
+- Provider: glue to a vendor; implements WS and/or HTTP by mapping normalized frames to the provider API.
+
+## Goals and non‑goals
+
+Goals
+
+- “Provider‑agnostic by default”: apps depend on our types and controller, not on provider SDKs.
+- “Transport‑at‑the‑edge”: choose WS or HTTP per session/screen, not hardcoded in providers.
+- “Silence‑aware”: first‑class control of what happens when no one speaks.
+- “Strong typing without ceremony”: providers model real options; app code stays small.
+
+Non‑goals
+
+- We do not implement ASR ourselves; providers do. We unify the plumbing and results.
+- We do not invent new audio containers; we standardize on Int16 PCM frames for live.
+
+## Key pieces
+
+### Recorder
+
+The recorder converts microphones (or file/stream sources) into normalized frames:
+
+- Format: Int16 PCM; default 16 kHz mono; negotiable via `getPreferredFormat()` of a provider.
+- Delivery: subscribable streams: `subscribeFrames` (all), `subscribeSpeechFrames` (speech only), etc.
+- Where: Browser (Worklet or AudioContext) and Node (stream sources).
+
+Why normalize?
+
+- Providers accept various formats; apps should not juggle encoders. Normalization keeps latency stable and CPU predictable.
+
+### Stages
+
+Stages are small processors you add to the recorder pipeline:
+
+- VAD (voice activity detection): sets `speech: boolean` with smoothing; used by controller to gate HTTP.
+- Meter: RMS/DB levels; useful for UI and debugging.
+- You can write your own stage to enrich frames with metadata or pre‑process audio.
+
+Stages do not mutate global state; they annotate frames and can be freely composed.
+
+### Controller
+
+The controller is the “brains of the session”. It:
+
+- Binds `recorder` + `provider`.
+- Picks a transport (`'websocket' | 'http' | 'auto'`).
+- For WS: handles connection lifecycle, keepalive, queue backpressure, and reconnection policy.
+- For HTTP: handles live chunk aggregation (periodic or segment‑only), concurrency limits, and timeouts.
+- Emits `partial` (text) and `transcript` (final result objects), and forwards `error`.
+
+### Transport
+
+Two families with different trade‑offs:
+
+- WebSocket
+  - Pros: low latency; partials; fewer edge cases in long dictations.
+  - Cons: needs stable auth and network; more moving parts for reconnection.
+
+- HTTP
+  - Pros: simple; stateless; easy to operate; great for “phrase‑based” UX.
+  - Cons: no partials; need smart flushing (VAD/interval); chunk sizing matters.
+
+### Provider
+
+Providers implement two optional methods:
+
+- `stream()` → WebSocket stream (if the vendor supports live WS).
+- `transcribe(audio, options)` → HTTP batch or live‑like chunking (if the vendor supports HTTP).
+
+By design, a provider may support one or both; the controller enforces presence at runtime.
+
+### Capabilities
+
+Each provider declares what it supports (e.g., partials are mutable, diarization, segmentation, transport support). The controller and docs use this to set expectations, but your app can still be defensive at runtime.
+
+## Typical flows
+
+### Live captions/dictation (WebSocket)
+
+Use WS when you need partials (interim text) and sub‑second updates.
+
+Basic outline:
+
+```ts
+const recorder = createRecorder({
+  format: { sampleRate: 16000, channels: 1 },
+  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
+});
+
+const ctrl = createTranscription({
+  provider, // e.g., deepgram({ model: 'nova-3', auth: { getToken } })
+  recorder,
+  transport: 'websocket',
+  connection: { ws: { silencePolicy: 'keep' /* 'drop' | 'mute' */ } },
+});
+
+ctrl.onPartial(...);
+ctrl.onTranscript(...);
+await recorder.start();
+await ctrl.connect();
+```
+
+Silence policy:
+
+- `keep` (default) — send everything; best quality, more bandwidth.
+- `drop` — send only during speech; saves bandwidth; relies on VAD.
+- `mute` — keep cadence by sending zeroed frames in silence; preserves timing without payload.
+
+### Phrase‑based UX (HTTP “segment‑only”)
+
+If your UI is naturally chunked by phrases (press‑to‑talk, or sentence bubbles), use HTTP with VAD gating. No partials; you get finals per segment.
+
+Outline:
+
+```ts
+const ctrl = createTranscription({
+  provider, // e.g., deepgram({ model: 'nova-3', auth: { getToken } })
+  recorder,
+  transport: 'http',
+  flushOnSegmentEnd: true,
+  connection: {
+    http: {
+      chunking: { intervalMs: 0, minDurationMs: 800, overlapMs: 300, maxInFlight: 1, timeoutMs: 15000 },
+    },
+  },
+});
+```
+
+Notes:
+
+- `intervalMs: 0` + `flushOnSegmentEnd: true` → one request per segment.
+- `overlapMs` pads the end to avoid cutting words.
+- `minDurationMs` avoids flooding the provider with tiny chunks.
+
+### Hybrid (periodic HTTP flushes)
+
+For dashboards or compliance logs, flush every N seconds and on segment end:
+
+```ts
+connection: { http: { chunking: { intervalMs: 3000, minDurationMs: 800, overlapMs: 300 } } }
+```
+
+## Lifecycle
+
+Controller states (simplified): `idle → connecting → ready/connected → error → (retry) … → disconnected`.
+
+- On WS connect: we prebuffer a bit (`preconnectBufferMs`) and then flush queued audio.
+- On HTTP flush: aggregator slices frames into the requested chunk shape; concurrency is bounded.
+- On errors: controller emits `error`; WS may retry with exponential backoff if configured.
+
+## Auth model (browser and server)
+
+SARAUDIO does not hardcode auth flows. Instead, providers accept:
+
+- `auth: { apiKey?: string; token?: string; getToken?: () => Promise<string> }`
+
+Deepgram specifics (what the provider does for you):
+
+- WebSocket (browser): we authenticate with subprotocols `['bearer', <jwt>]` for ephemeral tokens and `['token', <apiKey>]` for keys — matching the official SDK.
+- HTTP: we set `Authorization: Bearer <jwt>` or `Token <apiKey>`.
+
+For production browsers, prefer ephemeral tokens issued by your backend. See Guides → Auth: Deepgram (Ephemeral).
+
+## Error handling and retries
+
+- Network/WS issues → `NetworkError`; reason includes code and masked URL when available.
+- 401/403 → `AuthenticationError` (refresh token or show login).
+- 429 → `RateLimitError` (use `retryAfter` if provided).
+- 5xx → `ProviderError`.
+
+WS retry policy is configurable:
+
+```ts
+connection: {
+  ws: { retry: { enabled: true, maxAttempts: 5, baseDelayMs: 300, factor: 2, maxDelayMs: 5000, jitterRatio: 0.2 } }
+}
+```
+
+HTTP has per‑request timeouts and bounded `maxInFlight` concurrency.
+
+## Performance and latency
+
+- Keep the recorder mono/16 kHz for live streaming; higher rates increase bandwidth and CPU.
+- Use `queueBudgetMs` to constrain WS send queue (drops oldest frames under pressure; defaults are conservative).
+- For HTTP, find a good `minDurationMs` and `overlapMs` for your language; start with 800/300.
+
+## Browser vs Node
+
+- Browser: recorder can run in Worklet (preferred) or AudioContext; WS uses native WebSocket; CORS applies for REST.
+- Node: recorder consumes streams/buffers; WS runs via `ws`; file/batch flows are easier.
+
+## Testing and observability
+
+- Unit tests exercise chunking logic and speech gating (we test 7‑second continuous speech + segment end, minDuration edge cases, etc.).
+- Use the Meter and VAD state in UI to debug “why nothing is being sent”.
+- Providers log with namespaces (e.g., `saraudio:provider-deepgram`) — wire your logger to surface debug.
+
+## Pitfalls (read this!)
+
+- “Empty transcripts over HTTP” — usually a chunk too short or silence was sent; raise `minDurationMs`, enable VAD gating, check `overlapMs`.
+- “WS flaps between connecting/error” — often an auth mismatch; in browser use ephemeral tokens with `bearer` subprotocols; ensure your token TTL is sufficient.
+- “High latency” — long WS queues or too large HTTP chunks; reduce `queueBudgetMs`, shorten chunk size, or switch to WS for partials.
+- “Provider mismatch” — a provider may not implement WS or HTTP; the controller will throw. Check the provider capabilities.
+
+## Migration: switching providers
+
+- Keep transports and controller logic unchanged; replace the provider factory. If options differ, pass provider‑specific options via the provider’s init function but keep `CreateTranscriptionOptions` identical.
+
+## Glossary
+
+- Frame — a contiguous slice of Int16 PCM audio with known sample rate and channels.
+- Partial — mutable, interim text that can change.
+- Final — stable result for a chunk/segment with optional word timings.
+- Segment — a contiguous speech span determined by VAD or UI actions.
+- Overlap — extra audio appended to a flush to avoid cutting off trailing phonemes.
+
+## FAQ
+
+Q: Can I use HTTP and still get “live feeling” results?
+
+A: Yes, with periodic flushes (e.g., every 3 s) and an on‑screen “partial” accumulated locally. But for true interim results, prefer WS.
+
+Q: Do I have to use your recorder?
+
+A: No, but we recommend it. If you feed your own frames, keep them Int16 PCM and negotiate format with the provider.
+
+Q: How do I stop sending during silence on WS?
+
+A: Set `silencePolicy: 'drop'` and include VAD in your recorder stages. Or use `mute` to keep cadence.
+
+Q: Can I run everything on the server?
+
+A: Yes with Node runtime + files/streams. Browser flows exist for UX and quick demos.
+
+## See also
+
+- Concepts → Controller & Transport
+- Transcription → Options (full API)
+- Guides → Auth: Deepgram (Ephemeral)
+- Providers → Deepgram / Soniox
+
+
+Transcription in SARAudio is built from small, composable parts.
+
+Flow
+
+1. Source → Recorder
+   - Microphone (browser) or stream/buffer (Node) enters the Recorder.
+   - Recorder normalizes frames to PCM (Int16), at a known sample rate/channel count.
+2. Stages (optional)
+   - VAD toggles speech/silence; Meter computes levels; you can add your own.
+3. Controller
+   - Binds a provider to the recorder and handles transport lifecycle.
+   - Emits partials/finals, manages retries and buffering.
+4. Transport
+   - WebSocket: low latency with partials.
+   - HTTP: chunking and segment flushes (finals only).
+5. Provider
+   - Implements `stream?()` (WS) and/or `transcribe?()` (HTTP).
+
+Choosing a transport
+
+- WebSocket for live captions or dictation (interim results).
+- HTTP for phrase‑by‑phrase UX and cost control (segment‑only).
+
+Silence handling
+
+- WS has `silencePolicy`: keep (default), drop, mute.
+- HTTP is typically “segment‑only”: send speech, flush on segment end.
+
+See also
+
+- Concepts → Controller & Transport
+- Reference → Core Types
+- Transcription → Options (full API)

@@ -33,7 +33,9 @@ export const provider = deepgram({
 });
 ```
 
-> For production browsers, prefer short‑lived tokens from your backend (`auth.token` or `auth.getToken()`). The provider automatically chooses the correct Authorization scheme (`Token` for API keys, `Bearer` for JWTs).
+> For production browsers, prefer short‑lived tokens from your backend (`auth.getToken`).
+> Browser WS auth matches the official SDK: ephemeral JWT via subprotocols `['bearer', <jwt>]`, API key via `['token', <key>]`.
+> For HTTP, the provider sets `Authorization: Bearer <jwt>` or `Token <key>` automatically.
 
 ---
 

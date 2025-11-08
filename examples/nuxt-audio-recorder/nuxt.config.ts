@@ -8,7 +8,11 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
+    // Private on server only (set via NUXT_DEEPGRAM_API_KEY/NUXT_SONIOX_API_KEY)
+    deepgramApiKey: '',
+    sonioxApiKey: '',
     public: {
+      // Public keys (used by older demos). For secure flows prefer private keys + server APIs.
       deepgramApiKey: '',
       sonioxApiKey: '',
     },

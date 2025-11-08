@@ -19,6 +19,20 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Guides',
+          items: [
+            { label: 'Auth: Deepgram (Ephemeral)', slug: 'guides/auth/deepgram-ephemeral' },
+            { label: 'Auth: Proxy (Overview)', slug: 'guides/auth/proxy' },
+          ],
+        },
+        {
+          label: 'Transcription',
+          items: [
+            { label: 'Overview', slug: 'transcription/overview' },
+            { label: 'Options', slug: 'transcription/options' },
+          ],
+        },
+        {
           label: 'Concepts',
           items: [
             { label: 'Architecture', slug: 'concepts/architecture' },

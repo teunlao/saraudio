@@ -1,0 +1,61 @@
+---
+title: "Transcription — Options"
+description: "Full options for createTranscription and transport‑specific settings."
+---
+
+`createTranscription(options)` wires a provider to a recorder and exposes a single place to configure transports.
+
+Top‑level options
+
+```ts
+type TransportKind = 'websocket' | 'http' | 'auto';
+
+interface CreateTranscriptionOptions {
+  provider: TranscriptionProvider;
+  transport?: TransportKind; // default: 'auto'
+  recorder?: Recorder; // pass to reuse an external recorder; otherwise the hook may create one
+
+  // If using an internal recorder (in hooks):
+  stages?: Stage[];
+  preconnectBufferMs?: number; // buffer before connect, ms
+  flushOnSegmentEnd?: boolean; // for HTTP: flush when VAD ends a segment
+
+  connection?: {
+    ws?: {
+      silencePolicy?: 'keep' | 'drop' | 'mute';
+      retry?: {
+        enabled?: boolean;
+        maxAttempts?: number;
+        baseDelayMs?: number;
+        factor?: number; // exponential backoff
+        maxDelayMs?: number;
+        jitterRatio?: number; // 0..1
+      };
+    };
+    http?: {
+      chunking?: {
+        intervalMs?: number; // 0 = only on segment end
+        minDurationMs?: number; // do not flush chunks shorter than this
+        overlapMs?: number; // pad end with overlap
+        maxInFlight?: number; // limit concurrent requests
+        timeoutMs?: number; // per‑request timeout
+      };
+    };
+  };
+}
+```
+
+Notes
+
+- `transport: 'auto'` picks WS when available; otherwise falls back to HTTP.
+- For HTTP, typical “segment‑only” setup is `flushOnSegmentEnd: true` and `intervalMs: 0`.
+- For WS, use `silencePolicy: 'drop'` to cut bandwidth during silence; `mute` preserves cadence with zeroed frames.
+
+Provider capabilities
+
+- Providers may implement only one method (WS or HTTP). The controller validates at runtime and throws if a method is missing.
+
+See also
+
+- Concepts → Controller & Transport
+- Providers → Deepgram / Soniox options

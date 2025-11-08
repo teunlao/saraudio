@@ -1,0 +1,21 @@
+---
+title: "Auth: Proxy (Overview)"
+description: "High‑level notes about using your own proxy for Deepgram and other providers."
+---
+
+This is a brief overview. We recommend starting with ephemeral tokens first.
+
+Why a proxy?
+
+- Keep API keys strictly server‑side.
+- Normalize provider differences and apply rate limiting or logging.
+- Work around REST CORS when needed.
+
+Caveats
+
+- WebSocket proxying can be limited on some serverless platforms; verify your host supports WS upgrade.
+- A proxy must set `Authorization` for upstream requests (e.g. `Token <API_KEY>` for Deepgram) and should not accept arbitrary client headers.
+
+Status
+
+- We plan to publish a concrete proxy guide with code once we finish internal validation. For now, use the Ephemeral Tokens guide for browsers.

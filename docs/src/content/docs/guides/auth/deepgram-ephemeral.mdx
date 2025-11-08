@@ -1,0 +1,77 @@
+---
+title: Deepgram Ephemeral Tokens (Secure Auth)
+description: Issue short‑lived tokens on your server and use them in the browser without exposing API keys.
+---
+
+Why use ephemeral tokens?
+
+- Never ship a permanent API key to the browser. If it leaks, anyone can bill against your account.
+- Deepgram provides short‑lived access tokens (JWT, ~30s TTL) via the Auth API. Your backend requests a token and hands it to the client.
+- In SARAudio, pass a token via `auth.getToken` on the provider. The WS transport authenticates with subprotocols `['bearer', <jwt>]` (same as the official SDK).
+
+Server endpoint (Nuxt/Nitro example)
+
+```ts
+// server/api/deepgram/token.post.ts
+export default defineEventHandler(async (event) => {
+  const apiKey = useRuntimeConfig(event).deepgramApiKey as string;
+  const res = await fetch('https://api.deepgram.com/v1/auth/grant', {
+    method: 'POST',
+    headers: { Authorization: `Token ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ttl_seconds: 30 }),
+  });
+  if (!res.ok) throw createError({ statusCode: res.status, statusMessage: 'Failed to grant Deepgram token' });
+  return await res.json(); // { access_token, expires_in }
+});
+```
+
+Client provider (browser)
+
+```ts
+import { deepgram } from '@saraudio/deepgram';
+
+type EphemeralTokenResponse = {
+  access_token: string;
+  expires_in: number; // seconds
+};
+
+let tokenCache: { value: string; expiresAt: number } | null = null;
+const nowMs = () => Date.now();
+
+async function getToken(): Promise<string> {
+  // Reuse a valid token if it expires in more than 2 seconds
+  if (tokenCache && tokenCache.expiresAt - nowMs() > 2000) {
+    return tokenCache.value;
+  }
+
+  const response = await fetch('/api/deepgram/token', { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`Failed to obtain Deepgram token (status ${response.status})`);
+  }
+
+  const body: EphemeralTokenResponse = await response.json();
+  const token = body.access_token;
+  const ttlSeconds = body.expires_in;
+  const safeTtlMs = Math.max(1, ttlSeconds - 2) * 1000;
+
+  tokenCache = { value: token, expiresAt: nowMs() + safeTtlMs };
+  return token;
+}
+
+export const provider = deepgram({
+  model: 'nova-3',
+  auth: { getToken },
+});
+```
+
+Notes
+
+- WebSocket auth: SARAudio uses `['bearer', <jwt>]` subprotocols for ephemeral tokens (and `['token', <key>]` for API keys), matching Deepgram’s browser SDK.
+- HTTP auth: provider sets `Authorization: Bearer <jwt>` or `Token <key>` automatically.
+- Refresh: if a token expires mid‑session, reconnect logic should request a fresh token. In hooks/controllers, handle `onError` and retry when appropriate.
+
+See also
+
+- Quickstart (Vue + WS) → Secure variant
+- Providers → Deepgram → Authentication
+- Troubleshooting → WebSocket

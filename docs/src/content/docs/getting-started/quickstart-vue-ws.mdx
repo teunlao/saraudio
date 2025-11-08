@@ -31,6 +31,47 @@ export const deepgramProvider = deepgram({
 
 > Note: In production browsers prefer short‑lived tokens from your backend. We'll cover this in the Auth guide.
 
+### Secure variant (browser)
+
+Issue a short‑lived token on your server and provide it via `auth.getToken` in your provider module:
+
+```ts
+// provider/deepgram.ts
+import { deepgram } from '@saraudio/deepgram';
+
+type EphemeralTokenResponse = {
+  access_token: string;
+  expires_in: number; // seconds
+};
+
+let tokenCache: { value: string; expiresAt: number } | null = null;
+const nowMs = () => Date.now();
+
+async function getToken(): Promise<string> {
+  if (tokenCache && tokenCache.expiresAt - nowMs() > 2000) {
+    return tokenCache.value;
+  }
+
+  const response = await fetch('/api/deepgram/token', { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`Failed to obtain Deepgram token (status ${response.status})`);
+  }
+
+  const body: EphemeralTokenResponse = await response.json();
+  const token = body.access_token;
+  const ttlSeconds = body.expires_in;
+  const safeTtlMs = Math.max(1, ttlSeconds - 2) * 1000;
+
+  tokenCache = { value: token, expiresAt: nowMs() + safeTtlMs };
+  return token;
+}
+
+export const deepgramProvider = deepgram({
+  model: 'nova-3',
+  auth: { getToken },
+});
+```
+
 ## 3) Vue component
 
 ```vue

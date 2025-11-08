@@ -9,6 +9,7 @@
         <NuxtLink to="/" class="px-3 py-1 rounded hover:bg-gray-700">Home</NuxtLink>
         <NuxtLink to="/deepgram-manual" class="px-3 py-1 rounded hover:bg-gray-700">Deepgram Manual</NuxtLink>
         <NuxtLink to="/deepgram-with-hooks" class="px-3 py-1 rounded hover:bg-gray-700">Deepgram with Hooks</NuxtLink>
+        <NuxtLink to="/deepgram-ephemeral" class="px-3 py-1 rounded hover:bg-gray-700">Deepgram Ephemeral</NuxtLink>
         <NuxtLink to="/soniox-with-hooks" class="px-3 py-1 rounded hover:bg-gray-700">Soniox with Hooks</NuxtLink>
       </div>
     </nav>
