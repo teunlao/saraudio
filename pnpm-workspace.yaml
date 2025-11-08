@@ -1,6 +1,7 @@
 packages:
   - "examples/*"
   - "packages/*"
+  - "docs"
 
 catalog:
   # Build tools

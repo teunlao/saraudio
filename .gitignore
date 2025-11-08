@@ -1,5 +1,6 @@
 .idea
 .vscode
+.cache
 .lab
 .external
 .turbo
@@ -10,3 +11,4 @@ dist
 .env
 *.tsbuildinfo
 examples/runtime-node-mic/.segments/
+.vercel
