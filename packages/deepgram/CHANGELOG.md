@@ -1,5 +1,16 @@
 ## 0.0.2
 
+## 0.1.0
+
+### Minor Changes
+
+- b7d8d82: Add JWT/ephemeral token support with secure authentication flow
+
+  - Auto-detect JWT vs API key and use correct WebSocket subprotocol (bearer/token)
+  - Mask tokens in error messages for security
+  - Improve error reporting with URL context
+  - Support ephemeral tokens for browser-safe authentication
+
 ## 0.0.4
 
 ### Patch Changes
