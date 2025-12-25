@@ -18,4 +18,11 @@ export interface BaseCaptureSourceOptions {
 
 export type SystemAudioSourceOptions = BaseCaptureSourceOptions;
 
-export type MicrophoneSourceOptions = BaseCaptureSourceOptions;
+export interface MicrophoneSourceOptions extends BaseCaptureSourceOptions {
+  /**
+   * CoreAudio device UID to capture from.
+   * Use `listMicrophoneDevices()` to discover available UIDs.
+   * Defaults to the system default input device.
+   */
+  deviceUID?: string;
+}

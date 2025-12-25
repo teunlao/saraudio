@@ -1,9 +1,11 @@
+import type { ListMicrophoneDevicesOptions, MicrophoneDevice } from '../../devices/microphone-devices';
 import type { NodeFrameSource } from '../../types';
 import type { MicrophoneSourceOptions, SystemAudioSourceOptions } from '../types';
 
 export interface CaptureDarwinExports {
   createMicrophoneSource: (options?: MicrophoneSourceOptions) => NodeFrameSource;
   createSystemAudioSource: (options?: SystemAudioSourceOptions) => NodeFrameSource;
+  listMicrophoneDevices?: (options?: ListMicrophoneDevicesOptions) => Promise<MicrophoneDevice[]>;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => {

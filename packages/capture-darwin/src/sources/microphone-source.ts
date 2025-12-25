@@ -37,6 +37,10 @@ export function createMicrophoneSource(options: MicrophoneSourceOptions = {}): N
       const packageRoot = resolvePackageRoot();
       const binaryPath = options.binaryPath ?? resolveBundledBinaryPath(packageRoot);
       const args = ['--source', 'mic'];
+      const deviceUID = options.deviceUID?.trim();
+      if (deviceUID) {
+        args.push('--mic-device-uid', deviceUID);
+      }
 
       const { stdout, stderr, stop } = spawnCapture(binaryPath, args, logger);
       stopChild = stop;

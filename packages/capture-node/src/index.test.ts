@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMicrophoneSource } from './index';
+import { createMicrophoneSource, listMicrophoneDevices } from './index';
 
 describe('@saraudio/capture-node', () => {
   it('stop() before start() is ok', async () => {
@@ -11,6 +11,10 @@ describe('@saraudio/capture-node', () => {
     it('rejects start() on unsupported platforms', async () => {
       const source = createMicrophoneSource();
       await expect(source.start(() => undefined)).rejects.toThrow(/not supported/i);
+    });
+
+    it('rejects listMicrophoneDevices() on unsupported platforms', async () => {
+      await expect(listMicrophoneDevices()).rejects.toThrow(/not supported/i);
     });
   }
 });

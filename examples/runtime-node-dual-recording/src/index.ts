@@ -44,6 +44,18 @@ const main = async () => {
   const require = createRequire(import.meta.url);
   const capture: typeof import('@saraudio/capture-node') = require('@saraudio/capture-node');
 
+  const listMics = process.env.LIST_MICS?.trim().toLowerCase();
+  if (listMics === '1' || listMics === 'true' || listMics === 'yes') {
+    const devices = await capture.listMicrophoneDevices({ logger });
+    console.log('Available microphones (CoreAudio):');
+    for (const device of devices) {
+      console.log(`- ${device.name}  uid=${device.uid}`);
+    }
+    process.exit(0);
+  }
+
+  const micDeviceUID = process.env.MIC_DEVICE_UID?.trim();
+
   const micChunks: Int16Array[] = [];
   const sysChunks: Int16Array[] = [];
   let micSamples = 0;
@@ -66,7 +78,7 @@ const main = async () => {
   if (mode === 'dual' || mode === 'mic') {
     sources.push({
       name: 'mic',
-      source: capture.createMicrophoneSource({ frameSize: FRAME_SIZE, logger }),
+      source: capture.createMicrophoneSource({ frameSize: FRAME_SIZE, logger, deviceUID: micDeviceUID }),
       onFrame: onMicFrame,
     });
   }

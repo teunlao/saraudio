@@ -13,9 +13,13 @@ pnpm add @saraudio/capture-darwin
 ## Usage
 
 ```ts
-import { createMicrophoneSource, createSystemAudioSource } from '@saraudio/capture-darwin';
+import { createMicrophoneSource, createSystemAudioSource, listMicrophoneDevices } from '@saraudio/capture-darwin';
 
-const mic = createMicrophoneSource();
+// Optional: pick a specific microphone by CoreAudio device UID.
+const devices = await listMicrophoneDevices();
+const deviceUID = devices[0]?.uid;
+
+const mic = createMicrophoneSource({ deviceUID });
 const system = createSystemAudioSource();
 
 await mic.start();

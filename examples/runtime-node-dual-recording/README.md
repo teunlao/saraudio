@@ -25,3 +25,17 @@ pnpm --filter @saraudio/example-runtime-node-dual-recording start
 ```
 
 Files are saved into `examples/runtime-node-dual-recording/.recordings/`.
+
+## Selecting a microphone
+
+List CoreAudio microphones (prints UIDs and exits):
+
+```bash
+LIST_MICS=1 pnpm --filter @saraudio/example-runtime-node-dual-recording start
+```
+
+Record from a specific microphone (CoreAudio device UID):
+
+```bash
+MIC_DEVICE_UID='<uid-from-list>' pnpm --filter @saraudio/example-runtime-node-dual-recording start
+```

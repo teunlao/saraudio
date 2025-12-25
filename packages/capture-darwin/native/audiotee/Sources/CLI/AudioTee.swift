@@ -19,6 +19,7 @@ enum CaptureSource: String {
 
 struct AudioTee {
   var source: CaptureSource = .system
+  var microphoneDeviceUID: String? = nil
   var includeProcesses: [Int32] = []
   var excludeProcesses: [Int32] = []
   var mute: Bool = false
@@ -53,6 +54,12 @@ struct AudioTee {
     // Configure arguments
     parser.addOption(
       name: "source", help: "Audio source: system | mic (default input)", defaultValue: "system")
+    parser.addOption(
+      name: "mic-device-uid",
+      help: "Microphone device UID to use (only with --source mic; default = system default input)")
+    parser.addFlag(
+      name: "list-input-devices",
+      help: "List available input devices (microphones) as JSON and exit")
     parser.addArrayOption(
       name: "include-processes",
       help: "Process IDs to include (space-separated, empty = all processes)")
@@ -66,6 +73,22 @@ struct AudioTee {
     do {
       try parser.parse()
 
+      if parser.getFlag("list-input-devices") {
+        do {
+          let devices = try AudioDeviceManager.listInputDevices()
+          let encoder = JSONEncoder()
+          encoder.outputFormatting = [.sortedKeys]
+          let json = try encoder.encode(devices)
+          FileHandle.standardOutput.write(json)
+          FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+          exit(0)
+        } catch {
+          Logger.error(
+            "Failed to list input devices", context: ["error": String(describing: error)])
+          exit(1)
+        }
+      }
+
       var audioTee = AudioTee()
 
       // Extract values
@@ -75,6 +98,7 @@ struct AudioTee {
           "Invalid --source. Allowed: system | mic. Got: \(rawSource)")
       }
       audioTee.source = parsedSource
+      audioTee.microphoneDeviceUID = try parser.getOptionalValue("mic-device-uid", as: String.self)
       audioTee.includeProcesses = try parser.getArrayValue("include-processes", as: Int32.self)
       audioTee.excludeProcesses = try parser.getArrayValue("exclude-processes", as: Int32.self)
       audioTee.mute = parser.getFlag("mute")
@@ -114,6 +138,10 @@ struct AudioTee {
       }
       if mute {
         throw ArgumentParserError.validationFailed("--mute is only supported with --source system")
+      }
+    } else {
+      if let uid = microphoneDeviceUID, !uid.isEmpty {
+        throw ArgumentParserError.validationFailed("--mic-device-uid is only supported with --source mic")
       }
     }
   }
@@ -170,13 +198,24 @@ struct AudioTee {
       deviceID = tappedDeviceID
 
     case .microphone:
-      do {
-        deviceID = try AudioDeviceManager.getDefaultInputDeviceID()
-      } catch {
-        Logger.error(
-          "Failed to resolve default input device",
-          context: ["error": String(describing: error)])
-        throw ExitCode.failure
+      if let uid = microphoneDeviceUID, !uid.isEmpty {
+        do {
+          deviceID = try AudioDeviceManager.getInputDeviceID(uid: uid)
+        } catch {
+          Logger.error(
+            "Failed to resolve requested input device UID",
+            context: ["uid": uid, "error": String(describing: error)])
+          throw ExitCode.failure
+        }
+      } else {
+        do {
+          deviceID = try AudioDeviceManager.getDefaultInputDeviceID()
+        } catch {
+          Logger.error(
+            "Failed to resolve default input device",
+            context: ["error": String(describing: error)])
+          throw ExitCode.failure
+        }
       }
     }
 
