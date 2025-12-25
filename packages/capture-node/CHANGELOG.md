@@ -1,5 +1,11 @@
 # @saraudio/capture-node
 
+## 0.2.0
+
+### Minor Changes
+
+- 99e2741: Add microphone device selection by CoreAudio device UID and expose `listMicrophoneDevices()` to discover available inputs.
+
 ## 0.1.0
 
 ### Minor Changes
