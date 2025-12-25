@@ -9,7 +9,9 @@
   "files": [
     "dist/**/*",
     "bin/**/*",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "pnpm clean && node scripts/build-native.mjs && tsup",

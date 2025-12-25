@@ -72,6 +72,11 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish snapshot
         run: pnpm changeset publish --no-git-tag --tag ${{ inputs.tag }}
         env:
