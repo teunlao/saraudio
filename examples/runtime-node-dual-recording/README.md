@@ -2,8 +2,8 @@
 
 Records **two separate WAV files** at once:
 
-- `system.wav` — system audio via CoreAudio taps
-- `mic.wav` — microphone via CoreAudio (default input)
+- `<timestamp>-system.wav` — system audio via CoreAudio taps
+- `<timestamp>-mic.wav` — microphone via CoreAudio (default input)
 
 Stops on `Ctrl+C` or by typing `stop` and saves files you can listen to.
 
@@ -20,6 +20,7 @@ Stops on `Ctrl+C` or by typing `stop` and saves files you can listen to.
 ```bash
 pnpm install
 pnpm --filter @saraudio/capture-darwin... build
+pnpm --filter @saraudio/capture-node build
 pnpm --filter @saraudio/example-runtime-node-dual-recording start
 ```
 

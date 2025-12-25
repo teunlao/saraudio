@@ -209,7 +209,7 @@ const main = async () => {
   if (process.platform === 'darwin') {
     console.log('Starting CoreAudio microphone capture… Press Ctrl+C to stop.');
     const require = createRequire(import.meta.url);
-    const capture: typeof import('@saraudio/capture-darwin') = require('@saraudio/capture-darwin');
+    const capture: typeof import('@saraudio/capture-node') = require('@saraudio/capture-node');
     source = capture.createMicrophoneSource({ frameSize: FRAME_SIZE });
     stopCapture = async () => {
       await source.stop();

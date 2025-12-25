@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@saraudio/capture-darwin": "workspace:*",
+    "@saraudio/capture-node": "workspace:*",
     "@saraudio/core": "workspace:*",
     "@saraudio/utils": "workspace:*"
   },

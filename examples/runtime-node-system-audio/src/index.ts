@@ -82,7 +82,7 @@ const main = async () => {
   });
 
   const require = createRequire(import.meta.url);
-  const capture: typeof import('@saraudio/capture-darwin') = require('@saraudio/capture-darwin');
+  const capture: typeof import('@saraudio/capture-node') = require('@saraudio/capture-node');
 
   const source: NodeFrameSource = capture.createSystemAudioSource({ frameSize: FRAME_SIZE });
 

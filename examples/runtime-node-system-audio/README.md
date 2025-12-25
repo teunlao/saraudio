@@ -1,6 +1,6 @@
 # Runtime Node System Audio Example (macOS)
 
-Interactive CLI that captures **system audio** on macOS via `@saraudio/capture-darwin` (Swift/CoreAudio taps), pipes it into `@saraudio/runtime-node` with the energy VAD, prints speech events, and saves segments to disk.
+Interactive CLI that captures **system audio** on macOS via `@saraudio/capture-node` (which uses `@saraudio/capture-darwin` / Swift/CoreAudio taps), pipes it into `@saraudio/runtime-node` with the energy VAD, prints speech events, and saves segments to disk.
 
 ## Requirements
 
@@ -13,6 +13,7 @@ Interactive CLI that captures **system audio** on macOS via `@saraudio/capture-d
 ```bash
 pnpm install
 pnpm --filter @saraudio/capture-darwin... build
+pnpm --filter @saraudio/capture-node build
 pnpm --filter @saraudio/example-runtime-node-system-audio start
 ```
 

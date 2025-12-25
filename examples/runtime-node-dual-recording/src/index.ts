@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encodeWavPcm16, type Frame } from '@saraudio/core';
 import { createLogger } from '@saraudio/utils';
-import type { NodeFrameSource } from '@saraudio/capture-darwin';
+import type { NodeFrameSource } from '@saraudio/capture-node';
 
 const SAMPLE_RATE = 16000;
 const CHANNELS = 1;
@@ -32,7 +32,7 @@ const concatPcm = (chunks: Int16Array[], totalSamples: number): Int16Array => {
 
 const main = async () => {
   if (process.platform !== 'darwin') {
-    throw new Error('This example is macOS-only (uses @saraudio/capture-darwin)');
+    throw new Error('This example is macOS-only (uses @saraudio/capture-node)');
   }
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -42,7 +42,7 @@ const main = async () => {
   const mode = parseMode();
   const logger = createLogger({ namespace: 'example:dual', level: 'info' });
   const require = createRequire(import.meta.url);
-  const capture: typeof import('@saraudio/capture-darwin') = require('@saraudio/capture-darwin');
+  const capture: typeof import('@saraudio/capture-node') = require('@saraudio/capture-node');
 
   const micChunks: Int16Array[] = [];
   const sysChunks: Int16Array[] = [];

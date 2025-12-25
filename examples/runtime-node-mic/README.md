@@ -2,7 +2,7 @@
 
 Interactive CLI that captures microphone audio, pipes it into `@saraudio/runtime-node` with the energy VAD, prints speech events, and saves segments to disk.
 
-- macOS: uses `@saraudio/capture-darwin` (Swift/CoreAudio)
+- macOS: uses `@saraudio/capture-node` (which uses `@saraudio/capture-darwin` / Swift/CoreAudio)
 - Linux/Windows: uses `ffmpeg`
 
 ## Requirements
@@ -17,6 +17,7 @@ Interactive CLI that captures microphone audio, pipes it into `@saraudio/runtime
 ```bash
 pnpm install
 pnpm --filter @saraudio/capture-darwin... build
+pnpm --filter @saraudio/capture-node build
 pnpm --filter @saraudio/example-runtime-node-mic start
 ```
 
