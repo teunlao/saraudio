@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/capture-node",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Cross-platform Node.js capture entrypoint for SARAudio (macOS supported; Windows/Linux coming later)",
   "license": "MIT",
   "sideEffects": false,
