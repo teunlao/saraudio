@@ -30,6 +30,5 @@ Both sources are `NodeFrameSource`-compatible for `@saraudio/runtime-node`.
 - If you install from git/source, build the bundled binary first:
 
 ```bash
-pnpm --filter @saraudio/capture-darwin build
+pnpm --filter @saraudio/capture-darwin... build
 ```
-

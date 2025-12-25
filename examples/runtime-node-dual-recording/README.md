@@ -19,9 +19,8 @@ Stops on `Ctrl+C` or by typing `stop` and saves files you can listen to.
 
 ```bash
 pnpm install
-pnpm --filter @saraudio/capture-darwin build
+pnpm --filter @saraudio/capture-darwin... build
 pnpm --filter @saraudio/example-runtime-node-dual-recording start
 ```
 
 Files are saved into `examples/runtime-node-dual-recording/.recordings/`.
-

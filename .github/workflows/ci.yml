@@ -55,7 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build native + dist (@saraudio/capture-darwin)
-        run: pnpm --filter @saraudio/capture-darwin build
+        run: pnpm --filter @saraudio/capture-darwin... build
 
       - name: Run TypeScript type check (@saraudio/capture-darwin)
         run: pnpm --filter @saraudio/capture-darwin typecheck

@@ -16,7 +16,7 @@ Interactive CLI that captures microphone audio, pipes it into `@saraudio/runtime
 
 ```bash
 pnpm install
-pnpm --filter @saraudio/capture-darwin build
+pnpm --filter @saraudio/capture-darwin... build
 pnpm --filter @saraudio/example-runtime-node-mic start
 ```
 
@@ -61,7 +61,7 @@ If the platform is not recognised, the script requires `FFMPEG_INPUT_ARGS` to be
 
 - macOS: ensure the terminal has Microphone permission (System Settings → Privacy & Security → Microphone).
 - Windows: list devices manually: `ffmpeg -hide_banner -list_devices true -f dshow -i dummy`
-- On macOS, if `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin build`.
+- On macOS, if `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin... build`.
 - In non-interactive environments (e.g. launched from IDE) the prompt is skipped — set `FFMPEG_DEVICE` or `FFMPEG_INPUT_ARGS` explicitly (Linux/Windows).
 
 Segments are WAV files. Play them with:

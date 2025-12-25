@@ -12,7 +12,7 @@ Interactive CLI that captures **system audio** on macOS via `@saraudio/capture-d
 
 ```bash
 pnpm install
-pnpm --filter @saraudio/capture-darwin build
+pnpm --filter @saraudio/capture-darwin... build
 pnpm --filter @saraudio/example-runtime-node-system-audio start
 ```
 
@@ -23,4 +23,4 @@ Segments are written to `examples/runtime-node-system-audio/.segments/segment-<n
 ## Troubleshooting
 
 - If you get silence, ensure something is playing and check macOS privacy permissions.
-- If `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin build`.
+- If `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin... build`.
