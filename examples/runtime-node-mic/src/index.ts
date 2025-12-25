@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import type { Segment } from '@saraudio/core';
+import { encodeWavPcm16, type Segment } from '@saraudio/core';
 import { createNodeRuntime, type NodeFrameSource } from '@saraudio/runtime-node';
 import { createEnergyVadStage } from '@saraudio/vad-energy';
 
@@ -152,9 +152,9 @@ const createFfmpegProcess = (inputConfig: InputConfig) => {
 
 const writeSegmentToFile = (segment: Segment, index: number): void => {
   if (!segment.pcm) return;
-  const buffer = Buffer.from(segment.pcm.buffer, segment.pcm.byteOffset, segment.pcm.byteLength);
-  const filePath = resolve(segmentsDir, `segment-${index}.pcm`);
-  writeFileSync(filePath, buffer);
+  const wav = encodeWavPcm16(segment.pcm, { sampleRate: segment.sampleRate, channels: segment.channels });
+  const filePath = resolve(segmentsDir, `segment-${index}.wav`);
+  writeFileSync(filePath, Buffer.from(wav));
   console.log(`segment saved → ${filePath}`);
 };
 

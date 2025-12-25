@@ -2,7 +2,7 @@
   "name": "@saraudio/runtime-node",
   "version": "0.1.0",
   "description": "Node/Bun runtime helpers for SARAudio pipeline",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

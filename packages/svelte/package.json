@@ -2,7 +2,7 @@
   "name": "@saraudio/svelte",
   "version": "0.0.5",
   "description": "Svelte 5 bindings for SARAUDIO pipeline",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

@@ -2,7 +2,7 @@
   "name": "@saraudio/core",
   "version": "0.2.0",
   "description": "Smart Audio Recording - Core engine, pipeline, and event system",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

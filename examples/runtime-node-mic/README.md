@@ -25,7 +25,7 @@ What happens on launch:
 1. On macOS the CLI starts native microphone capture (CoreAudio) and streams PCM16 / 16 kHz mono.
 2. On Linux/Windows the CLI uses `ffmpeg` to convert the chosen input into PCM16 / 16 kHz mono and streams it to stdout.
 3. `createNodeRuntime()` runs a pipeline with `@saraudio/vad-energy` and the segmenter; the CLI prints `speechStart`, `speechEnd`, `segment` events plus a live VAD bar.
-4. Each segment is written to `examples/runtime-node-mic/.segments/segment-<n>.pcm` (git-ignored).
+4. Each segment is written to `examples/runtime-node-mic/.segments/segment-<n>.wav` (git-ignored).
 
 Stop the example with `Ctrl+C` — the script stops capture, flushes trailing audio, and disposes the pipeline.
 
@@ -64,10 +64,11 @@ If the platform is not recognised, the script requires `FFMPEG_INPUT_ARGS` to be
 - On macOS, if `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin build`.
 - In non-interactive environments (e.g. launched from IDE) the prompt is skipped — set `FFMPEG_DEVICE` or `FFMPEG_INPUT_ARGS` explicitly (Linux/Windows).
 
-Segments are raw PCM. Play or convert them with ffmpeg:
+Segments are WAV files. Play them with:
 
 ```bash
-ffplay -f s16le -ar 16000 -ac 1 examples/runtime-node-mic/.segments/segment-1.pcm
+ffplay examples/runtime-node-mic/.segments/segment-1.wav
 
-ffmpeg -f s16le -ar 16000 -ac 1 -i examples/runtime-node-mic/.segments/segment-1.pcm segment-1.wav
+# macOS alternative:
+afplay examples/runtime-node-mic/.segments/segment-1.wav
 ```

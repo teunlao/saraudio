@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { noopLogger } from '@saraudio/utils';
+import { createLogger } from '@saraudio/utils';
 import type { NodeFrameSource } from '../types';
 import { createPcm16StreamSource } from './internal/pcm16-stream-source';
 import { resolveBundledBinaryPath } from './internal/resolve-binary-path';
@@ -10,13 +10,14 @@ import type { MicrophoneSourceOptions } from './types';
 
 const SAMPLE_RATE = 16000;
 const CHANNELS = 1 as const;
+const defaultLogger = createLogger({ namespace: 'saraudio:capture-darwin', level: 'warn' });
 
 const resolvePackageRoot = (): string => {
   return join(__dirname, '..');
 };
 
 export function createMicrophoneSource(options: MicrophoneSourceOptions = {}): NodeFrameSource {
-  const logger = options.logger ?? noopLogger;
+  const logger = options.logger ?? defaultLogger;
   const frameSize = options.frameSize ?? 160;
 
   let active = false;

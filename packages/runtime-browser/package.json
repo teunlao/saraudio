@@ -2,7 +2,7 @@
   "name": "@saraudio/runtime-browser",
   "version": "0.0.5",
   "description": "Browser runtime for SARAUDIO pipelines (AudioWorklet + AudioContext)",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

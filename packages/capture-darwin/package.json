@@ -2,7 +2,7 @@
   "name": "@saraudio/capture-darwin",
   "version": "0.0.1",
   "description": "macOS CoreAudio capture helpers for SARAudio (system audio + mic)",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "pnpm clean && node scripts/build-native.mjs && tsup",
+    "prepack": "pnpm clean && node scripts/build-native.mjs --require-darwin && tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist bin *.tsbuildinfo",
     "lint": "biome check .",
@@ -42,6 +43,13 @@
   "engines": {
     "node": ">=18"
   },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
   "publishConfig": {
     "access": "public"
   },

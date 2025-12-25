@@ -2,7 +2,7 @@
   "name": "@saraudio/vue",
   "version": "0.0.5",
   "description": "Vue 3 Composition API bindings for SARAUDIO pipeline",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

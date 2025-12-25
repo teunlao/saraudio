@@ -2,7 +2,7 @@
   "name": "@saraudio/utils",
   "version": "0.1.0",
   "description": "Low-level utilities for SARAudio (DSP, ring buffers, PCM converters)",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

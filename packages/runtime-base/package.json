@@ -2,7 +2,7 @@
   "name": "@saraudio/runtime-base",
   "version": "0.0.5",
   "description": "Platform-agnostic transcription orchestrator for SARAUDIO (stream-first)",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

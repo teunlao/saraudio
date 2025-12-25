@@ -2,7 +2,7 @@
   "name": "@saraudio/soniox",
   "version": "0.2.0",
   "description": "Soniox transcription provider for SARAUDIO",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

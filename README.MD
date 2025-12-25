@@ -119,6 +119,7 @@ See provider pages in docs for options, models, and error handling.
 - `@saraudio/runtime-base` — controller, transports, utilities
 - `@saraudio/runtime-browser` — browser runtime (AudioWorklet/AudioContext)
 - `@saraudio/runtime-node` — Node runtime utilities (server‑side capture/streaming & batch helpers)
+- `@saraudio/capture-darwin` — macOS CoreAudio capture for Node (system audio + mic)
 - `@saraudio/deepgram` — Deepgram provider
 - `@saraudio/soniox` — Soniox provider
 - `@saraudio/vue` — Vue 3 composables (hooks)

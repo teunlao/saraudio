@@ -2,7 +2,7 @@
   "name": "@saraudio/meter",
   "version": "0.0.5",
   "description": "Real-time audio level metering for SARAudio",
-  "license": "ISC",
+  "license": "MIT",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

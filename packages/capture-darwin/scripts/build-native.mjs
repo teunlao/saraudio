@@ -11,7 +11,13 @@ const nativeRoot = join(packageRoot, 'native', 'audiotee');
 const outDir = join(packageRoot, 'bin');
 const outBin = join(outDir, 'saraudio-capture');
 
+const requireDarwin = process.argv.includes('--require-darwin');
+
 if (process.platform !== 'darwin') {
+  if (requireDarwin) {
+    console.error('[capture-darwin] native build requires macOS (darwin)');
+    process.exit(1);
+  }
   console.log('[capture-darwin] skipping native build (non-darwin)');
   process.exit(0);
 }
@@ -55,4 +61,3 @@ mkdirSync(outDir, { recursive: true });
 copyFileSync(built, outBin);
 chmodSync(outBin, 0o755);
 console.log('[capture-darwin] wrote', outBin);
-

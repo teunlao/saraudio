@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "description": "Audio control with silence detection.",
   "keywords": [],
-  "license": "ISC",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.19.0",
   "engines": {
