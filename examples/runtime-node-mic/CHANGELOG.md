@@ -1,5 +1,12 @@
 ## 0.0.2
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [6a5d18d]
+  - @saraudio/capture-darwin@0.1.0
+
 ## 0.0.5
 
 ### Patch Changes
