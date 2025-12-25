@@ -1,39 +1,43 @@
 # Runtime Node Microphone Example
 
-Interactive CLI that captures microphone audio via `ffmpeg`, pipes it into `@saraudio/runtime-node` with the energy VAD, prints speech events, and saves segments to disk.
+Interactive CLI that captures microphone audio, pipes it into `@saraudio/runtime-node` with the energy VAD, prints speech events, and saves segments to disk.
+
+- macOS: uses `@saraudio/capture-darwin` (Swift/CoreAudio)
+- Linux/Windows: uses `ffmpeg`
 
 ## Requirements
 
 - Node.js ≥ 18
-- `ffmpeg` installed with microphone access (Homebrew/apt/choco, etc.)
 - Operating system permission to record audio from the terminal
+- macOS: macOS ≥ 14.2 (CoreAudio taps API baseline used by `@saraudio/capture-darwin`)
+- Linux/Windows: `ffmpeg` installed with microphone access (Homebrew/apt/choco, etc.)
 
 ## Quick Start
 
 ```bash
 pnpm install
+pnpm --filter @saraudio/capture-darwin build
 pnpm --filter @saraudio/example-runtime-node-mic start
 ```
 
 What happens on launch:
 
-1. On macOS (`avfoundation`) the CLI lists audio devices and asks for an index. Press Enter to keep the default `:0` or if the terminal is not a TTY.
-2. `ffmpeg` converts the chosen input into PCM16 / 16 kHz mono and streams it to stdout.
+1. On macOS the CLI starts native microphone capture (CoreAudio) and streams PCM16 / 16 kHz mono.
+2. On Linux/Windows the CLI uses `ffmpeg` to convert the chosen input into PCM16 / 16 kHz mono and streams it to stdout.
 3. `createNodeRuntime()` runs a pipeline with `@saraudio/vad-energy` and the segmenter; the CLI prints `speechStart`, `speechEnd`, `segment` events plus a live VAD bar.
 4. Each segment is written to `examples/runtime-node-mic/.segments/segment-<n>.pcm` (git-ignored).
 
-Stop the example with `Ctrl+C` — the script stops `ffmpeg`, flushes trailing audio, and disposes the pipeline.
+Stop the example with `Ctrl+C` — the script stops capture, flushes trailing audio, and disposes the pipeline.
 
 ## Configuring the input
 
 ### Environment shortcuts
 
-- `FFMPEG_DEVICE` — quick way to point at a device without rewriting every flag.
-  - macOS: `FFMPEG_DEVICE=':2' pnpm …`
+- `FFMPEG_DEVICE` — quick way to point at a device without rewriting every flag (Linux/Windows only).
   - Linux (ALSA): `FFMPEG_DEVICE='hw:1,0' pnpm …`
   - Windows (dshow): `FFMPEG_DEVICE='Microphone (USB Audio)' pnpm …`
 
-- `FFMPEG_INPUT_ARGS` — JSON array of strings that fully replaces the default ffmpeg input arguments.
+- `FFMPEG_INPUT_ARGS` — JSON array of strings that fully replaces the default ffmpeg input arguments (Linux/Windows only).
 
 ```bash
 # macOS explicit array
@@ -55,8 +59,10 @@ If the platform is not recognised, the script requires `FFMPEG_INPUT_ARGS` to be
 
 ## Troubleshooting tips
 
-- List devices manually: `ffmpeg -hide_banner -f avfoundation -list_devices true -i ''` (macOS) or `ffmpeg -hide_banner -list_devices true -f dshow -i dummy` (Windows).
-- In non-interactive environments (e.g. launched from IDE) the prompt is skipped — set `FFMPEG_DEVICE` or `FFMPEG_INPUT_ARGS` explicitly.
+- macOS: ensure the terminal has Microphone permission (System Settings → Privacy & Security → Microphone).
+- Windows: list devices manually: `ffmpeg -hide_banner -list_devices true -f dshow -i dummy`
+- On macOS, if `@saraudio/capture-darwin` can't find `bin/saraudio-capture`, run `pnpm --filter @saraudio/capture-darwin build`.
+- In non-interactive environments (e.g. launched from IDE) the prompt is skipped — set `FFMPEG_DEVICE` or `FFMPEG_INPUT_ARGS` explicitly (Linux/Windows).
 
 Segments are raw PCM. Play or convert them with ffmpeg:
 

@@ -13,6 +13,7 @@
     { "path": "packages/react" },
     { "path": "packages/vue" },
     { "path": "packages/svelte" },
-    { "path": "packages/solid" }
+    { "path": "packages/solid" },
+    { "path": "packages/capture-darwin" }
   ]
 }

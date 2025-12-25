@@ -1,6 +1,6 @@
 {
-  "name": "@saraudio/example-runtime-node-mic",
-  "version": "0.0.5",
+  "name": "@saraudio/example-runtime-node-dual-recording",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,8 +10,7 @@
   "dependencies": {
     "@saraudio/capture-darwin": "workspace:*",
     "@saraudio/core": "workspace:*",
-    "@saraudio/runtime-node": "workspace:*",
-    "@saraudio/vad-energy": "workspace:*"
+    "@saraudio/utils": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
@@ -19,3 +18,4 @@
     "typescript": "catalog:"
   }
 }
+

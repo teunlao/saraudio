@@ -1,11 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import type { Segment } from '@saraudio/core';
-import { createNodeRuntime } from '@saraudio/runtime-node';
+import { createNodeRuntime, type NodeFrameSource } from '@saraudio/runtime-node';
 import { createEnergyVadStage } from '@saraudio/vad-energy';
 
 const SAMPLE_RATE = 16000;
@@ -158,10 +159,6 @@ const writeSegmentToFile = (segment: Segment, index: number): void => {
 };
 
 const main = async () => {
-  console.log('Starting ffmpeg… Press Ctrl+C to stop.');
-
-  const inputConfig = await resolveInputConfig();
-  const ffmpeg = createFfmpegProcess(inputConfig);
   const runtime = createNodeRuntime();
   const pipeline = runtime.createPipeline({
     stages: [
@@ -206,39 +203,47 @@ const main = async () => {
     );
   });
 
-  const source = runtime.createPcm16StreamSource({
-    stream: ffmpeg.stdout,
-    sampleRate: SAMPLE_RATE,
-    channels: CHANNELS,
-    frameSize: FRAME_SIZE,
-  });
+  let source: NodeFrameSource;
+  let stopCapture: (() => Promise<void>) | null = null;
 
-  const stop = async () => {
-    console.log('\nStopping…');
-    ffmpeg.kill('SIGINT');
-    pipeline.flush();
-    pipeline.dispose();
-  };
+  if (process.platform === 'darwin') {
+    console.log('Starting CoreAudio microphone capture… Press Ctrl+C to stop.');
+    const require = createRequire(import.meta.url);
+    const capture: typeof import('@saraudio/capture-darwin') = require('@saraudio/capture-darwin');
+    source = capture.createMicrophoneSource({ frameSize: FRAME_SIZE });
+    stopCapture = async () => {
+      await source.stop();
+    };
+  } else {
+    console.log('Starting ffmpeg… Press Ctrl+C to stop.');
+    const inputConfig = await resolveInputConfig();
+    const ffmpeg = createFfmpegProcess(inputConfig);
+
+    stopCapture = async () => {
+      ffmpeg.kill('SIGINT');
+    };
+
+    source = runtime.createPcm16StreamSource({
+      stream: ffmpeg.stdout,
+      sampleRate: SAMPLE_RATE,
+      channels: CHANNELS,
+      frameSize: FRAME_SIZE,
+    });
+  }
 
   process.once('SIGINT', () => {
-    void stop().finally(() => {
-      process.exit(0);
-    });
+    void stopCapture?.();
   });
 
   process.once('SIGTERM', () => {
-    void stop().finally(() => {
-      process.exit(0);
-    });
+    void stopCapture?.();
   });
 
-  ffmpeg.on('exit', async (code, signal) => {
-    console.log(`ffmpeg exited (code=${code ?? 'null'} signal=${signal ?? 'null'})`);
-    pipeline.flush();
+  try {
+    await runtime.run({ source, pipeline, autoFlush: true });
+  } finally {
     pipeline.dispose();
-  });
-
-  await runtime.run({ source, pipeline, autoFlush: true });
+  }
 };
 
 main().catch((error) => {

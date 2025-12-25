@@ -11,4 +11,8 @@ dist
 .env
 *.tsbuildinfo
 examples/runtime-node-mic/.segments/
+examples/runtime-node-system-audio/.segments/
+examples/runtime-node-dual-recording/.recordings/
+packages/capture-darwin/bin/
 .vercel
+.build

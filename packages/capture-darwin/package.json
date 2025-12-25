@@ -1,0 +1,66 @@
+{
+  "name": "@saraudio/capture-darwin",
+  "version": "0.0.1",
+  "description": "macOS CoreAudio capture helpers for SARAudio (system audio + mic)",
+  "license": "ISC",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "bin/**/*",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "pnpm clean && node scripts/build-native.mjs && tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist bin *.tsbuildinfo",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@saraudio/core": "workspace:*",
+    "@saraudio/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teunlao/silence-aware-recorder.git",
+    "directory": "packages/capture-darwin"
+  },
+  "homepage": "https://github.com/teunlao/silence-aware-recorder#readme",
+  "bugs": {
+    "url": "https://github.com/teunlao/silence-aware-recorder/issues"
+  },
+  "keywords": [
+    "audio",
+    "capture",
+    "coreaudio",
+    "macos",
+    "system-audio",
+    "microphone",
+    "saraudio"
+  ]
+}

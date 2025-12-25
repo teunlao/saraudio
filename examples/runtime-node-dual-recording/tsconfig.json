@@ -10,7 +10,7 @@
   "references": [
     { "path": "../../packages/core" },
     { "path": "../../packages/capture-darwin" },
-    { "path": "../../packages/runtime-node" },
-    { "path": "../../packages/vad-energy" }
+    { "path": "../../packages/utils" }
   ]
 }
+

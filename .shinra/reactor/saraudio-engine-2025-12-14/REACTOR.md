@@ -2,7 +2,7 @@
 
 > Автор: codex
 > Создано: 14 декабря 2025
-> Обновлено: 15 декабря 2025 (codex)
+> Обновлено: 25 декабря 2025 (codex)
 > Статус: active
 
 ## О чём
@@ -21,6 +21,7 @@
 | План | Статус | Описание |
 |------|--------|----------|
 | `plans/codex-saraudio-engine.md` | draft | 1–2 SARAudio улучшения с максимальной отдачей (OSS + Tenro) |
+| `plans/codex-node-capture-darwin-2025-12-25.md` | in_progress | Нативный macOS capture для Node (system audio + mic) через Swift/CoreAudio binary |
 
 ## Артефакты
 
@@ -28,4 +29,3 @@
 - **plans/** — 1 файл (первичный план)
 - **research/** — (пока пусто)
 - **canvas/** — (опционально)
-

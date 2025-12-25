@@ -10,6 +10,8 @@
       "!.external",
       "!**/node_modules",
       "!**/dist",
+      "!**/.build",
+      "!**/.build/**",
       "!.katacut",
       "!**/.vitepress",
       "!.svelte",
