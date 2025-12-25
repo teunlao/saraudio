@@ -1,5 +1,12 @@
 # @saraudio/example-runtime-node-system-audio
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [99e2741]
+  - @saraudio/capture-node@0.2.0
+
 ## 0.0.3
 
 ### Patch Changes
