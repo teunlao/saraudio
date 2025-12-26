@@ -17,6 +17,11 @@ export function spawnCapture(binaryPath: string, args: string[], logger: Logger)
     throw new Error('capture process did not provide stdout/stderr streams');
   }
 
+  // Ensure early stream failures don't crash the process if the caller attaches listeners later.
+  stdout.on('error', (error) => {
+    logger.error('capture stdout error', { error });
+  });
+
   let stopRequested = false;
 
   child.on('error', (error) => {

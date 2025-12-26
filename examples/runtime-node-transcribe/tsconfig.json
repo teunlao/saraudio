@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig/base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/capture-node" },
+    { "path": "../../packages/capture-darwin" },
+    { "path": "../../packages/runtime-node" }
+  ]
+}

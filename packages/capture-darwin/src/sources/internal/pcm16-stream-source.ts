@@ -139,16 +139,28 @@ export const createPcm16StreamSource = (options: Pcm16StreamSourceOptions): Node
       timestampMs = 0;
       onFrameCallback = onFrame;
 
-      stream.on('data', handleData);
-      stream.once('end', handleEnd);
-      stream.once('close', handleClose);
-      stream.once('error', handleError);
-
-      stream.resume();
-
       return new Promise<void>((resolve, reject) => {
         resolveStart = resolve;
         rejectStart = reject;
+
+        stream.on('data', handleData);
+        stream.once('end', handleEnd);
+        stream.once('close', handleClose);
+        stream.once('error', handleError);
+
+        // If the underlying stream is already closed/errored (e.g. capture process exited
+        // before we attached listeners), avoid hanging forever.
+        if (stream.destroyed || stream.readableEnded) {
+          const maybeError = stream.errored;
+          if (maybeError instanceof Error) {
+            handleError(maybeError);
+            return;
+          }
+          handleError(new Error('PCM16 stream was closed before it could start'));
+          return;
+        }
+
+        stream.resume();
       });
     },
     async stop() {

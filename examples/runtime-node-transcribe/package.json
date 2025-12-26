@@ -1,0 +1,21 @@
+{
+  "name": "@saraudio/example-runtime-node-transcribe",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saraudio/capture-node": "workspace:*",
+    "@saraudio/deepgram": "workspace:*",
+    "@saraudio/runtime-node": "workspace:*",
+    "@saraudio/soniox": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "^4.19.1",
+    "typescript": "catalog:"
+  }
+}

@@ -249,6 +249,31 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  examples/runtime-node-transcribe:
+    dependencies:
+      '@saraudio/capture-node':
+        specifier: workspace:*
+        version: link:../../packages/capture-node
+      '@saraudio/deepgram':
+        specifier: workspace:*
+        version: link:../../packages/deepgram
+      '@saraudio/runtime-node':
+        specifier: workspace:*
+        version: link:../../packages/runtime-node
+      '@saraudio/soniox':
+        specifier: workspace:*
+        version: link:../../packages/soniox
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.9.1
+      tsx:
+        specifier: ^4.19.1
+        version: 4.20.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   examples/solid-audio-recorder:
     dependencies:
       '@saraudio/core':

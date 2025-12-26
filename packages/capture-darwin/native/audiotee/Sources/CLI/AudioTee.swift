@@ -60,6 +60,10 @@ struct AudioTee {
     parser.addFlag(
       name: "list-input-devices",
       help: "List available input devices (microphones) as JSON and exit")
+    parser.addFlag(
+      name: "preflight-system-audio",
+      help:
+        "Preflight System Audio Recording permission by attempting to create a CoreAudio process tap; outputs JSON and exits")
     parser.addArrayOption(
       name: "include-processes",
       help: "Process IDs to include (space-separated, empty = all processes)")
@@ -85,6 +89,22 @@ struct AudioTee {
         } catch {
           Logger.error(
             "Failed to list input devices", context: ["error": String(describing: error)])
+          exit(1)
+        }
+      }
+
+      if parser.getFlag("preflight-system-audio") {
+        let report = SystemAudioPreflight.run()
+        do {
+          let encoder = JSONEncoder()
+          encoder.outputFormatting = [.sortedKeys]
+          let json = try encoder.encode(report)
+          FileHandle.standardOutput.write(json)
+          FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+          exit(report.ok ? 0 : 1)
+        } catch {
+          Logger.error(
+            "Failed to encode preflight report", context: ["error": String(describing: error)])
           exit(1)
         }
       }
