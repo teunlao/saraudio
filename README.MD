@@ -29,12 +29,15 @@ import { deepgram } from '@saraudio/deepgram';
 import { vadEnergy } from '@saraudio/vad-energy';
 import { meter } from '@saraudio/meter';
 
-const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<DEEPGRAM_API_KEY>' } });
+const provider = deepgram({
+  model: 'nova-3',
+  auth: { apiKey: '<DEEPGRAM_API_KEY>' }, // server-side only; in browsers prefer auth.getToken for ephemeral tokens
+});
 
 const recorder = createRecorder({
   format: { sampleRate: 16000, channels: 1 },
-  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
-  segmenter: true,
+  stages: [vadEnergy({ thresholdDb: -50, smoothMs: 50 }), meter()],
+  segmenter: { preRollMs: 120, hangoverMs: 250 },
 });
 
 const ctrl = createTranscription({
@@ -81,13 +84,18 @@ pnpm add @saraudio/vad-energy @saraudio/meter
 <script setup lang="ts">
 import { useTranscription } from '@saraudio/vue'
 import { deepgram } from '@saraudio/deepgram'
+import { vadEnergy } from '@saraudio/vad-energy'
+import { meter } from '@saraudio/meter'
 
-const provider = deepgram({ model: 'nova-3', auth: { apiKey: '<KEY>' } })
+const provider = deepgram({
+  model: 'nova-3',
+  auth: { apiKey: '<KEY>' }, // server-side only; in browsers prefer auth.getToken for ephemeral tokens
+})
 const { start, stop, connect, disconnect, partial, transcript, status } = useTranscription({
   provider,
   transport: 'websocket',
   autoConnect: true,
-  stages: [vadEnergy({ thresholdDb: -50, attackMs: 80, releaseMs: 200 }), meter()],
+  stages: [vadEnergy({ thresholdDb: -50, smoothMs: 50 }), meter()],
   connection: { ws: { silencePolicy: 'keep' } },
 })
 </script>
@@ -111,7 +119,7 @@ const { start, stop, connect, disconnect, partial, transcript, status } = useTra
 - `@saraudio/deepgram` — WS realtime + HTTP chunked transcription (use raw model IDs like `nova-3`).
 - `@saraudio/soniox` — WS realtime (`stt-rt-v3`) + HTTP batch via Files API (`stt-async-v3`).
 
-See provider pages in docs for options, models, and error handling.
+See provider TypeScript options/types (`DeepgramOptions`, `SonioxOptions`) for full configuration.
 
 ## Packages
 
@@ -119,6 +127,7 @@ See provider pages in docs for options, models, and error handling.
 - `@saraudio/runtime-base` — controller, transports, utilities
 - `@saraudio/runtime-browser` — browser runtime (AudioWorklet/AudioContext)
 - `@saraudio/runtime-node` — Node runtime utilities (server‑side capture/streaming & batch helpers)
+- `@saraudio/capture-node` — Node capture entrypoint (macOS supported; Windows/Linux coming later)
 - `@saraudio/capture-darwin` — macOS CoreAudio capture for Node (system audio + mic)
 - `@saraudio/deepgram` — Deepgram provider
 - `@saraudio/soniox` — Soniox provider
@@ -136,8 +145,8 @@ See provider pages in docs for options, models, and error handling.
 
 ## Documentation
 
-- Live site: coming soon
-- Local: `cd docs && pnpm dev` (Astro Starlight)
+- Docs site is WIP.
+- For now, use `examples/*` and the package-level READMEs/types.
 
 ## Development
 
