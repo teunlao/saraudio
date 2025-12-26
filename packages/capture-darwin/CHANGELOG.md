@@ -1,5 +1,11 @@
 # @saraudio/capture-darwin
 
+## 0.2.3
+
+### Patch Changes
+
+- 8c4d95f: Fix System Audio Recording permission preflight on macOS (TCCAccessPreflight result mapping) and expose the raw `tccPreflight` code for debugging.
+
 ## 0.2.2
 
 ### Patch Changes
