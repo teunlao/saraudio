@@ -1,5 +1,14 @@
 # @saraudio/capture-node
 
+## 0.2.2
+
+### Patch Changes
+
+- a3a6203: Add OS-level System Audio Recording permission preflight, and harden macOS capture startup.
+
+  - `@saraudio/capture-darwin`: auto-fix missing executable bit on bundled `saraudio-capture`, add `--preflight-system-audio` (JSON), and avoid silent hangs on early stream failures.
+  - `@saraudio/capture-node`: expose `preflightSystemAudioPermission()` on macOS.
+
 ## 0.2.1
 
 ### Patch Changes
