@@ -1,5 +1,12 @@
 # @saraudio/example-runtime-node-dual-recording
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @saraudio/capture-node@0.2.1
+
 ## 0.0.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @saraudio/capture-darwin
 
+## 0.2.1
+
+### Patch Changes
+
+- Fix macOS capture binary packaging: ensure `bin/saraudio-capture` is shipped as an executable to prevent `EACCES` when spawning.
+
 ## 0.2.0
 
 ### Minor Changes
