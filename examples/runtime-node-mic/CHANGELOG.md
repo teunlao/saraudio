@@ -1,5 +1,12 @@
 ## 0.0.2
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [a3a6203]
+  - @saraudio/capture-node@0.2.2
+
 ## 0.0.9
 
 ### Patch Changes
