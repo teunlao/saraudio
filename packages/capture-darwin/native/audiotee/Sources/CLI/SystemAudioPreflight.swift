@@ -5,8 +5,10 @@ import Dispatch
 import Foundation
 
 private enum TCCAccessPreflightResult: Int32 {
-  case denied = 0
-  case granted = 1
+  // NOTE: Empirically (macOS), TCCAccessPreflight returns 0 for "granted".
+  // This follows the common C convention of 0 == success.
+  case granted = 0
+  case denied = 1
   case unknown = 2
 }
 
@@ -49,12 +51,14 @@ struct SystemAudioPreflightReport: Codable {
   let permission: SystemAudioPreflightPermission
   let osStatus: Int32?
   let message: String?
+  let tccPreflight: Int32?
 }
 
 enum SystemAudioPreflight {
   static func run() -> SystemAudioPreflightReport {
     let tccService = "kTCCServiceAudioCapture" as CFString
     let preflight = TCC.accessPreflight(tccService)
+    let preflightRaw = preflight.map { $0.rawValue }
     switch preflight {
     case .some(.granted):
       break
@@ -79,7 +83,8 @@ enum SystemAudioPreflight {
         permission: .unknown,
         osStatus: nil,
         message:
-          "System Audio Recording permission has not been granted yet. If no system prompt appears, enable it manually in System Settings → Privacy & Security → Screen & System Audio Recording."
+          "System Audio Recording permission has not been granted yet. If no system prompt appears, enable it manually in System Settings → Privacy & Security → Screen & System Audio Recording.",
+        tccPreflight: preflightRaw
       )
     case .some(.denied):
       return SystemAudioPreflightReport(
@@ -87,14 +92,16 @@ enum SystemAudioPreflight {
         permission: .notPermitted,
         osStatus: nil,
         message:
-          "System Audio Recording permission is denied. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording."
+          "System Audio Recording permission is denied. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording.",
+        tccPreflight: preflightRaw
       )
     case .none:
       return SystemAudioPreflightReport(
         ok: false,
         permission: .failed,
         osStatus: nil,
-        message: "Failed to load TCC for permission preflight."
+        message: "Failed to load TCC for permission preflight.",
+        tccPreflight: nil
       )
     }
 
@@ -118,7 +125,8 @@ enum SystemAudioPreflight {
         ok: true,
         permission: .granted,
         osStatus: nil,
-        message: nil
+        message: nil,
+        tccPreflight: preflightRaw
       )
     }
 
@@ -126,7 +134,8 @@ enum SystemAudioPreflight {
       ok: false,
       permission: .failed,
       osStatus: status,
-      message: "Failed to create system audio process tap."
+      message: "Failed to create system audio process tap.",
+      tccPreflight: preflightRaw
     )
   }
 }

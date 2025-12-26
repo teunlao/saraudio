@@ -18,6 +18,11 @@ export interface SystemAudioPreflightReport {
   permission: SystemAudioPreflightPermission;
   osStatus: number | null;
   message: string | null;
+  /**
+   * Raw numeric value returned by the private TCC preflight call.
+   * Used for debugging discrepancies between OS settings and observed behavior.
+   */
+  tccPreflight: number | null;
 }
 
 export interface PreflightSystemAudioOptions {
@@ -46,7 +51,7 @@ const parseSystemAudioPreflightJson = (raw: string): SystemAudioPreflightReport 
     throw new Error('Expected JSON object');
   }
 
-  const { ok, permission, osStatus, message } = parsed;
+  const { ok, permission, osStatus, message, tccPreflight } = parsed;
   if (typeof ok !== 'boolean') {
     throw new Error('Invalid ok');
   }
@@ -57,12 +62,19 @@ const parseSystemAudioPreflightJson = (raw: string): SystemAudioPreflightReport 
   const parsedOsStatus =
     typeof osStatus === 'number' && Number.isFinite(osStatus) ? osStatus : osStatus === null ? null : null;
   const parsedMessage = typeof message === 'string' ? message : message === null ? null : null;
+  const parsedTccPreflight =
+    typeof tccPreflight === 'number' && Number.isFinite(tccPreflight)
+      ? tccPreflight
+      : tccPreflight === null
+        ? null
+        : null;
 
   return {
     ok,
     permission,
     osStatus: parsedOsStatus,
     message: parsedMessage,
+    tccPreflight: parsedTccPreflight,
   };
 };
 

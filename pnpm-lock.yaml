@@ -249,6 +249,25 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  examples/runtime-node-system-audio-permissions:
+    dependencies:
+      '@saraudio/capture-node':
+        specifier: workspace:*
+        version: link:../../packages/capture-node
+      '@saraudio/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.9.1
+      tsx:
+        specifier: ^4.19.1
+        version: 4.20.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   examples/runtime-node-transcribe:
     dependencies:
       '@saraudio/capture-node':

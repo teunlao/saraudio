@@ -8,6 +8,7 @@ export interface SystemAudioPreflightReport {
   permission: SystemAudioPreflightPermission;
   osStatus: number | null;
   message: string | null;
+  tccPreflight: number | null;
 }
 
 export interface PreflightSystemAudioOptions {
