@@ -79,5 +79,7 @@ export function buildBaseParams<M extends DeepgramModelId>(
   if (options.language) params.set('language', options.language);
   if (options.version) params.set('version', options.version);
   params.set('interim_results', (options.interimResults ?? true) ? 'true' : 'false');
+  const diarize = options.diarize ?? options.diarization;
+  if (diarize) params.set('diarize', 'true');
   return params;
 }

@@ -12,6 +12,8 @@ export interface SonioxOptions extends BaseProviderOptions {
   audioFormat?: 'pcm_s16le' | 'auto' | string;
   /** Optional language hints (e.g., ['en','es']). */
   languageHints?: ReadonlyArray<string>;
+  /** Enable speaker diarization (speaker labels in word timestamps). */
+  diarization?: boolean;
   /** Drop‑queue budget in ms of audio. Default 200ms, clamped [100..500]. */
   queueBudgetMs?: number;
 }

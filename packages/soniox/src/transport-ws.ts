@@ -24,6 +24,32 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
   let queuedMs = 0;
 
   // logger is parameter
+  // Soniox can emit `speaker` as number or string. Our public contract uses numeric speaker ids.
+  // Map non-numeric labels to stable numeric ids for the lifetime of this stream.
+  const SPEAKER_LABEL_ID_BASE = 100;
+  const speakerLabelToId = new Map<string, number>();
+  const speakerIdToLabel = new Map<number, string>();
+
+  const normalizeSpeaker = (value: unknown): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) return undefined;
+      if (/^\d+$/.test(trimmed)) {
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      }
+      const existing = speakerLabelToId.get(trimmed);
+      if (existing !== undefined) return existing;
+      const id = SPEAKER_LABEL_ID_BASE + speakerLabelToId.size;
+      speakerLabelToId.set(trimmed, id);
+      speakerIdToLabel.set(id, trimmed);
+      return id;
+    }
+    return undefined;
+  };
 
   const setStatus = (next: StreamStatus): void => {
     if (status === next) return;
@@ -161,11 +187,22 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
             confSum += t.confidence;
             confCount += 1;
           }
-          if (typeof t.speaker === 'number') speaker = t.speaker;
+          const nextSpeaker = normalizeSpeaker(t.speaker);
+          if (nextSpeaker !== undefined) speaker = nextSpeaker;
           buf += s;
         }
         flush();
-        emitFinal({ text, words });
+
+        let metadata: Record<string, unknown> | undefined;
+        if (speakerIdToLabel.size > 0) {
+          const speakerLabels: Record<string, string> = {};
+          for (const [id, label] of speakerIdToLabel) {
+            speakerLabels[String(id)] = label;
+          }
+          metadata = { speakerLabels };
+        }
+
+        emitFinal({ text, words, metadata });
       }
     }
     if (msg.finished) {
@@ -210,6 +247,9 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
           sample_rate: resolved.sampleRate,
           language_hints: resolved.raw.languageHints,
         };
+        if (resolved.raw.diarization === true) {
+          init.enable_speaker_diarization = true;
+        }
         try {
           socket.send(JSON.stringify(init));
         } catch (err) {

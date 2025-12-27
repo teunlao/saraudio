@@ -37,6 +37,8 @@ export interface DeepgramOptions<M extends DeepgramModelId = 'nova-3'> extends B
   utterances?: boolean;
   /** Enable diarization (speaker attribution). */
   diarize?: boolean;
+  /** Alias for `diarize` (speaker attribution). */
+  diarization?: boolean;
   /** Force multi‑channel transcription. */
   multichannel?: boolean;
   /** Preferred channel count (default 1). Normalized to 1|2. */

@@ -1,3 +1,4 @@
+import type { TranscriptResult } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { SonioxProvider } from './index';
 import { soniox } from './index';
@@ -99,6 +100,10 @@ function createFrame(samples: number): { pcm: Int16Array; sampleRate: number; ch
   return { pcm, sampleRate: 16000, channels: 1, tsMs: 0 };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
 describe('soniox provider', () => {
   test('connect sends init json and becomes ready', async () => {
     const provider = createProvider();
@@ -112,6 +117,19 @@ describe('soniox provider', () => {
     // first sent item must be init JSON
     const first = socket.sent[0];
     expect(typeof first === 'string' && (first as string).includes('"api_key"')).toBe(true);
+  });
+
+  test('connect includes enable_speaker_diarization when diarization enabled', async () => {
+    const provider = soniox({ auth: { apiKey: 'soniox-test-key' }, model: 'stt-rt-v3', diarization: true });
+    if (!provider.stream) throw new Error('ws stream expected');
+    const stream = provider.stream();
+    const connectPromise = stream.connect();
+    const socket = await getSocket();
+    socket.open();
+    await connectPromise;
+    expect(stream.status).toBe('ready');
+    const first = socket.sent[0];
+    expect(typeof first === 'string' && (first as string).includes('"enable_speaker_diarization":true')).toBe(true);
   });
 
   test('queue drops on backpressure and flushes on open', async () => {
@@ -153,6 +171,35 @@ describe('soniox provider', () => {
     );
     expect(partials).toEqual(['hel']);
     expect(finals).toEqual([{ text: 'hello' }]);
+  });
+
+  test('normalizes speaker labels into numeric ids and preserves label map', async () => {
+    const provider = soniox({ auth: { apiKey: 'soniox-test-key' }, model: 'stt-rt-v3', diarization: true });
+    if (!provider.stream) throw new Error('ws stream expected');
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+    const finals: TranscriptResult[] = [];
+    stream.onTranscript((r) => finals.push(r));
+    socket.open();
+    await promise;
+
+    socket.emitMessage(
+      JSON.stringify({
+        tokens: [{ text: 'hello', is_final: true, start_ms: 0, end_ms: 500, speaker: 'Alice' }],
+      }),
+    );
+
+    expect(finals).toHaveLength(1);
+    const result = finals[0];
+    expect(result?.words?.[0]?.speaker).toBe(100);
+    const meta = result?.metadata;
+    expect(isRecord(meta)).toBe(true);
+    const speakerLabels = isRecord(meta) ? meta.speakerLabels : undefined;
+    expect(isRecord(speakerLabels)).toBe(true);
+    if (isRecord(speakerLabels)) {
+      expect(speakerLabels['100']).toBe('Alice');
+    }
   });
 
   test('http transcribe maps errors', async () => {

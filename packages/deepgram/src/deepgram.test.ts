@@ -137,6 +137,23 @@ describe('deepgram provider', () => {
     expect(stream.status).toBe('ready');
   });
 
+  test('connect includes diarize=true when diarization enabled', async () => {
+    const provider = deepgram({
+      auth: { apiKey: 'test-key' },
+      model: 'nova-2',
+      language: 'en-US',
+      diarization: true,
+    });
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+    expect(socket.url).toContain('diarize=true');
+    socket.open();
+    await promise;
+    expect(stream.status).toBe('ready');
+  });
+
   test('queue drops oldest frame when over budget', async () => {
     const provider = createProvider();
     if (!provider.stream) throw new Error('expected websocket-capable provider');
