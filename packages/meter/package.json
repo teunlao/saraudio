@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/meter",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Real-time audio level metering for SARAudio",
   "license": "MIT",
   "sideEffects": false,

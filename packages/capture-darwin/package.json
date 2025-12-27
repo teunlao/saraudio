@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/capture-darwin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "macOS CoreAudio capture helpers for SARAudio (system audio + mic)",
   "license": "MIT",
   "sideEffects": false,

@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/example-runtime-node-dual-recording",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/runtime-browser",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "Browser runtime for SARAUDIO pipelines (AudioWorklet + AudioContext)",
   "license": "MIT",
   "sideEffects": false,
