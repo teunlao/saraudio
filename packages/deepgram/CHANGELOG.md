@@ -1,5 +1,11 @@
 ## 0.0.2
 
+## 0.2.1
+
+### Patch Changes
+
+- a4776af: Enable speaker diarization for Deepgram and Soniox and align provider options via `diarization: true`.
+
 ## 0.2.0
 
 ### Minor Changes
