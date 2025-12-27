@@ -9,13 +9,13 @@ import type {
   TranscriptionProvider,
   TranscriptionStream,
   TranscriptResult,
+  TranscriptUpdate,
   Transport,
 } from '@saraudio/core';
 import { createDeferred, type Deferred } from '@saraudio/utils';
 
 export interface StreamStub extends TranscriptionStream {
-  emitTranscript(result: TranscriptResult): void;
-  emitPartial(text: string): void;
+  emitUpdate(update: TranscriptUpdate): void;
   emitError(error: Error): void;
   emitStatus(status: StreamStatus): void;
   readonly lastSentFrame: NormalizedFrame<'pcm16'> | null;
@@ -34,8 +34,7 @@ export interface StreamStubConfig {
 export function createStreamStub(config: StreamStubConfig = {}): StreamStub {
   const { initialStatus = 'idle', deferredConnect = false, onConnect } = config;
   let status: StreamStatus = initialStatus;
-  const onTranscriptHandlers = new Set<(value: TranscriptResult) => void>();
-  const onPartialHandlers = new Set<(value: string) => void>();
+  const onUpdateHandlers = new Set<(value: TranscriptUpdate) => void>();
   const onErrorHandlers = new Set<(value: Error) => void>();
   const onStatusHandlers = new Set<(value: StreamStatus) => void>();
   let lastSentFrame: NormalizedFrame<'pcm16'> | null = null;
@@ -71,13 +70,9 @@ export function createStreamStub(config: StreamStubConfig = {}): StreamStub {
     async forceEndpoint(): Promise<void> {
       forceEndpointCalls += 1;
     },
-    onTranscript(handler: (value: TranscriptResult) => void): () => void {
-      onTranscriptHandlers.add(handler);
-      return () => onTranscriptHandlers.delete(handler);
-    },
-    onPartial(handler: (value: string) => void): () => void {
-      onPartialHandlers.add(handler);
-      return () => onPartialHandlers.delete(handler);
+    onUpdate(handler: (value: TranscriptUpdate) => void): () => void {
+      onUpdateHandlers.add(handler);
+      return () => onUpdateHandlers.delete(handler);
     },
     onError(handler: (value: Error) => void): () => void {
       onErrorHandlers.add(handler);
@@ -87,11 +82,8 @@ export function createStreamStub(config: StreamStubConfig = {}): StreamStub {
       onStatusHandlers.add(handler);
       return () => onStatusHandlers.delete(handler);
     },
-    emitTranscript(result: TranscriptResult): void {
-      onTranscriptHandlers.forEach((handler) => handler(result));
-    },
-    emitPartial(text: string): void {
-      onPartialHandlers.forEach((handler) => handler(text));
+    emitUpdate(update: TranscriptUpdate): void {
+      onUpdateHandlers.forEach((handler) => handler(update));
     },
     emitError(error: Error): void {
       onErrorHandlers.forEach((handler) => handler(error));

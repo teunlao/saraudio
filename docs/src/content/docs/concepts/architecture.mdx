@@ -133,8 +133,19 @@ Provider options (in short)
 Live captions (WS)
 ```ts
 const ctrl = createTranscription({ provider, recorder, transport: 'websocket' });
-ctrl.onPartial((t) => ui.update(t));
-ctrl.onTranscript((r) => ui.commit(r.text));
+ctrl.onUpdate((u) => {
+  const partialText = u.tokens
+    .filter((t) => !t.isFinal)
+    .map((t) => t.text)
+    .join('');
+  const finalChunk = u.tokens
+    .filter((t) => t.isFinal)
+    .map((t) => t.text)
+    .join('')
+    .trim();
+  if (partialText) ui.update(partialText);
+  if (finalChunk) ui.commit(finalChunk);
+});
 ```
 
 “One request per phrase” (HTTP)

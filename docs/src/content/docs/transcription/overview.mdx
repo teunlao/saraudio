@@ -133,8 +133,11 @@ const ctrl = createTranscription({
   connection: { ws: { silencePolicy: 'keep' /* 'drop' | 'mute' */ } },
 });
 
-ctrl.onPartial(...);
-ctrl.onTranscript(...);
+ctrl.onUpdate((u) => {
+  // See docs: consumer strategy is “drop non-final → append update.tokens”.
+  // For quick logging:
+  console.log(u);
+});
 await recorder.start();
 await ctrl.connect();
 ```

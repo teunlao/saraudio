@@ -1,13 +1,9 @@
-import type { NormalizedFrame, StreamStatus, TranscriptionStream, TranscriptResult, Transport } from '@saraudio/core';
+import type { NormalizedFrame, StreamStatus, TranscriptResult, TranscriptUpdate, Transport } from '@saraudio/core';
 import { AuthenticationError, NetworkError, RateLimitError } from '@saraudio/core';
 import { createRecorderStub } from '@saraudio/core/testing';
 import type { HttpLiveAggregator, Logger } from '@saraudio/utils';
 import { describe, expect, test, vi } from 'vitest';
-import {
-  createProviderStub,
-  createStreamStub,
-  createUpdatableProviderStub,
-} from '../testing/transcription-provider-stubs';
+import { createProviderStub, createUpdatableProviderStub } from '../testing/transcription-provider-stubs';
 import { createTranscription } from './transcription-controller';
 import * as httpTransportModule from './transports/http-transport';
 
@@ -185,39 +181,6 @@ describe('createTranscription controller', () => {
     expect(controller.isConnected).toBe(false);
     expect(controller.status === 'error' || controller.status === 'disconnected').toBe(true);
   });
-
-  test('onPartial missing does not break wiring', async () => {
-    const base = createStreamStub();
-    const streamNoPartial: TranscriptionStream = {
-      get status() {
-        return base.status;
-      },
-      async connect() {
-        await base.connect();
-      },
-      async disconnect() {
-        await base.disconnect();
-      },
-      send(f) {
-        base.send(f);
-      },
-      async forceEndpoint() {
-        await base.forceEndpoint();
-      },
-      onTranscript: (h) => base.onTranscript(h),
-      onError: (h) => base.onError(h),
-      onStatusChange: (h) => base.onStatusChange(h),
-    };
-    const stub = createProviderStub({ reuseStream: true });
-    if (!stub.provider.stream) {
-      throw new Error('Expected websocket-capable provider in test');
-    }
-    stub.provider.stream = () => streamNoPartial;
-    const recorder = createRecorderStub();
-    const controller = createTranscription({ provider: stub.provider, recorder });
-    await controller.connect();
-    expect(controller.isConnected).toBe(true);
-  });
   test('connect/disconnect lifecycle updates status', async () => {
     const stub = createProviderStub({ reuseStream: true });
     const recorder = createRecorderStub();
@@ -245,22 +208,21 @@ describe('createTranscription controller', () => {
     expect(stub.streamInstance?.lastSentFrame).toBe(frame);
   });
 
-  test('propagates transcript and partial events to subscribers', async () => {
+  test('propagates update events to subscribers', async () => {
     const stub = createProviderStub({ reuseStream: true });
     const recorder = createRecorderStub();
     const controller = createTranscription({ provider: stub.provider, recorder });
 
-    const partials: string[] = [];
-    const finals: TranscriptResult[] = [];
-    controller.onPartial((t: string) => partials.push(t));
-    controller.onTranscript((r: TranscriptResult) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u: TranscriptUpdate) => updates.push(u));
 
     await controller.connect();
-    stub.streamInstance?.emitPartial('hel');
-    stub.streamInstance?.emitTranscript({ text: 'hello' });
+    const updateA: TranscriptUpdate = { providerId: stub.provider.id, tokens: [{ text: 'hel', isFinal: false }] };
+    const updateB: TranscriptUpdate = { providerId: stub.provider.id, tokens: [{ text: 'hello', isFinal: true }] };
+    stub.streamInstance?.emitUpdate(updateA);
+    stub.streamInstance?.emitUpdate(updateB);
 
-    expect(partials).toEqual(['hel']);
-    expect(finals).toEqual([{ text: 'hello' }]);
+    expect(updates).toEqual([updateA, updateB]);
   });
 
   test('propagates errors and sets error status', async () => {

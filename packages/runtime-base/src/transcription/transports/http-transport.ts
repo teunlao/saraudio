@@ -1,4 +1,4 @@
-import type { TranscriptionProvider, TranscriptResult } from '@saraudio/core';
+import type { TranscriptionProvider, TranscriptResult, TranscriptToken, TranscriptUpdate } from '@saraudio/core';
 import { encodeWavPcm16 } from '@saraudio/core';
 import type { HttpLiveAggregator, Logger } from '@saraudio/utils';
 import { createHttpLiveAggregator } from '@saraudio/utils';
@@ -8,7 +8,7 @@ export interface HttpTransportOptions {
   provider: TranscriptionProvider;
   logger?: Logger;
   preconnectBuffer: PreconnectBuffer;
-  onTranscript: (result: TranscriptResult) => void;
+  onUpdate: (update: TranscriptUpdate) => void;
   onError: (error: Error) => void;
   chunking?: {
     intervalMs?: number;
@@ -24,11 +24,34 @@ export interface HttpTransport {
 }
 
 export function createHttpTransport(opts: HttpTransportOptions): HttpTransport {
-  const { provider, logger, preconnectBuffer, onTranscript, onError, chunking } = opts;
+  const { provider, logger, preconnectBuffer, onUpdate, onError, chunking } = opts;
   const transcribe = provider.transcribe;
   if (typeof transcribe !== 'function') {
     throw new Error('Provider does not support HTTP transcription');
   }
+
+  const resultToUpdate = (result: TranscriptResult): TranscriptUpdate => {
+    const tokens: TranscriptToken[] = [];
+    if (result.words && result.words.length > 0) {
+      for (const word of result.words) {
+        const token: TranscriptToken = { text: `${word.word} `, isFinal: true };
+        token.startMs = word.startMs;
+        token.endMs = word.endMs;
+        if (typeof word.confidence === 'number') token.confidence = word.confidence;
+        if (typeof word.speaker === 'number') token.speaker = word.speaker;
+        tokens.push(token);
+      }
+    } else if (result.text) {
+      tokens.push({ text: result.text, isFinal: true });
+    }
+
+    const update: TranscriptUpdate = { providerId: provider.id, tokens, finalize: true };
+    if (result.language) update.language = result.language;
+    if (result.span) update.span = result.span;
+    if (result.turnId !== undefined) update.turnId = result.turnId;
+    if (result.metadata) update.metadata = result.metadata;
+    return update;
+  };
 
   const aggregator = createHttpLiveAggregator<TranscriptResult>({
     intervalMs: chunking?.intervalMs,
@@ -41,7 +64,7 @@ export function createHttpTransport(opts: HttpTransportOptions): HttpTransport {
       return await transcribe.call(provider, wav, undefined, flushSignal);
     },
     onResult: (res) => {
-      onTranscript(res);
+      onUpdate(resultToUpdate(res));
     },
     onError: (err) => {
       onError((err as Error) ?? new Error('HTTP chunk flush failed'));

@@ -3,7 +3,7 @@ import type {
   StageController,
   StreamStatus,
   TranscriptionProvider,
-  TranscriptResult,
+  TranscriptUpdate,
   Transport,
 } from '@saraudio/core';
 import type { Recorder } from '@saraudio/runtime-browser';
@@ -31,7 +31,7 @@ export interface UseTranscriptionOptions<P extends TranscriptionProvider = Trans
   preconnectBufferMs?: number;
   flushOnSegmentEnd?: boolean | { cooldownMs?: number };
   connection?: ConnectionOptions;
-  onTranscript?: (result: TranscriptResult) => void;
+  onUpdate?: (update: TranscriptUpdate) => void;
   onError?: (error: Error) => void;
 }
 
@@ -78,7 +78,7 @@ export function useTranscription<P extends TranscriptionProvider>(
     return (t && t !== 'auto' ? t : 'websocket') as Transport;
   })();
 
-  const transcriptSegments: string[] = [];
+  let committedText = '';
 
   let internalRecorder: UseRecorderResult | null = null;
   let recorderRef: Ref<Recorder | null>;
@@ -147,25 +147,26 @@ export function useTranscription<P extends TranscriptionProvider>(
 
   const setupSubscriptions = (controller: TranscriptionController<P>): void => {
     unsubscribes.push(
-      controller.onTranscript((result) => {
-        options.onTranscript?.(result);
-        if (result.text && result.text.trim().length > 0) {
-          transcriptSegments.push(result.text.trim());
-          transcript.value = transcriptSegments.join(' ').trim();
+      controller.onUpdate((update) => {
+        options.onUpdate?.(update);
+        const finalChunk = update.tokens
+          .filter((t) => t.isFinal)
+          .map((t) => t.text)
+          .join('');
+        if (finalChunk) {
+          committedText = `${committedText}${finalChunk}`;
+          transcript.value = committedText.trim();
         }
-        partial.value = '';
+
+        if (transport === 'websocket') {
+          partial.value = update.tokens
+            .filter((t) => !t.isFinal)
+            .map((t) => t.text)
+            .join('');
+          if (update.finalize === true) partial.value = '';
+        }
       }),
     );
-
-    if (controller.onPartial) {
-      unsubscribes.push(
-        controller.onPartial((text) => {
-          if (transport === 'websocket') {
-            partial.value = text;
-          }
-        }),
-      );
-    }
 
     unsubscribes.push(
       controller.onError((err) => {
@@ -311,7 +312,7 @@ export function useTranscription<P extends TranscriptionProvider>(
   };
 
   const clear = (): void => {
-    transcriptSegments.length = 0;
+    committedText = '';
     transcript.value = '';
     partial.value = '';
     controllerRef.value?.clear();

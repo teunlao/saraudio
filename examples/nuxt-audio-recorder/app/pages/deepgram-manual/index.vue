@@ -144,19 +144,31 @@ let transcription = createTranscription({
   },
 });
 
-let unsubTranscript = transcription.onTranscript((result) => {
-  if (transcript.value) {
-    transcript.value += ' ' + result.text;
-  } else {
-    transcript.value = result.text;
-  }
-  latestResults.value.unshift(result);
-  if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
-  pushEvent(`[transcript] ${result.text}`);
-});
+let unsubUpdate = transcription.onUpdate((update) => {
+  const finalChunk = update.tokens
+    .filter((t) => t.isFinal)
+    .map((t) => t.text)
+    .join('')
+    .trim();
 
-let unsubPartial = transcription.onPartial((text) => {
-  partial.value = text;
+  if (finalChunk) {
+    const result: TranscriptResult = {
+      text: finalChunk,
+      language: update.language,
+      span: update.span,
+      metadata: update.metadata,
+    };
+    transcript.value = transcript.value ? transcript.value + ' ' + finalChunk : finalChunk;
+    latestResults.value.unshift(result);
+    if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
+    pushEvent(`[transcript] ${finalChunk}`);
+  }
+
+  partial.value = update.tokens
+    .filter((t) => !t.isFinal)
+    .map((t) => t.text)
+    .join('');
+  if (update.finalize === true) partial.value = '';
 });
 
 let unsubTransError = transcription.onError((err) => {
@@ -179,8 +191,7 @@ watch(transportMode, async (newTransport, oldTransport) => {
     await transcription.disconnect();
   }
 
-  unsubTranscript();
-  unsubPartial();
+  unsubUpdate();
   unsubTransError();
   unsubStatus();
 
@@ -217,19 +228,31 @@ watch(transportMode, async (newTransport, oldTransport) => {
     },
   });
 
-  unsubTranscript = transcription.onTranscript((result) => {
-    if (transcript.value) {
-      transcript.value += ' ' + result.text;
-    } else {
-      transcript.value = result.text;
-    }
-    latestResults.value.unshift(result);
-    if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
-    pushEvent(`[transcript] ${result.text}`);
-  });
+  unsubUpdate = transcription.onUpdate((update) => {
+    const finalChunk = update.tokens
+      .filter((t) => t.isFinal)
+      .map((t) => t.text)
+      .join('')
+      .trim();
 
-  unsubPartial = transcription.onPartial((text) => {
-    partial.value = text;
+    if (finalChunk) {
+      const result: TranscriptResult = {
+        text: finalChunk,
+        language: update.language,
+        span: update.span,
+        metadata: update.metadata,
+      };
+      transcript.value = transcript.value ? transcript.value + ' ' + finalChunk : finalChunk;
+      latestResults.value.unshift(result);
+      if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
+      pushEvent(`[transcript] ${finalChunk}`);
+    }
+
+    partial.value = update.tokens
+      .filter((t) => !t.isFinal)
+      .map((t) => t.text)
+      .join('');
+    if (update.finalize === true) partial.value = '';
   });
 
   unsubTransError = transcription.onError((err) => {
@@ -329,8 +352,7 @@ onUnmounted(() => {
   unsubVad();
   unsubMeter();
   unsubError();
-  unsubTranscript();
-  unsubPartial();
+  unsubUpdate();
   unsubTransError();
   unsubStatus();
   rec.dispose();

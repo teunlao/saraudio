@@ -1,4 +1,4 @@
-import type { TranscriptResult } from '@saraudio/core';
+import type { TranscriptUpdate } from '@saraudio/core';
 import { createRecorderStub, createTranscriptionProviderStub } from '@saraudio/core/testing';
 import { createTranscriptionControllerStub } from '@saraudio/runtime-base/testing';
 import type { CreateTranscriptionOptions, Recorder, TranscriptionController } from '@saraudio/runtime-browser';
@@ -88,13 +88,24 @@ describe('useTranscription', () => {
       }),
     );
 
-    controllerStub?.emitPartial('hel');
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'hel', isFinal: false }],
+    });
     expect(result.partial.value).toBe('hel');
 
-    controllerStub?.emitTranscript({ text: 'hello', language: 'en-US' });
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'hello ', isFinal: true }],
+      language: 'en-US',
+    });
     expect(result.transcript.value).toBe('hello');
 
-    controllerStub?.emitTranscript({ text: 'world', language: 'en-US' });
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'world', isFinal: true }],
+      language: 'en-US',
+    });
     expect(result.transcript.value).toBe('hello world');
 
     await result.disconnect();
@@ -109,8 +120,15 @@ describe('useTranscription', () => {
 
     await result.connect();
 
-    controllerStub?.emitTranscript({ text: 'sample', language: 'en-US' });
-    controllerStub?.emitPartial('temp');
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'sample', isFinal: true }],
+      language: 'en-US',
+    });
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'temp', isFinal: false }],
+    });
 
     result.clear();
     expect(result.transcript.value).toBe('');
@@ -120,19 +138,23 @@ describe('useTranscription', () => {
   it('invokes callbacks on transcript and error', async () => {
     const provider = createTranscriptionProviderStub({ transport: 'websocket' });
     const recorder = createRecorder();
-    const transcriptCb = vi.fn();
+    const updateCb = vi.fn();
     const errorCb = vi.fn();
 
     const [result, app] = withSetup(() =>
-      useTranscription({ provider, recorder, onTranscript: transcriptCb, onError: errorCb }),
+      useTranscription({ provider, recorder, onUpdate: updateCb, onError: errorCb }),
     );
     apps.push(app);
 
     await result.connect();
 
-    const finalResult: TranscriptResult = { text: 'done', language: 'en-US' };
-    controllerStub?.emitTranscript(finalResult);
-    expect(transcriptCb).toHaveBeenCalledWith(finalResult);
+    const finalUpdate: TranscriptUpdate = {
+      providerId: provider.id,
+      tokens: [{ text: 'done', isFinal: true }],
+      language: 'en-US',
+    };
+    controllerStub?.emitUpdate(finalUpdate);
+    expect(updateCb).toHaveBeenCalledWith(finalUpdate);
 
     const err = new Error('boom');
     controllerStub?.emitError(err);
@@ -175,7 +197,10 @@ describe('useTranscription', () => {
 
     await result.connect();
 
-    controllerStub?.emitPartial('ignored');
+    controllerStub?.emitUpdate({
+      providerId: provider.id,
+      tokens: [{ text: 'ignored', isFinal: false }],
+    });
     expect(result.partial.value).toBe('');
   });
 

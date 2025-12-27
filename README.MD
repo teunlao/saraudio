@@ -47,8 +47,19 @@ const ctrl = createTranscription({
   connection: { ws: { silencePolicy: 'keep' } }, // 'keep' | 'drop' | 'mute'
 });
 
-ctrl.onPartial((t) => console.log('partial:', t));
-ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onUpdate((u) => {
+  const finalChunk = u.tokens
+    .filter((t) => t.isFinal)
+    .map((t) => t.text)
+    .join('')
+    .trim();
+  const partialText = u.tokens
+    .filter((t) => !t.isFinal)
+    .map((t) => t.text)
+    .join('');
+  if (partialText) console.log('partial:', partialText);
+  if (finalChunk) console.log('final:', finalChunk);
+});
 
 await recorder.start();
 await ctrl.connect();
@@ -65,7 +76,10 @@ const ctrl = createTranscription({
   connection: { http: { chunking: { intervalMs: 0, overlapMs: 500, maxInFlight: 1, timeoutMs: 10_000 } } },
 });
 
-ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onUpdate((u) => {
+  const text = u.tokens.map((t) => t.text).join('').trim();
+  if (text) console.log('final:', text);
+});
 await recorder.start();
 await ctrl.connect();
 ```

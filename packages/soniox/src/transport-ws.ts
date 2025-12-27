@@ -1,17 +1,23 @@
-import type { NormalizedFrame, TranscriptionStream, TranscriptResult } from '@saraudio/core';
+import type { NormalizedFrame, TranscriptionStream, TranscriptToken, TranscriptUpdate } from '@saraudio/core';
 import { AbortedError, AuthenticationError, NetworkError, ProviderError, RateLimitError } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { buildTransportUrl, frameDurationMs } from '@saraudio/utils';
 import { resolveApiKey } from './auth';
 import type { SonioxResolvedConfig } from './config';
-import type { SonioxWsFinishedResponse, SonioxWsInitConfig, SonioxWsStreamResponse } from './SonioxWsRealtimeModel';
+import type {
+  SonioxWsErrorResponse,
+  SonioxWsFinishedResponse,
+  SonioxWsInitConfig,
+  SonioxWsStreamResponse,
+  SonioxWsToken,
+} from './SonioxWsRealtimeModel';
 
 type StreamStatus = TranscriptionStream['status'];
+type SonioxRawMessage = SonioxWsStreamResponse & Partial<SonioxWsFinishedResponse> & Partial<SonioxWsErrorResponse>;
 
 export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger): TranscriptionStream {
   let status: StreamStatus = 'idle';
-  const partialHandlers = new Set<(text: string) => void>();
-  const transcriptHandlers = new Set<(r: TranscriptResult) => void>();
+  const updateHandlers = new Set<(u: TranscriptUpdate) => void>();
   const errorHandlers = new Set<(e: Error) => void>();
   const statusHandlers = new Set<(s: StreamStatus) => void>();
 
@@ -57,6 +63,41 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
     statusHandlers.forEach((h) => h(status));
   };
 
+  const isSonioxRawMessage = (value: unknown): value is SonioxRawMessage => {
+    if (typeof value !== 'object' || value === null) return false;
+    const v = value as Record<string, unknown>;
+    if (v.tokens !== undefined && !Array.isArray(v.tokens)) return false;
+    return true;
+  };
+
+  const isMarker = (value: unknown): boolean => {
+    if (typeof value !== 'string') return false;
+    const s = value.trim();
+    return s.startsWith('<') && s.endsWith('>');
+  };
+
+  const createToken = (t: SonioxWsToken): TranscriptToken | null => {
+    const rawText = t.text;
+    if (isMarker(rawText)) return null;
+    const text = typeof rawText === 'string' ? rawText : '';
+    const token: TranscriptToken = { text, isFinal: t.is_final === true };
+
+    if (typeof t.start_ms === 'number' && Number.isFinite(t.start_ms)) token.startMs = Math.max(0, t.start_ms);
+    if (typeof t.end_ms === 'number' && Number.isFinite(t.end_ms)) token.endMs = Math.max(0, t.end_ms);
+    if (typeof t.confidence === 'number' && Number.isFinite(t.confidence)) token.confidence = t.confidence;
+
+    const speaker = normalizeSpeaker(t.speaker);
+    if (speaker !== undefined) token.speaker = speaker;
+
+    const tokenMetadata: Record<string, unknown> = {};
+    if (typeof t.language === 'string') tokenMetadata.language = t.language;
+    if (typeof t.source_language === 'string') tokenMetadata.sourceLanguage = t.source_language;
+    if (typeof t.translation_status === 'string') tokenMetadata.translationStatus = t.translation_status;
+    if (Object.keys(tokenMetadata).length > 0) token.metadata = tokenMetadata;
+
+    return token;
+  };
+
   const resetQueue = (): void => {
     queue.length = 0;
     queuedMs = 0;
@@ -87,13 +128,8 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
     flushQueue();
   };
 
-  const emitPartial = (text: string): void => {
-    if (!text) return;
-    partialHandlers.forEach((h) => h(text));
-  };
-
-  const emitFinal = (r: TranscriptResult): void => {
-    transcriptHandlers.forEach((h) => h(r));
+  const emitUpdate = (u: TranscriptUpdate): void => {
+    updateHandlers.forEach((h) => h(u));
   };
 
   const emitError = (e: Error): void => errorHandlers.forEach((h) => h(e));
@@ -101,12 +137,20 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
   const mapCloseReason = (code: number, reasonRaw: string): Error | null => {
     // Soniox typically sends JSON with error_code/error_message in reason
     try {
-      const parsed = reasonRaw ? (JSON.parse(reasonRaw) as { error_code?: number; error_message?: string }) : undefined;
-      const status = parsed?.error_code;
-      if (status === 401) return new AuthenticationError(parsed?.error_message ?? 'Unauthorized');
-      if (status === 429) return new RateLimitError(parsed?.error_message ?? 'Too Many Requests');
+      const parsed: unknown = reasonRaw ? JSON.parse(reasonRaw) : undefined;
+      if (typeof parsed !== 'object' || parsed === null) return null;
+      const status = (parsed as Record<string, unknown>).error_code;
+      const message = (parsed as Record<string, unknown>).error_message;
+      if (status === 401) return new AuthenticationError(typeof message === 'string' ? message : 'Unauthorized');
+      if (status === 429) return new RateLimitError(typeof message === 'string' ? message : 'Too Many Requests');
       if (typeof status === 'number' && status >= 400) {
-        return new ProviderError(parsed?.error_message ?? 'Provider error', 'soniox', status, status, parsed);
+        return new ProviderError(
+          typeof message === 'string' ? message : 'Provider error',
+          'soniox',
+          status,
+          status,
+          parsed,
+        );
       }
     } catch {
       // ignore
@@ -117,10 +161,10 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
 
   const handleMessage = (data: unknown): void => {
     if (typeof data !== 'string') return;
-    let msg: (SonioxWsStreamResponse & Partial<SonioxWsFinishedResponse>) | null = null;
+    let msg: SonioxRawMessage | null = null;
     try {
-      // Assign parsed JSON directly to declared model type (no guards/casts here)
-      msg = JSON.parse(data);
+      const parsed: unknown = JSON.parse(data);
+      msg = isSonioxRawMessage(parsed) ? parsed : null;
     } catch (err) {
       logger?.warn('soniox message parse failed', {
         module: 'provider-soniox',
@@ -129,86 +173,54 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
       return;
     }
     if (!msg) return;
-    // Helper: filter out Soniox control markers like "<fin>"
-    const isMarker = (value: unknown): boolean => {
-      if (typeof value !== 'string') return false;
-      const s = value.trim();
-      return s.startsWith('<') && s.endsWith('>');
-    };
 
+    if (typeof msg.error_code === 'number' && typeof msg.error_message === 'string') {
+      emitError(new ProviderError(msg.error_message, 'soniox', msg.error_code, msg.error_code, msg));
+      setStatus('error');
+      return;
+    }
+
+    const updateMetadata: Record<string, unknown> = {};
+    if (typeof msg.final_audio_proc_ms === 'number' && Number.isFinite(msg.final_audio_proc_ms)) {
+      updateMetadata.finalAudioProcMs = msg.final_audio_proc_ms;
+    }
+    if (typeof msg.total_audio_proc_ms === 'number' && Number.isFinite(msg.total_audio_proc_ms)) {
+      updateMetadata.totalAudioProcMs = msg.total_audio_proc_ms;
+    }
+    if (msg.finished === true) {
+      updateMetadata.finished = true;
+    }
+
+    const tokens: TranscriptToken[] = [];
+    let finalize = false;
     if (msg.tokens && msg.tokens.length > 0) {
-      const partialText = msg.tokens
-        .filter((t) => !t.is_final && !isMarker(t.text))
-        .map((t) => t.text ?? '')
-        // Soniox may emit space tokens explicitly, so concatenate verbatim.
-        .join('')
-        .replace(/\s+/g, (m) => (m.length > 1 ? ' ' : m))
-        .trim();
-      if (partialText.length > 0) emitPartial(partialText);
-
-      const finals = msg.tokens.filter((t) => t.is_final && !isMarker(t.text));
-      if (finals.length > 0) {
-        // Build final text by concatenating token text verbatim
-        const text = finals
-          .map((t) => t.text ?? '')
-          .join('')
-          .replace(/\s+/g, (m) => (m.length > 1 ? ' ' : m))
-          .trim();
-
-        // Coalesce adjacent non-space tokens into word timestamps
-        const words: { word: string; startMs: number; endMs: number; confidence?: number; speaker?: number }[] = [];
-        let buf = '';
-        let start = -1;
-        let end = -1;
-        let confSum = 0;
-        let confCount = 0;
-        let speaker: number | undefined;
-        const flush = () => {
-          if (buf.length === 0 || start < 0 || end < 0) return;
-          const w = buf;
-          const confidence = confCount > 0 ? confSum / confCount : undefined;
-          words.push({ word: w, startMs: start, endMs: end, confidence, speaker });
-          buf = '';
-          start = -1;
-          end = -1;
-          confSum = 0;
-          confCount = 0;
-          speaker = undefined;
-        };
-        for (const t of finals) {
-          const s = t.text ?? '';
-          if (s.trim().length === 0) {
-            flush();
-            continue;
-          }
-          if (start < 0 && typeof t.start_ms === 'number') start = Math.max(0, Math.floor(t.start_ms));
-          if (typeof t.end_ms === 'number') end = Math.max(0, Math.floor(t.end_ms));
-          if (typeof t.confidence === 'number') {
-            confSum += t.confidence;
-            confCount += 1;
-          }
-          const nextSpeaker = normalizeSpeaker(t.speaker);
-          if (nextSpeaker !== undefined) speaker = nextSpeaker;
-          buf += s;
+      for (const t of msg.tokens) {
+        if (isMarker(t.text)) {
+          finalize = true;
+          continue;
         }
-        flush();
-
-        let metadata: Record<string, unknown> | undefined;
-        if (speakerIdToLabel.size > 0) {
-          const speakerLabels: Record<string, string> = {};
-          for (const [id, label] of speakerIdToLabel) {
-            speakerLabels[String(id)] = label;
-          }
-          metadata = { speakerLabels };
-        }
-
-        emitFinal({ text, words, metadata });
+        const token = createToken(t);
+        if (token) tokens.push(token);
       }
     }
-    if (msg.finished) {
-      // Server declared end
-      setStatus('disconnected');
+
+    if (speakerIdToLabel.size > 0) {
+      const speakerLabels: Record<string, string> = {};
+      for (const [id, label] of speakerIdToLabel) {
+        speakerLabels[String(id)] = label;
+      }
+      updateMetadata.speakerLabels = speakerLabels;
     }
+
+    const hasMetadata = Object.keys(updateMetadata).length > 0;
+    if (tokens.length > 0 || finalize || hasMetadata) {
+      const update: TranscriptUpdate = { providerId: 'soniox', tokens, raw: msg };
+      if (finalize) update.finalize = true;
+      if (hasMetadata) update.metadata = updateMetadata;
+      emitUpdate(update);
+    }
+
+    if (msg.finished === true) setStatus('disconnected');
   };
 
   const connect = async (signal?: AbortSignal): Promise<void> => {
@@ -249,6 +261,12 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
         };
         if (resolved.raw.diarization === true) {
           init.enable_speaker_diarization = true;
+        }
+        if (resolved.raw.endpointDetection === true) {
+          init.enable_endpoint_detection = true;
+        }
+        if (resolved.raw.languageIdentification === true) {
+          init.enable_language_identification = true;
         }
         try {
           socket.send(JSON.stringify(init));
@@ -324,13 +342,9 @@ export function createWsStream(resolved: SonioxResolvedConfig, logger?: Logger):
     },
     send,
     forceEndpoint,
-    onTranscript(handler) {
-      transcriptHandlers.add(handler);
-      return () => transcriptHandlers.delete(handler);
-    },
-    onPartial(handler) {
-      partialHandlers.add(handler);
-      return () => partialHandlers.delete(handler);
+    onUpdate(handler) {
+      updateHandlers.add(handler);
+      return () => updateHandlers.delete(handler);
     },
     onError(handler) {
       errorHandlers.add(handler);

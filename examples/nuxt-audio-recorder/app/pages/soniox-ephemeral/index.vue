@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TranscriptResult } from '@saraudio/core';
+import type { TranscriptResult, TranscriptUpdate } from '@saraudio/core';
 import { soniox, SONIOX_REALTIME_MODELS, SONIOX_ASYNC_MODELS } from '@saraudio/soniox';
 import { meter } from '@saraudio/meter';
 import type { RuntimeMode } from '@saraudio/runtime-browser';
@@ -62,6 +62,33 @@ const pushEvent = (message: string) => {
   if (events.value.length > MAX_EVENTS) events.value.length = MAX_EVENTS;
 };
 
+let pendingFinalText = '';
+const handleUpdate = (update: TranscriptUpdate) => {
+  const finalChunk = update.tokens
+    .filter((t) => t.isFinal)
+    .map((t) => t.text)
+    .join('');
+  if (finalChunk) pendingFinalText = `${pendingFinalText}${finalChunk}`;
+
+  if (update.finalize !== true) return;
+
+  const text = pendingFinalText.trim();
+  pendingFinalText = '';
+  if (!text) return;
+
+  const result: TranscriptResult = {
+    text,
+    language: update.language,
+    turnId: update.turnId,
+    span: update.span,
+    metadata: update.metadata,
+  };
+
+  latestResults.value.unshift(result);
+  if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
+  pushEvent(`[transcript] ${result.text}`);
+};
+
 // Ephemeral Soniox temporary API key
 type TempKeyResponse = { api_key: string; expires_at: string };
 let tempKeyCache: { value: string; expiresAt: number } | null = null;
@@ -104,11 +131,7 @@ const transcription = useTranscription({
       chunking: { intervalMs: 2500, minDurationMs: 1000, overlapMs: 300, maxInFlight: 1, timeoutMs: 15000 },
     },
   },
-  onTranscript: (result) => {
-    latestResults.value.unshift(result);
-    if (latestResults.value.length > MAX_RESULTS) latestResults.value.length = MAX_RESULTS;
-    pushEvent(`[transcript] ${result.text}`);
-  },
+  onUpdate: handleUpdate,
   onError: (err) => {
     pushEvent(`[error] ${err.message}`);
   },
@@ -131,6 +154,7 @@ watch([selectedModel, selectedLanguage, transportMode], ([model, lang, transport
   lastSelection = { model, language: lang, transport };
   pushEvent(`[config] provider updated: model=${model}, language=${lang}, transport=${transport}`);
   if (transport !== previousTransport) {
+    pendingFinalText = '';
     latestResults.value.length = 0;
     transcription.clear();
   }
@@ -156,6 +180,7 @@ const start = async () => {
 const stop = async () => {
   try { await recorder.stop(); } catch {}
   meterLevels.reset();
+  pendingFinalText = '';
   await transcription.disconnect();
   pushEvent('[action] recording stopped, transcription disconnected');
 };
@@ -165,7 +190,10 @@ const forceEndpoint = async () => {
   pushEvent('[action] force endpoint');
 };
 
-const clearTranscript = () => { transcription.clear(); };
+const clearTranscript = () => {
+  pendingFinalText = '';
+  transcription.clear();
+};
 const clearEvents = () => { events.value = []; };
 
 onUnmounted(() => { void stop(); });

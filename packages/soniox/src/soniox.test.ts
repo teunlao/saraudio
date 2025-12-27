@@ -1,4 +1,4 @@
-import type { TranscriptResult } from '@saraudio/core';
+import type { TranscriptUpdate } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { SonioxProvider } from './index';
 import { soniox } from './index';
@@ -155,10 +155,8 @@ describe('soniox provider', () => {
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
-    const partials: string[] = [];
-    const finals: Array<{ text: string }> = [];
-    stream.onPartial?.((t) => partials.push(t));
-    stream.onTranscript((r) => finals.push({ text: r.text }));
+    const updates: TranscriptUpdate[] = [];
+    stream.onUpdate((u) => updates.push(u));
     socket.open();
     await promise;
     socket.emitMessage(
@@ -169,8 +167,14 @@ describe('soniox provider', () => {
         ],
       }),
     );
-    expect(partials).toEqual(['hel']);
-    expect(finals).toEqual([{ text: 'hello' }]);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      providerId: 'soniox',
+      tokens: [
+        { text: 'hel', isFinal: false },
+        { text: 'hello', isFinal: true, startMs: 0, endMs: 500 },
+      ],
+    });
   });
 
   test('normalizes speaker labels into numeric ids and preserves label map', async () => {
@@ -179,8 +183,8 @@ describe('soniox provider', () => {
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
-    const finals: TranscriptResult[] = [];
-    stream.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    stream.onUpdate((u) => updates.push(u));
     socket.open();
     await promise;
 
@@ -190,10 +194,10 @@ describe('soniox provider', () => {
       }),
     );
 
-    expect(finals).toHaveLength(1);
-    const result = finals[0];
-    expect(result?.words?.[0]?.speaker).toBe(100);
-    const meta = result?.metadata;
+    expect(updates).toHaveLength(1);
+    const update = updates[0];
+    expect(update?.tokens?.[0]?.speaker).toBe(100);
+    const meta = update?.metadata;
     expect(isRecord(meta)).toBe(true);
     const speakerLabels = isRecord(meta) ? meta.speakerLabels : undefined;
     expect(isRecord(speakerLabels)).toBe(true);

@@ -12,6 +12,53 @@ export type WordTimestamp = {
   speaker?: number;
 };
 
+export type TranscriptToken = {
+  /**
+   * Display-ready token text as emitted by the provider adapter.
+   * Consumers should concatenate tokens in order without injecting extra spaces.
+   */
+  text: string;
+  /** Whether this token is final (will not be changed/removed by future updates). */
+  isFinal: boolean;
+  startMs?: number;
+  endMs?: number;
+  confidence?: number;
+  /** Speaker index if diarization is available. */
+  speaker?: number;
+  /** Provider-specific token-level fields. Prefer small, documented shapes. */
+  metadata?: Record<string, unknown>;
+};
+
+export type TranscriptUpdate = {
+  /**
+   * Provider id for this stream (e.g. "soniox", "deepgram").
+   * Used as the discriminant for provider package type guards.
+   */
+  providerId: string;
+  /**
+   * Tokens in this update. May include both final and non-final tokens.
+   * Recommended consumer strategy:
+   *   1) drop previously displayed non-final tokens,
+   *   2) append these tokens in order,
+   *   3) if finalize===true then close the current turn.
+   */
+  tokens: ReadonlyArray<TranscriptToken>;
+  /** End-of-turn / utterance boundary (speech_final, <fin>/<end>, utterance_end, etc.). */
+  finalize?: boolean;
+  /** Index of the utterance for turn-based providers (e.g., Flux/AAI). */
+  turnId?: number;
+  language?: string;
+  /** Utterance boundaries when the provider exposes them (ms). */
+  span?: { startMs: number; endMs: number };
+  /** Provider-specific message-level fields. Prefer small, documented shapes. */
+  metadata?: Record<string, unknown>;
+  /**
+   * Optional raw provider message (typed in provider packages).
+   * Intended for advanced consumers + debugging; keep it reasonably sized.
+   */
+  raw?: unknown;
+};
+
 export interface TranscriptResult {
   text: string;
   confidence?: number;
@@ -84,8 +131,7 @@ export interface TranscriptionStream {
   send(frame: NormalizedFrame<'pcm16'>): void;
   /** Force utterance finalization when provider supports it; otherwise a no‑op. */
   forceEndpoint(): Promise<void>;
-  onTranscript(handler: (result: TranscriptResult) => void): () => void;
-  onPartial?(handler: (text: string) => void): () => void;
+  onUpdate(handler: (update: TranscriptUpdate) => void): () => void;
   onError(handler: (error: Error) => void): () => void;
   onStatusChange(handler: (status: StreamStatus) => void): () => void;
 }

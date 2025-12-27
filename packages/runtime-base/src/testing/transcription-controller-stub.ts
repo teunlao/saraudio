@@ -1,4 +1,4 @@
-import type { StreamStatus, TranscriptResult, Transport } from '@saraudio/core';
+import type { StreamStatus, TranscriptUpdate, Transport } from '@saraudio/core';
 import type { TranscriptionController } from '../transcription/transcription-controller';
 
 export interface TranscriptionControllerStubOptions {
@@ -9,13 +9,11 @@ export interface TranscriptionControllerStubOptions {
 
 export interface TranscriptionControllerStub extends TranscriptionController {
   // Test helpers to emit events
-  emitTranscript(result: TranscriptResult): void;
-  emitPartial(text: string): void;
+  emitUpdate(update: TranscriptUpdate): void;
   emitError(error: Error): void;
   emitStatus(status: StreamStatus): void;
   // Access to handlers for verification
-  transcriptHandlers: Set<(result: TranscriptResult) => void>;
-  partialHandlers: Set<(text: string) => void>;
+  updateHandlers: Set<(update: TranscriptUpdate) => void>;
   errorHandlers: Set<(error: Error) => void>;
   statusHandlers: Set<(status: StreamStatus) => void>;
   // Mutable state for testing
@@ -34,11 +32,11 @@ export interface TranscriptionControllerStub extends TranscriptionController {
  * ```ts
  * const stub = createTranscriptionControllerStub();
  *
- * const transcripts: TranscriptResult[] = [];
- * stub.onTranscript(t => transcripts.push(t));
+ * const updates: TranscriptUpdate[] = [];
+ * stub.onUpdate(u => updates.push(u));
  *
- * stub.emitTranscript({ text: 'hello', language: 'en-US' });
- * expect(transcripts).toHaveLength(1);
+ * stub.emitUpdate({ providerId: 'test', tokens: [{ text: 'hello', isFinal: true }] });
+ * expect(updates).toHaveLength(1);
  *
  * // If you need vi.fn() - wrap yourself:
  * stub.connect = vi.fn(stub.connect);
@@ -47,8 +45,7 @@ export interface TranscriptionControllerStub extends TranscriptionController {
 export function createTranscriptionControllerStub(
   options: TranscriptionControllerStubOptions = {},
 ): TranscriptionControllerStub {
-  const transcriptHandlers = new Set<(result: TranscriptResult) => void>();
-  const partialHandlers = new Set<(text: string) => void>();
+  const updateHandlers = new Set<(update: TranscriptUpdate) => void>();
   const errorHandlers = new Set<(error: Error) => void>();
   const statusHandlers = new Set<(status: StreamStatus) => void>();
 
@@ -94,13 +91,9 @@ export function createTranscriptionControllerStub(
     },
 
     // Event subscriptions
-    onPartial(handler) {
-      partialHandlers.add(handler);
-      return () => partialHandlers.delete(handler);
-    },
-    onTranscript(handler) {
-      transcriptHandlers.add(handler);
-      return () => transcriptHandlers.delete(handler);
+    onUpdate(handler) {
+      updateHandlers.add(handler);
+      return () => updateHandlers.delete(handler);
     },
     onError(handler) {
       errorHandlers.add(handler);
@@ -112,11 +105,8 @@ export function createTranscriptionControllerStub(
     },
 
     // Test helpers - emit events
-    emitTranscript(result) {
-      transcriptHandlers.forEach((handler) => handler(result));
-    },
-    emitPartial(text) {
-      partialHandlers.forEach((handler) => handler(text));
+    emitUpdate(update) {
+      updateHandlers.forEach((handler) => handler(update));
     },
     emitError(err) {
       lastError = err;
@@ -133,8 +123,7 @@ export function createTranscriptionControllerStub(
     },
 
     // Test helpers - access handlers
-    transcriptHandlers,
-    partialHandlers,
+    updateHandlers,
     errorHandlers,
     statusHandlers,
 

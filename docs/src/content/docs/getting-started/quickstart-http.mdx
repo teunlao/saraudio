@@ -75,7 +75,10 @@ const ctrl = createTranscription({
 ## 4) Start and flush
 
 ```ts
-ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onUpdate((u) => {
+  const text = u.tokens.map((t) => t.text).join('').trim();
+  if (text) console.log('final:', text);
+});
 ctrl.onError((e) => console.error(e));
 
 await recorder.start();

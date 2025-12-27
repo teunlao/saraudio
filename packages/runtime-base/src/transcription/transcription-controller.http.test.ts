@@ -1,4 +1,4 @@
-import type { NormalizedFrame, TranscriptResult } from '@saraudio/core';
+import type { NormalizedFrame, TranscriptUpdate } from '@saraudio/core';
 import { createRecorderStub } from '@saraudio/core/testing';
 import { describe, expect, test, vi } from 'vitest';
 import { createProviderStub } from '../testing/transcription-provider-stubs';
@@ -11,6 +11,8 @@ function makeFrame(samples = 320, rate = 16000, channels: 1 | 2 = 1): Normalized
   for (let i = 0; i < samples * channels; i += 1) pcm[i] = i % 64;
   return { pcm, tsMs: 0, sampleRate: rate, channels };
 }
+
+const updateText = (update: TranscriptUpdate): string => update.tokens.map((t) => t.text).join('');
 
 function createHttpProviderStub() {
   return createProviderStub({
@@ -44,16 +46,16 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     // With flushOnSegmentEnd=true controller subscribes to speech frames in HTTP mode
     recorder.emitSpeechFrame(makeFrame(320));
     recorder.emitSegment({ id: 'seg', startMs: 0, endMs: 100, durationMs: 100, sampleRate: 16000, channels: 1 });
     await flushPromises();
-    expect(finals.length).toBe(1);
-    expect(finals[0].text.startsWith('bytes:')).toBe(true);
+    expect(updates.length).toBe(1);
+    expect(updateText(updates[0]).startsWith('bytes:')).toBe(true);
   });
 
   test('forceEndpoint maps to aggregator.forceFlush', async () => {
@@ -64,13 +66,13 @@ describe('transcription controller — HTTP chunking path', () => {
       recorder,
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
     await controller.connect();
     recorder.emitNormalizedFrame(makeFrame(320));
     await controller.forceEndpoint();
     await flushPromises();
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
   });
 
   test('disconnect closes aggregator and prevents further flushes', async () => {
@@ -82,7 +84,7 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
     let count = 0;
-    controller.onTranscript(() => {
+    controller.onUpdate(() => {
       count += 1;
     });
     await controller.connect();
@@ -104,8 +106,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     recorder.emitNormalizedFrame(makeFrame(160));
     recorder.emitNormalizedFrame(makeFrame(160));
@@ -114,8 +116,8 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
-    const size = Number.parseInt(finals[0].text.split(':')[1], 10);
+    expect(updates.length).toBe(1);
+    const size = Number.parseInt(updateText(updates[0]).split(':')[1], 10);
     expect(size).toBeGreaterThan(0);
   });
 
@@ -128,8 +130,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     const connectPromise = controller.connect();
     recorder.emitNormalizedFrame(makeFrame(160));
@@ -139,8 +141,8 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
-    const size = Number.parseInt(finals[0].text.split(':')[1], 10);
+    expect(updates.length).toBe(1);
+    const size = Number.parseInt(updateText(updates[0]).split(':')[1], 10);
     expect(size).toBeGreaterThan(0);
   });
 
@@ -154,8 +156,8 @@ describe('transcription controller — HTTP chunking path', () => {
       preconnectBufferMs: 20,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     recorder.emitNormalizedFrame(makeFrame(160, 16000, 2));
     recorder.emitNormalizedFrame(makeFrame(160, 16000, 2));
@@ -165,8 +167,8 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
-    const size = Number.parseInt(finals[0].text.split(':')[1], 10);
+    expect(updates.length).toBe(1);
+    const size = Number.parseInt(updateText(updates[0]).split(':')[1], 10);
     expect(size).toBeGreaterThan(0);
   });
 
@@ -181,7 +183,7 @@ describe('transcription controller — HTTP chunking path', () => {
     });
 
     let flushCount = 0;
-    controller.onTranscript(() => {
+    controller.onUpdate(() => {
       flushCount += 1;
     });
 
@@ -210,20 +212,20 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     // Emit only non-speech frames — controller subscribed to speech frames, so aggregator gets nothing
     recorder.emitNormalizedFrame(makeFrame(320));
     // No segment end → nothing should flush
     await flushPromises();
-    expect(finals.length).toBe(0);
+    expect(updates.length).toBe(0);
 
     // Even forceEndpoint (maps to aggregator.forceFlush) should not yield results if no speech frames were pushed
     await controller.forceEndpoint();
     await flushPromises();
-    expect(finals.length).toBe(0);
+    expect(updates.length).toBe(0);
   });
 
   test('disconnect during in-flight flush completes gracefully', async () => {
@@ -261,8 +263,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     recorder.emitNormalizedFrame(makeFrame(160));
     recorder.emitNormalizedFrame(makeFrame(160));
@@ -273,8 +275,8 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
-    const size = Number.parseInt(finals[0].text.split(':')[1], 10);
+    expect(updates.length).toBe(1);
+    const size = Number.parseInt(updateText(updates[0]).split(':')[1], 10);
     expect(size).toBeGreaterThan(0);
   });
 
@@ -287,8 +289,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0, overlapMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
 
@@ -298,8 +300,8 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
-    const size = Number.parseInt(finals[0].text.split(':')[1], 10);
+    expect(updates.length).toBe(1);
+    const size = Number.parseInt(updateText(updates[0]).split(':')[1], 10);
     expect(size).toBeGreaterThan(0);
   });
 
@@ -313,8 +315,8 @@ describe('transcription controller — HTTP chunking path', () => {
       preconnectBufferMs: 20,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     for (let i = 0; i < 10; i += 1) {
       recorder.emitNormalizedFrame(makeFrame(160));
@@ -324,7 +326,7 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
   });
 
   test('empty preconnect buffer does not cause errors', async () => {
@@ -363,8 +365,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     recorder.emitNormalizedFrame(makeFrame(160));
@@ -376,7 +378,7 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBeGreaterThan(0);
+    expect(updates.length).toBeGreaterThan(0);
   });
 
   test('Bug: frames are not silently lost when aggregator is null', async () => {
@@ -412,21 +414,21 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     recorder.emitNormalizedFrame(makeFrame(160));
     await controller.disconnect();
     await flushPromises();
 
-    const afterDisconnect = finals.length;
+    const afterDisconnect = updates.length;
 
     recorder.emitNormalizedFrame(makeFrame(160));
     recorder.emitNormalizedFrame(makeFrame(160));
     await flushPromises();
 
-    expect(finals.length).toBe(afterDisconnect);
+    expect(updates.length).toBe(afterDisconnect);
   });
 
   test('Reconnect after disconnect subscribes anew (no old frames)', async () => {
@@ -438,8 +440,8 @@ describe('transcription controller — HTTP chunking path', () => {
       connection: { http: { chunking: { intervalMs: 0, minDurationMs: 0 } } },
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     recorder.emitNormalizedFrame(makeFrame(160));
@@ -453,7 +455,7 @@ describe('transcription controller — HTTP chunking path', () => {
     await controller.forceEndpoint();
     await flushPromises();
 
-    expect(finals.length).toBe(2);
+    expect(updates.length).toBe(2);
   });
 
   test('Bug: double await in connect does not cause issues', async () => {
@@ -502,14 +504,14 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     recorder.emitSpeechFrame(makeFrame(160));
     // Wait for timer-driven flush
     await new Promise((r) => setTimeout(r, 15));
-    expect(finals.length).toBeGreaterThanOrEqual(1);
+    expect(updates.length).toBeGreaterThanOrEqual(1);
   });
 
   test('HTTP + VAD: 7s speech (scaled) → two timer flushes + one final by segment end', async () => {
@@ -524,8 +526,8 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
 
@@ -540,20 +542,20 @@ describe('transcription controller — HTTP chunking path', () => {
     oneSecondSpeech();
     oneSecondSpeech();
     await new Promise((r) => setTimeout(r, 7)); // > interval to allow timer to fire
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
 
     // Next 3 "seconds": second timer flush
     oneSecondSpeech();
     oneSecondSpeech();
     oneSecondSpeech();
     await new Promise((r) => setTimeout(r, 7));
-    expect(finals.length).toBe(2);
+    expect(updates.length).toBe(2);
 
     // Last 1 "second": below minDuration, timer не флашит; сегмент заканчивается → финальный flush
     oneSecondSpeech();
     recorder.emitSegment({ id: 'seg-final', startMs: 0, endMs: 7000, durationMs: 7000, sampleRate: 1000, channels: 1 });
     await flushPromises();
-    expect(finals.length).toBe(3);
+    expect(updates.length).toBe(3);
   });
 
   test('HTTP + VAD + interval=0: speech without segment end does not flush until forceEndpoint', async () => {
@@ -566,19 +568,19 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     // Emit speech frames but no segment end
     recorder.emitSpeechFrame(makeFrame(320));
     recorder.emitSpeechFrame(makeFrame(320));
     await new Promise((r) => setTimeout(r, 10));
-    expect(finals.length).toBe(0);
+    expect(updates.length).toBe(0);
 
     await controller.forceEndpoint();
     await flushPromises();
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
   });
 
   test('HTTP + VAD: timer + minDuration gating (no timer flush when speech < minDuration)', async () => {
@@ -591,19 +593,19 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     // Emit short speech < minDurationMs (simulate ~40ms total)
     for (let i = 0; i < 2; i += 1) recorder.emitSpeechFrame(makeFrame(320));
     await new Promise((r) => setTimeout(r, 25)); // several timer ticks, still < minDuration
-    expect(finals.length).toBe(0);
+    expect(updates.length).toBe(0);
 
     // End segment → one final flush
     recorder.emitSegment({ id: 'short', startMs: 0, endMs: 30, durationMs: 30, sampleRate: 16000, channels: 1 });
     await flushPromises();
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
   });
 
   test('HTTP: forceEndpoint queues finalFlushPending during in-flight flush', async () => {
@@ -630,8 +632,8 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
     recorder.emitSpeechFrame(makeFrame(640));
@@ -642,7 +644,7 @@ describe('transcription controller — HTTP chunking path', () => {
     void controller.forceEndpoint();
     await vi.waitFor(
       () => {
-        expect(finals.length).toBe(2);
+        expect(updates.length).toBe(2);
       },
       { timeout: 500 },
     );
@@ -688,8 +690,8 @@ describe('transcription controller — HTTP chunking path', () => {
       flushOnSegmentEnd: true,
     });
 
-    const finals: TranscriptResult[] = [];
-    controller.onTranscript((r) => finals.push(r));
+    const updates: TranscriptUpdate[] = [];
+    controller.onUpdate((u) => updates.push(u));
 
     await controller.connect();
 
@@ -703,21 +705,21 @@ describe('transcription controller — HTTP chunking path', () => {
     oneSecSpeech();
     recorder.emitSegment({ id: 'prev', startMs: 0, endMs: 1000, durationMs: 1000, sampleRate: 1000, channels: 1 });
     await flushPromises();
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
 
     // New phrase starts: 2000ms of audio → below minDuration=3000, даже после нескольких тиков
     oneSecSpeech();
     oneSecSpeech();
     await new Promise((r) => setTimeout(r, 25));
-    expect(finals.length).toBe(1); // ничего не ушло
+    expect(updates.length).toBe(1); // ничего не ушло
 
     // Пересекаем minDuration аудио
     oneSecSpeech();
     // До ближайшего тика таймера ничего не уйдёт
     await new Promise((r) => setTimeout(r, 2));
-    expect(finals.length).toBe(1);
+    expect(updates.length).toBe(1);
     // На ближайшем тике (допускаем небольшую дрожь таймеров) получаем первый порционный флаш новой фразы
     await new Promise((r) => setTimeout(r, 30));
-    expect(finals.length).toBe(2);
+    expect(updates.length).toBe(2);
   });
 });

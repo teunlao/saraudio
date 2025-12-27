@@ -112,8 +112,19 @@ const ctrl = createTranscription({
 ## 4) Wire up events and start
 
 ```ts
-ctrl.onPartial((text) => console.log('partial:', text));
-ctrl.onTranscript((r) => console.log('final:', r.text));
+ctrl.onUpdate((u) => {
+  const finalChunk = u.tokens
+    .filter((t) => t.isFinal)
+    .map((t) => t.text)
+    .join('')
+    .trim();
+  const partialText = u.tokens
+    .filter((t) => !t.isFinal)
+    .map((t) => t.text)
+    .join('');
+  if (partialText) console.log('partial:', partialText);
+  if (finalChunk) console.log('final:', finalChunk);
+});
 ctrl.onError((e) => console.error(e));
 
 await recorder.start();

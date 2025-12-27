@@ -1,4 +1,4 @@
-import { AuthenticationError, RateLimitError, type TranscriptResult } from '@saraudio/core';
+import { AuthenticationError, RateLimitError, type TranscriptUpdate } from '@saraudio/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { DeepgramProvider } from './index';
@@ -179,18 +179,15 @@ describe('deepgram provider', () => {
     expect(sentFramesLengths).toEqual([frameB.pcm.length, frameC.pcm.length]);
   });
 
-  test('emits partial and final transcripts', async () => {
+  test('emits token updates for interim and final results', async () => {
     const provider = createProvider();
     if (!provider.stream) throw new Error('expected websocket-capable provider');
     const stream = provider.stream();
     const promise = stream.connect();
     const socket = await getSocket();
 
-    const partials: string[] = [];
-    const finals: TranscriptResult[] = [];
-
-    stream.onPartial?.((text) => partials.push(text));
-    stream.onTranscript((result) => finals.push(result));
+    const updates: TranscriptUpdate[] = [];
+    stream.onUpdate((update) => updates.push(update));
 
     socket.open();
     await promise;
@@ -227,14 +224,54 @@ describe('deepgram provider', () => {
       }),
     );
 
-    expect(partials).toEqual(['hello']);
-    expect(finals).toHaveLength(1);
-    const result = finals[0];
-    expect(result.text).toBe('hello world');
-    expect(result.words?.length).toBe(2);
-    expect(result.words?.[0]?.startMs).toBe(0);
-    expect(result.words?.[1]?.endMs).toBe(1000);
-    expect(result.language).toBe('en-US');
+    expect(updates).toHaveLength(2);
+
+    expect(updates[0]).toMatchObject({
+      providerId: 'deepgram',
+      tokens: [{ text: 'hello', isFinal: false }],
+      metadata: { isFinal: false },
+    });
+
+    expect(updates[1]).toMatchObject({
+      providerId: 'deepgram',
+      tokens: [
+        { text: 'hello ', isFinal: true, startMs: 0, endMs: 500, confidence: 0.9 },
+        { text: 'world ', isFinal: true, startMs: 500, endMs: 1000, confidence: 0.91 },
+      ],
+      language: 'en-US',
+      span: { startMs: 0, endMs: 1000 },
+      metadata: { channelIndex: [0], isFinal: true, requestId: 'req-1' },
+    });
+  });
+
+  test('emits finalize update on UtteranceEnd', async () => {
+    const provider = createProvider();
+    if (!provider.stream) throw new Error('expected websocket-capable provider');
+    const stream = provider.stream();
+    const promise = stream.connect();
+    const socket = await getSocket();
+
+    const updates: TranscriptUpdate[] = [];
+    stream.onUpdate((update) => updates.push(update));
+
+    socket.open();
+    await promise;
+
+    socket.emitMessage(
+      JSON.stringify({
+        type: 'UtteranceEnd',
+        channel: [0],
+        last_word_end: 1.25,
+      }),
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      providerId: 'deepgram',
+      tokens: [],
+      finalize: true,
+      metadata: { type: 'UtteranceEnd', channel: [0], lastWordEndMs: 1250 },
+    });
   });
 
   test('maps close reason to authentication error', async () => {

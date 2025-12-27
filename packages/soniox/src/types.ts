@@ -14,6 +14,10 @@ export interface SonioxOptions extends BaseProviderOptions {
   languageHints?: ReadonlyArray<string>;
   /** Enable speaker diarization (speaker labels in word timestamps). */
   diarization?: boolean;
+  /** Enable server-side endpoint detection (utterance segmentation via '<end>' marker). */
+  endpointDetection?: boolean;
+  /** Enable language identification (token language fields when available). */
+  languageIdentification?: boolean;
   /** Drop‑queue budget in ms of audio. Default 200ms, clamped [100..500]. */
   queueBudgetMs?: number;
 }

@@ -14,4 +14,5 @@ export {
 export { soniox } from './provider';
 export type * from './SonioxHttpTranscriptionModel';
 export type * from './SonioxWsRealtimeModel';
+export * from './token-updates';
 export type { SonioxOptions, SonioxProvider } from './types';

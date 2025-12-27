@@ -3,7 +3,7 @@ import type {
   StreamStatus,
   TranscriptionProvider,
   TranscriptionStream,
-  TranscriptResult,
+  TranscriptUpdate,
   Transport,
 } from '@saraudio/core';
 import { isRetryable, RateLimitError } from '@saraudio/core';
@@ -76,8 +76,7 @@ export interface TranscriptionController<P extends TranscriptionProvider = Trans
   clear(): void;
   forceEndpoint(): Promise<void>;
   updateProvider(options: ProviderUpdateOptions<P>): Promise<void>;
-  onPartial(handler: (text: string) => void): () => void;
-  onTranscript(handler: (result: TranscriptResult) => void): () => void;
+  onUpdate(handler: (update: TranscriptUpdate) => void): () => void;
   onError(handler: (error: Error) => void): () => void;
   onStatusChange(handler: (status: StreamStatus) => void): () => void;
   // Present only when controller created its own recorder in higher layers
@@ -98,8 +97,7 @@ export function createTranscription<P extends TranscriptionProvider>(
   // Selected transport for this controller instance. Calculated at first connect if 'auto'.
   let selectedTransport: Transport | null = null;
 
-  const partialSubs = new Set<(t: string) => void>();
-  const transcriptSubs = new Set<(r: TranscriptResult) => void>();
+  const updateSubs = new Set<(u: TranscriptUpdate) => void>();
   const errorSubs = new Set<(e: Error) => void>();
   const statusSubs = new Set<(s: StreamStatus) => void>();
   let unsubscribeRecorder: (() => void) | null = null;
@@ -267,7 +265,7 @@ export function createTranscription<P extends TranscriptionProvider>(
   const wireStream = (stream: TranscriptionStream, signal?: AbortSignal): void => {
     unsubscribeStreamHandlers();
     unsubscribeStream.push(
-      stream.onTranscript((r: TranscriptResult) => transcriptSubs.forEach((h) => h(r))),
+      stream.onUpdate((u: TranscriptUpdate) => updateSubs.forEach((h) => h(u))),
       stream.onError((e: Error) => {
         lastError = e;
         errorSubs.forEach((h) => h(e));
@@ -275,9 +273,6 @@ export function createTranscription<P extends TranscriptionProvider>(
       }),
       stream.onStatusChange((status: StreamStatus) => setStatus(status)),
     );
-    if (stream.onPartial) {
-      unsubscribeStream.push(stream.onPartial((t: string) => partialSubs.forEach((h) => h(t))));
-    }
   };
 
   const attemptConnect = async (signal?: AbortSignal): Promise<void> => {
@@ -319,7 +314,7 @@ export function createTranscription<P extends TranscriptionProvider>(
           provider,
           logger,
           preconnectBuffer,
-          onTranscript: (res) => transcriptSubs.forEach((h) => h(res)),
+          onUpdate: (update) => updateSubs.forEach((h) => h(update)),
           onError: (err) => {
             lastError = err;
             errorSubs.forEach((h) => h(err));
@@ -534,13 +529,9 @@ export function createTranscription<P extends TranscriptionProvider>(
     clear,
     forceEndpoint,
     updateProvider,
-    onPartial: (h) => {
-      partialSubs.add(h);
-      return () => partialSubs.delete(h);
-    },
-    onTranscript: (h) => {
-      transcriptSubs.add(h);
-      return () => transcriptSubs.delete(h);
+    onUpdate: (h) => {
+      updateSubs.add(h);
+      return () => updateSubs.delete(h);
     },
     onError: (h) => {
       errorSubs.add(h);

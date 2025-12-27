@@ -1,50 +1,9 @@
-import type { NormalizedFrame } from '@saraudio/core';
-import {
-  AbortedError,
-  NetworkError,
-  type StreamStatus,
-  type TranscriptionStream,
-  type TranscriptResult,
-} from '@saraudio/core';
+import type { NormalizedFrame, TranscriptToken, TranscriptUpdate } from '@saraudio/core';
+import { AbortedError, NetworkError, type StreamStatus, type TranscriptionStream } from '@saraudio/core';
 import type { Logger } from '@saraudio/utils';
 import { frameDurationMs } from '@saraudio/utils';
+import type { DeepgramResultsMessage, DeepgramUtteranceEndMessage } from './DeepgramWsModels';
 import { type DeepgramErrorMessage, mapClose, mapError } from './errors';
-
-interface DeepgramWord {
-  word?: string;
-  punctuated_word?: string;
-  start?: number;
-  end?: number;
-  confidence?: number;
-  speaker?: number;
-}
-
-interface DeepgramAlternative {
-  transcript?: string;
-  confidence?: number;
-  language?: string;
-  words?: ReadonlyArray<DeepgramWord>;
-  utterances?: unknown;
-  paragraphs?: unknown;
-  entities?: unknown;
-  topics?: unknown;
-  intents?: unknown;
-  sentiments?: unknown;
-}
-
-interface DeepgramResultsMessage {
-  type?: string;
-  channel?: {
-    alternatives?: ReadonlyArray<DeepgramAlternative>;
-  };
-  channel_index?: ReadonlyArray<number>;
-  is_final?: boolean;
-  speech_final?: boolean;
-  start?: number;
-  end?: number;
-  duration?: number;
-  metadata?: Record<string, unknown>;
-}
 
 // DeepgramErrorMessage type is imported from ./errors
 
@@ -69,8 +28,7 @@ interface QueuedFrame {
 
 export function createDeepgramStream(config: DeepgramStreamConfig): TranscriptionStream {
   let status: StreamStatus = 'idle';
-  const partialHandlers = new Set<(text: string) => void>();
-  const transcriptHandlers = new Set<(result: TranscriptResult) => void>();
+  const updateHandlers = new Set<(update: TranscriptUpdate) => void>();
   const errorHandlers = new Set<(error: Error) => void>();
   const statusHandlers = new Set<(next: StreamStatus) => void>();
 
@@ -93,13 +51,8 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
     statusHandlers.forEach((handler) => handler(status));
   };
 
-  const emitPartial = (text: string): void => {
-    if (!text) return;
-    partialHandlers.forEach((handler) => handler(text));
-  };
-
-  const emitTranscript = (result: TranscriptResult): void => {
-    transcriptHandlers.forEach((handler) => handler(result));
+  const emitUpdate = (update: TranscriptUpdate): void => {
+    updateHandlers.forEach((handler) => handler(update));
   };
 
   const emitError = (error: Error): void => {
@@ -184,8 +137,8 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
     if (!isRecord(parsed)) return;
 
     const type = typeof parsed.type === 'string' ? parsed.type : undefined;
-    if (type === 'Error' || isDeepgramError(parsed)) {
-      const error = mapError(parsed as DeepgramErrorMessage);
+    if (isDeepgramError(parsed)) {
+      const error = mapError(parsed);
       emitError(error);
       setStatus('error');
       return;
@@ -197,13 +150,23 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
       return;
     }
 
-    if (type === 'Results' || isDeepgramResults(parsed)) {
+    if (isDeepgramResults(parsed)) {
       if (!readyEmitted) {
         readyEmitted = true;
         setStatus('ready');
       }
-      const result = parsed as DeepgramResultsMessage;
-      handleResultsMessage(result, emitPartial, emitTranscript);
+      handleResultsMessage(parsed, emitUpdate);
+      return;
+    }
+
+    if (isDeepgramUtteranceEnd(parsed)) {
+      emitUpdate({
+        providerId: 'deepgram',
+        tokens: [],
+        finalize: true,
+        metadata: buildUtteranceEndMetadata(parsed),
+        raw: parsed,
+      });
     }
   };
 
@@ -421,17 +384,9 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
         event: 'force-endpoint',
       });
     },
-    onPartial(handler: (text: string) => void) {
-      partialHandlers.add(handler);
-      return () => {
-        partialHandlers.delete(handler);
-      };
-    },
-    onTranscript(handler: (result: TranscriptResult) => void) {
-      transcriptHandlers.add(handler);
-      return () => {
-        transcriptHandlers.delete(handler);
-      };
+    onUpdate(handler: (update: TranscriptUpdate) => void) {
+      updateHandlers.add(handler);
+      return () => updateHandlers.delete(handler);
     },
     onError(handler: (error: Error) => void) {
       errorHandlers.add(handler);
@@ -449,59 +404,77 @@ export function createDeepgramStream(config: DeepgramStreamConfig): Transcriptio
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isDeepgramResults(value: unknown): value is DeepgramResultsMessage {
-  return isRecord(value) && isRecord((value as Record<string, unknown>).channel);
+  return isRecord(value) && isRecord(value.channel);
 }
 
 function isDeepgramError(value: unknown): value is DeepgramErrorMessage {
   if (!isRecord(value)) return false;
-  return (
-    typeof (value as Record<string, unknown>).err_code === 'number' ||
-    typeof (value as Record<string, unknown>).status === 'number' ||
-    (value as Record<string, unknown>).type === 'Error'
-  );
+  return value.type === 'Error' || typeof value.err_code === 'number' || typeof value.status === 'number';
 }
 
-function handleResultsMessage(
-  message: DeepgramResultsMessage,
-  emitPartial: (text: string) => void,
-  emitTranscript: (result: TranscriptResult) => void,
-): void {
+function isDeepgramUtteranceEnd(value: unknown): value is DeepgramUtteranceEndMessage {
+  return isRecord(value) && value.type === 'UtteranceEnd';
+}
+
+function buildUtteranceEndMetadata(message: DeepgramUtteranceEndMessage): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { type: 'UtteranceEnd' };
+  if (Array.isArray(message.channel)) metadata.channel = message.channel;
+  if (typeof message.last_word_end === 'number' && Number.isFinite(message.last_word_end)) {
+    metadata.lastWordEndMs = Math.round(message.last_word_end * 1000);
+  }
+  return metadata;
+}
+
+function handleResultsMessage(message: DeepgramResultsMessage, emitUpdate: (update: TranscriptUpdate) => void): void {
   const alternative = message.channel?.alternatives?.[0];
   if (!alternative) return;
   const transcript = alternative.transcript ?? '';
   const isFinal = message.is_final === true || message.speech_final === true;
 
-  if (!isFinal) {
-    emitPartial(transcript);
-    return;
+  const tokens: TranscriptToken[] = [];
+  if (alternative.words && alternative.words.length > 0) {
+    for (const word of alternative.words) {
+      const rawWord = typeof word.word === 'string' ? word.word : '';
+      const punctuatedWord = typeof word.punctuated_word === 'string' ? word.punctuated_word : undefined;
+      const displayWord = punctuatedWord ?? rawWord;
+      if (!displayWord) continue;
+
+      const token: TranscriptToken = { text: `${displayWord} `, isFinal };
+      if (typeof word.start === 'number' && Number.isFinite(word.start)) token.startMs = Math.round(word.start * 1000);
+      if (typeof word.end === 'number' && Number.isFinite(word.end)) token.endMs = Math.round(word.end * 1000);
+      if (typeof word.confidence === 'number' && Number.isFinite(word.confidence)) token.confidence = word.confidence;
+      if (typeof word.speaker === 'number' && Number.isFinite(word.speaker)) token.speaker = word.speaker;
+
+      const tokenMetadata: Record<string, unknown> = {};
+      if (rawWord) tokenMetadata.rawWord = rawWord;
+      if (punctuatedWord) tokenMetadata.punctuatedWord = punctuatedWord;
+      if (Object.keys(tokenMetadata).length > 0) token.metadata = tokenMetadata;
+
+      tokens.push(token);
+    }
+  } else if (transcript) {
+    tokens.push({ text: transcript, isFinal });
   }
 
-  const words = alternative.words?.map((word) => ({
-    word: word.punctuated_word ?? word.word ?? '',
-    startMs: typeof word.start === 'number' ? Math.round(word.start * 1000) : 0,
-    endMs: typeof word.end === 'number' ? Math.round(word.end * 1000) : 0,
-    confidence: typeof word.confidence === 'number' ? word.confidence : undefined,
-    speaker: typeof word.speaker === 'number' ? word.speaker : undefined,
-  }));
-
+  const updateMetadata = buildMetadata(message);
   const span = computeSpan(message);
-  const result: TranscriptResult = {
-    text: transcript,
-    confidence: typeof alternative.confidence === 'number' ? alternative.confidence : undefined,
-    words,
-    language: typeof alternative.language === 'string' ? alternative.language : extractDetectedLanguage(message),
-    span,
-    metadata: buildMetadata(message, alternative),
-  };
+  const language = typeof alternative.language === 'string' ? alternative.language : extractDetectedLanguage(message);
 
-  emitTranscript(result);
+  if (tokens.length === 0 && message.speech_final !== true) return;
+
+  const update: TranscriptUpdate = { providerId: 'deepgram', tokens, raw: message };
+  if (message.speech_final === true) update.finalize = true;
+  if (span) update.span = span;
+  if (language) update.language = language;
+  if (updateMetadata) update.metadata = updateMetadata;
+  emitUpdate(update);
 }
 
-function computeSpan(message: DeepgramResultsMessage): TranscriptResult['span'] {
+function computeSpan(message: DeepgramResultsMessage): TranscriptUpdate['span'] {
   if (typeof message.start === 'number' && typeof message.end === 'number') {
     return {
       startMs: Math.round(message.start * 1000),
@@ -526,11 +499,11 @@ function extractDetectedLanguage(message: DeepgramResultsMessage): string | unde
   return undefined;
 }
 
-function buildMetadata(
-  message: DeepgramResultsMessage,
-  alternative: DeepgramAlternative,
-): Record<string, unknown> | undefined {
+function buildMetadata(message: DeepgramResultsMessage): Record<string, unknown> | undefined {
   const meta: Record<string, unknown> = {};
+  if (typeof message.type === 'string') {
+    meta.type = message.type;
+  }
   if (Array.isArray(message.channel_index)) {
     meta.channelIndex = [...message.channel_index];
   }
@@ -540,29 +513,11 @@ function buildMetadata(
   if (typeof message.speech_final === 'boolean') {
     meta.speechFinal = message.speech_final;
   }
-  if (message.metadata && typeof message.metadata === 'object') {
-    const requestId = (message.metadata as Record<string, unknown>).request_id;
+  if (isRecord(message.metadata)) {
+    const requestId = message.metadata.request_id;
     if (typeof requestId === 'string') {
       meta.requestId = requestId;
     }
-  }
-  if (alternative.utterances) {
-    meta.utterances = alternative.utterances;
-  }
-  if (alternative.paragraphs) {
-    meta.paragraphs = alternative.paragraphs;
-  }
-  if (alternative.entities) {
-    meta.entities = alternative.entities;
-  }
-  if (alternative.topics) {
-    meta.topics = alternative.topics;
-  }
-  if (alternative.intents) {
-    meta.intents = alternative.intents;
-  }
-  if (alternative.sentiments) {
-    meta.sentiments = alternative.sentiments;
   }
   return Object.keys(meta).length > 0 ? meta : undefined;
 }

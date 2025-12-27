@@ -163,14 +163,25 @@ const main = async (): Promise<void> => {
     printLine(`[error] ${error.message}`);
   });
 
-  controller.onPartial((text) => {
+  let turnTokens: Array<{ text: string; isFinal: boolean }> = [];
+  const renderTurn = (): string => turnTokens.map((t) => t.text).join('').trim();
+
+  controller.onUpdate((update) => {
+    // Shadeq-style: drop non-final, append latest tokens.
+    turnTokens = turnTokens.filter((t) => t.isFinal);
+    turnTokens.push(...update.tokens.map((t) => ({ text: t.text, isFinal: t.isFinal })));
+
+    const text = renderTurn();
+    if (update.finalize === true) {
+      if (text) printLine(text);
+      turnTokens = [];
+      clearPartial();
+      return;
+    }
+
     if (!isTTY) return;
     clearPartial();
     process.stdout.write(`… ${text}`);
-  });
-
-  controller.onTranscript((result) => {
-    printLine(result.text);
   });
 
   const stop = async (): Promise<void> => {
