@@ -44,6 +44,7 @@ export default defineConfig({
           items: [
             { label: 'Deepgram', slug: 'providers/deepgram' },
             { label: 'Soniox', slug: 'providers/soniox' },
+            { label: '60db (HTTP)', slug: 'providers/sixtydb' },
           ],
         },
         {

@@ -1,0 +1,46 @@
+---
+title: 60db (HTTP)
+description: HTTP file and speech-segment transcription with 60db.
+---
+
+`@saraudio/sixtydb` supports HTTP batch transcription and the existing WAV segment
+aggregator. It does not implement WebSocket streaming or partial transcripts.
+
+```bash
+pnpm add @saraudio/sixtydb
+```
+
+On your server, load credentials at runtime:
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { sixtydb } from '@saraudio/sixtydb';
+
+const provider = sixtydb({ auth: { apiKey: process.env.SIXTYDB_API_KEY } });
+const result = await provider.transcribe(await readFile('recording.wav'));
+console.log(result.text);
+```
+
+For the [HTTP quickstart](/getting-started/quickstart-http), use this provider,
+`transport: 'http'`, a mono 16 kHz recorder, and `flushOnSegmentEnd: true`.
+The runtime encodes PCM to WAV before upload. Direct byte inputs must contain
+WAV; other supported audio formats can be supplied as a Blob with its MIME type.
+Keep workspace API keys server-side; browser applications should use their own
+backend proxy, configured through `baseUrl`.
+
+Optional provider settings: `language`, `diarization`, plain-string `context`,
+and CSV `keywords`. Per-call `language`/`diarization` override provider defaults.
+Requests enable word timestamps and confidence. Results use milliseconds for
+word timing and audio-duration `span`; raw segments, speaker arrays, duration,
+and warnings remain in `result.metadata`. No word speaker labels or aggregate
+confidence are fabricated. Empty transcripts for silence are successful results.
+
+Upload limit: 10,000,000 bytes, following the stricter current endpoint reference.
+The service validates the one-hour duration limit. Only JSON responses are
+supported. Cancellation uses the supplied AbortSignal and produces `AbortedError`.
+The adapter surfaces authentication, rate-limit (`Retry-After`), network, malformed
+response, and provider errors; it does not automatically retry uploads.
+
+See the [60db REST reference](https://docs.60db.ai/api-reference/stt/speech-to-text)
+for supported languages, server limits, diarization surcharge, and context-plan
+requirements. No live API key is bundled or needed for the contract tests.

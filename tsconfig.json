@@ -10,6 +10,7 @@
     { "path": "packages/runtime-browser" },
     { "path": "packages/deepgram" },
     { "path": "packages/soniox" },
+    { "path": "packages/sixtydb" },
     { "path": "packages/react" },
     { "path": "packages/vue" },
     { "path": "packages/svelte" },
