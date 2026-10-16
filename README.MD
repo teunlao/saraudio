@@ -6,7 +6,7 @@ Modular audio toolkit and transcription SDK for real‑time voice applications. 
 ## Highlights
 
 - Batteries‑included: recorder, VAD/segments, HTTP/WS transports, provider adapters.
-- Provider‑agnostic: Deepgram and Soniox behind one interface; swap without rewrites.
+- Provider‑agnostic: Deepgram, Soniox, and HTTP-only 60db behind one interface; swap without rewrites.
 - Silence‑aware by design: WS `keep|drop|mute`, HTTP “segment‑only” (flush on VAD segment end).
 - Cross‑platform: Browser (AudioWorklet/AudioContext) and Node.
 - Type‑safe: clear options, no vendor lock‑in.
@@ -132,6 +132,7 @@ const { start, stop, connect, disconnect, partial, transcript, status } = useTra
 
 - `@saraudio/deepgram` — WS realtime + HTTP chunked transcription (use raw model IDs like `nova-3`).
 - `@saraudio/soniox` — WS realtime (`stt-rt-v3`) + HTTP batch via Files API (`stt-async-v3`).
+- [`@saraudio/sixtydb`](packages/sixtydb/README.md) — HTTP batch/segment transcription with 60db; no WebSocket transport.
 
 ### Soniox: language restrictions + translation
 
@@ -158,6 +159,7 @@ See provider TypeScript options/types (`DeepgramOptions`, `SonioxOptions`) for f
 - `@saraudio/capture-darwin` — macOS CoreAudio capture for Node (system audio + mic)
 - `@saraudio/deepgram` — Deepgram provider
 - `@saraudio/soniox` — Soniox provider
+- `@saraudio/sixtydb` — 60db HTTP provider
 - `@saraudio/vue` — Vue 3 composables (hooks)
 - `@saraudio/react` — React hooks (coming in examples)
 - `@saraudio/svelte` — Svelte stores
