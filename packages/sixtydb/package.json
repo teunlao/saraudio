@@ -1,6 +1,6 @@
 {
   "name": "@saraudio/sixtydb",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "60db HTTP transcription provider for SARAUDIO",
   "license": "MIT",
   "sideEffects": false,
